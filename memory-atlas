@@ -50,10 +50,25 @@ import urllib.error
 import urllib.request
 
 VERSION = "2.2.0"   # тег-линза (блюр-пустота) + hover-превью + бар-блоки + dash/settings (арч-пасс) + аудит-фиксы B2/B3/B8/B19/B21
-DEFAULT_SRC = os.path.expanduser("~/.claude/projects/-Users-zzalli/memory")
+def _resolve_default_src():
+    # G1: первый существующий+НЕПУСТОЙ кандидат (Mac -Users- / Arch -home-), иначе первый.
+    # чинит W5-баг: автодетект цеплял пустой -Users-zzalli на Арче → 0 нод
+    cands = [os.path.expanduser("~/.claude/projects/%s/memory" % p)
+             for p in ("-Users-zzalli", "-home-zzalli")]
+    for c in cands:
+        try:
+            if any(f.endswith(".md") for f in os.listdir(c)):
+                return c
+        except OSError:
+            continue
+    return cands[0]
+
+
+DEFAULT_SRC = _resolve_default_src()
 DEFAULT_OUT = os.path.expanduser("~/.mac-claw/atlas/memory-atlas.html")
 D3_PATH = os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")
-EXCLUDE_DIRS = {".git", ".stfolder", "archive", "_archive", "assets"}
+EXCLUDE_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
+                ".obsidian", ".trash", "node_modules"}   # G7: чужие вульты (Obsidian и пр.)
 INDEX_FILES = {"MEMORY.md", "MEMORY-work.md", "FEEDBACK_INDEX.md"}
 ZONES = {"light": [-0.55, 0.05], "work": [0.75, -0.15], "glados": [-0.1, -0.75],
          "bastra": [0.65, 0.65], "feedback": [-0.2, 0.6], "unindexed": [-0.85, 0.8]}
@@ -72,23 +87,37 @@ def parse_frontmatter(text):
     text = text.lstrip("﻿")
     m = FM_RE.match(text)
     fm = {"name": None, "description": "", "type": "",
-          "part_of": "", "tier": "", "session": "", "tags": []}
+          "part_of": "", "tier": "", "session": "", "state": "", "tags": []}
     if not m:
         return fm, text
     block = m.group(1)
+    # G2: ключи на ОБОИХ уровнях (^\s*) — наш вложенный формат И top-level Obsidian/эталон-вульт
     for pat, key in ((r"^name:\s*(.+)$", "name"),
                      (r"^description:\s*(.+)$", "description"),
-                     (r"^\s+type:\s*(.+)$", "type"),
-                     (r"^\s+part_of:\s*(.+)$", "part_of"),
-                     (r"^\s+tier:\s*(.+)$", "tier"),
-                     (r"^\s+originSessionId:\s*(.+)$", "session")):
+                     (r"^\s*type:\s*(.+)$", "type"),
+                     (r"^\s*part_of:\s*(.+)$", "part_of"),
+                     (r"^\s*tier:\s*(.+)$", "tier"),
+                     (r"^\s*state:\s*(.+)$", "state"),
+                     (r"^\s*originSessionId:\s*(.+)$", "session")):
         mm = re.search(pat, block, re.M)
         if mm:
             fm[key] = mm.group(1).strip().strip("\"'")
-    # tags: [a, b] | a, b — рабочие теги (ручная разметка; part_of = уже ведомый)
-    tm = re.search(r"^\s+tags:\s*(.+)$", block, re.M)
+    # tags: инлайн `[a,b]`/`a,b` ИЛИ YAML-список из `- item` строк (Obsidian); top-level тоже
+    tm = re.search(r"^\s*tags:[^\S\n]*(.*)$", block, re.M)
     if tm:
-        fm["tags"] = [t.strip().strip("\"'[]") for t in tm.group(1).split(",") if t.strip().strip("[] ")]
+        inline = tm.group(1).strip()
+        if inline and inline not in ("[]", "|", ">"):
+            fm["tags"] = [t.strip().strip("\"'[]") for t in inline.split(",")
+                          if t.strip().strip("[] ")]
+        else:   # значение на последующих строках: `  - tag`
+            lst = []
+            for ln in block[tm.end():].splitlines():
+                lm = re.match(r"^\s*-\s*(.+)$", ln)
+                if lm:
+                    lst.append(lm.group(1).strip().strip("\"'"))
+                elif ln.strip() and re.match(r"^\S", ln):
+                    break
+            fm["tags"] = lst
     return fm, text[m.end():]
 
 
@@ -184,6 +213,7 @@ def build_graph(src):
             "part_of": fm["part_of"],
             "tier": fm["tier"],
             "session": fm["session"],
+            "state": fm["state"],           # G2: metadata.state (superseded/transition) → STATE-слой
             "tags": fm["tags"],
         }
         nodes.append(node)
@@ -615,7 +645,7 @@ def to_browse_data(nodes, edges, bodies, now):
                 "type": n["type"], "type_inferred": False, "desc": n["desc"],
                 "light": n["light"], "heavy": n["heavy"], "orphan": n["orphan"],
                 "conflict": n["conflict"], "index": False,
-                "size": n["bytes"], "mtime": 0, "age_days": n["age_days"],
+                "size": n["bytes"], "mtime": n["mtime"], "age_days": n["age_days"],
                 "out": outc[n["id"]], "deg": degc[n["id"]],
             })
     bedges = [{"s": e["source"], "t": e["target"], "missing": byid[e["target"]]["ghost"]}
@@ -700,7 +730,8 @@ def main():
     else:
         nodes, edges, bodies = build_graph(args.src)
         if not nodes:
-            print(f"warn: 0 nodes in {args.src}", file=sys.stderr)
+            print(f"warn: 0 nodes in {args.src} — pass --src /path/to/your/vault "
+                  f"(a folder of .md notes)", file=sys.stderr)
         # browse видит только wikilink-граф (терминальный модуль до-детекторный);
         # cross-рёбра — только в atlas-граф
         browse = to_browse_data(nodes, edges, bodies, time.time())
@@ -774,6 +805,35 @@ def run_self_test():
             fm, body = parse_frontmatter("no fm here")
             self.assertIsNone(fm["name"])
             self.assertEqual(body, "no fm here")
+
+        def test_frontmatter_top_level_keys(self):
+            # G2: top-level type/tags (Obsidian/эталон-вульт) — раньше терялись (только с отступом)
+            fm, _ = parse_frontmatter(
+                "---\nname: n\ntype: reference\ntags: [alpha, beta]\nmetadata:\n  state: superseded\n---\nx")
+            self.assertEqual(fm["type"], "reference")
+            self.assertEqual(fm["tags"], ["alpha", "beta"])
+            self.assertEqual(fm["state"], "superseded")
+
+        def test_frontmatter_yaml_list_tags(self):
+            # G2: Obsidian YAML-список тегов
+            fm, _ = parse_frontmatter("---\nname: n\ntags:\n  - one\n  - two\n---\nx")
+            self.assertEqual(fm["tags"], ["one", "two"])
+
+        def test_obsidian_dir_excluded(self):
+            # G7: .obsidian/ не жуётся
+            self.w(".obsidian/workspace.md", "junk")
+            self.w("real.md", "x")
+            by, _ = self.graph()
+            self.assertIn("real", by)
+            self.assertNotIn("workspace", by)
+
+        def test_browse_mtime_real(self):
+            # G10: browse-ноды несут настоящий mtime (был захардкожен 0)
+            self.w("a.md", "x")
+            nodes, edges, bodies = build_graph(self.src)
+            br = to_browse_data(nodes, edges, bodies, time.time())
+            m = {n["id"]: n for n in br["nodes"]}
+            self.assertGreater(m["a"]["mtime"], 0)
 
         def test_wikilink_alias_and_pipe(self):
             self.assertEqual(WIKILINK_RE.findall("[[a-b]] [[c|alias text]] [[d#sec]]"),
