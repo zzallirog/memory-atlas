@@ -524,6 +524,7 @@
         <option>1</option><option selected>2</option><option>3</option><option>4</option>
       </select>
     </div>
+    <div class="row" data-hint="плотность подписей — ось, НЕЗАВИСИМАЯ от зума: бюджет имён на экран (приоритет selected > pin > hover > degree); 0 = только выделенное/пины; зум добавляет бюджет сам, ползунок — множитель"><label>lbl ρ</label><input type="range" id="labelDens" min="0" max="3" step="0.1" value="1"><span class="rv" id="labelDensv">1.0</span></div>
     <div class="row" data-hint="камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner"><label>cam</label>
       <select id="camPolicy" title="framing при select; stay = зум ручной, камера не трогается">
         <option value="stay" selected>stay · ручной</option>
@@ -574,7 +575,7 @@
     </div>
     <div class="toggles">
       <div class="tg on" id="collide" data-hint="прятать налезающие друг на друга лейблы">cull</div>
-      <div class="tg on" id="softFade" data-hint="спрятанные лейблы оставить призраком 0.12 (место читается)">soft</div>
+      <div class="tg on" id="softFade" data-hint="на месте спрятанного лейбла — крошечная метка-тире (видно, что имя есть; текст не мажется)">soft</div>
       <div class="tg" id="lockZoom" data-hint="перелёты камеры не меняют масштаб, только пан">lockz</div>
     </div>
   </div>
@@ -674,7 +675,7 @@
 </div></div>
 <div id="bar">
   <div id="stats"></div>
-  <button id="fit" data-hint="вписать весь видимый граф в свободную часть экрана (клавиша f)">⤢ fit</button>
+  <button id="fit" data-hint="вписать КОНТЕКСТ в кадр (поиск / фильтр / пины / ego выделенной; без контекста — весь граф) — клавиша f; весь мир всегда = ⌂ / h">⤢ fit</button>
   <button id="homeBtn" data-hint="вернуться к стартовому виду (клавиша h)" title="стартовый вид (h)">⌂</button>
   <button id="reloadBtn" data-hint="перезагрузить страницу (свежий файл атласа после пересборки)" title="перезагрузить">⟳</button>
   <button id="rebuildBtn" data-hint="пересборка ДАННЫХ атласа: собрать команду генератора с нужными флагами — выполняется в терминале" title="пересборка данных">⚙</button>
@@ -870,12 +871,12 @@ for (const [sel, key] of [['colorMode','color'],['sizeMode','size'],['focusMode'
   const el = $(sel);
   if (CFG[key] !== undefined && [...el.options].some(o => o.value === String(CFG[key]))) el.value = CFG[key];
 }
-for (const id of ['edgeAlpha', 'nodeSize']) if (CFG[id] !== undefined) $(id).value = CFG[id];
+for (const id of ['edgeAlpha', 'nodeSize', 'labelDens']) if (CFG[id] !== undefined) $(id).value = CFG[id];
 function saveCfg() {
   lsSet(KEYP + 'cfg', {
     color: mode(), size: sizeMode(), focus2: focusMode(), labelMode: labelModeV(),
     labelHops: labelHopsV(), camPolicy2: camPolicy(),
-    edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value,
+    edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value, labelDens: +$('labelDens').value,
     maxN: maxN, TS: TS, toggles: toggles, layout: layoutName,
     hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
   });
@@ -905,10 +906,15 @@ const showClusters = () => toggles.clusters;
 // VIEW-множители (edgeAlphaMul / nodeSizeMul) + подписи значений
 const eaMul = () => +$('edgeAlpha').value;
 const nsMul = () => +$('nodeSize').value;
-for (const [id, lab] of [['edgeAlpha', 'edgeAlphav'], ['nodeSize', 'nodeSizev']])
+for (const [id, lab] of [['edgeAlpha', 'edgeAlphav'], ['nodeSize', 'nodeSizev'], ['labelDens', 'labelDensv']])
   $(id).addEventListener('input', () => { $(lab).textContent = (+$(id).value).toFixed(2).replace(/0$/, ''); saveCfg(); requestDraw(); });
 $('edgeAlphav').textContent = (+$('edgeAlpha').value).toFixed(1);
 $('nodeSizev').textContent = (+$('nodeSize').value).toFixed(1);
+$('labelDensv').textContent = (+$('labelDens').value).toFixed(1);
+// бюджет лейблов (ось «плотность подписей», отвязана от пространственного зума):
+// зум по умолчанию сам добавляет бюджет (ближе = коллизии освобождают место = имён больше),
+// ползунок lbl ρ — юзерский множитель поверх; 0 = только selected/hover/pin/поиск
+const lblBudget = K => Math.round((16 + 52 * Math.min(K, 6)) * (+$('labelDens').value));
 
 // FILTER maxNodes: top-N по degree; вне keep — не удалять, dim 0.10 (принцип #2)
 const realCount = nodes.filter(n => !n.ghost).length;
@@ -1057,8 +1063,24 @@ function viewRect() {
   }
   return { x0, x1, y0: 14, y1: H - 58 };   // низ = #bar
 }
-function fitTransform() {
+// fit = «в кадр то, что НА СТОЛЕ», не всегда весь мир (фидбек: «fit уводит далеко,
+// как будто постоянно хоум»). Контекст по приоритету: поиск-матчи → tag-фильтр →
+// isolate-группа → пины+соседи → ego выделенной → все видимые. Полный мир = ⌂ / h.
+function fitTarget() {
   const vis = nodes.filter(visible);
+  if (query.length) { const m = vis.filter(n => matches(n)); if (m.length) return m; }
+  if (tagSel.size) { const m = vis.filter(n => hasTag(n)); if (m.length) return m; }
+  if (isolate.size) { const m = vis.filter(n => isolate.has(groupKey(n))); if (m.length) return m; }
+  if (pinSet.size) {
+    const ids = new Set();
+    for (const p of pinIds) { ids.add(p); for (const nb of adj.get(p) || []) ids.add(nb); }
+    const m = vis.filter(n => ids.has(n.id)); if (m.length) return m;
+  }
+  if (selected) return egoNodes(selected);
+  return vis;
+}
+function fitTransform(subset) {
+  const vis = subset || nodes.filter(visible);
   if (!vis.length) return d3.zoomIdentity;
   // паддинг world-юнитов: hull-выступ (26) + зонный лейбл над ним (сверху запас больше)
   const x0 = d3.min(vis, n => n.x) - 70, x1 = d3.max(vis, n => n.x) + 70;
@@ -1068,7 +1090,9 @@ function fitTransform() {
   return d3.zoomIdentity.translate((vr.x0+vr.x1)/2, (vr.y0+vr.y1)/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2);
 }
 function fitView() {
-  d3.select(canvas).transition().duration(500).call(zoom.transform, fitTransform());
+  const t = fitTarget();
+  d3.select(canvas).transition().duration(500).call(zoom.transform, fitTransform(t));
+  if (t.length < nodes.filter(visible).length) toast(`fit: ${t.length} нод контекста (весь граф = ⌂/h)`);
 }
 document.getElementById('fit').addEventListener('click', fitView);
 // стартовый вид = fit по прогретой раскладке; он же = home (⌂ / h, ставится в boot-блоке)
@@ -1083,6 +1107,7 @@ const NX = n => n.x + (n._mx || 0), NY = n => n.y + (n._my || 0);   // magnet re
 // имя ноды кликабельно наравне с кружком — «имена = пустое место» фикс. Только реально
 // отрисованные (labelMode/cull учтены сами собой: culled/скрытые сюда не попадают).
 let labelHits = [], tileHits = [];
+let labelAnim = false;   // есть лейблы в фазе вплывания/угасания → rAF-петля живёт
 const inBox = (b, mx, my) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
 function pick(mx, my) {
   const [x, y] = transform.invert([mx, my]);
@@ -1145,6 +1170,7 @@ canvas.addEventListener('contextmenu', ev => {
 });
 
 let selected = null;
+let selT = 0;         // момент выделения: focus-blur вплывает, не хлопает (fade-in ~180ms)
 const navHist = [];   // порт GraphState.pushHistory: b/⌫ = назад по выделениям
 let histLock = false;
 function selectNode(n, opts) {
@@ -1152,6 +1178,7 @@ function selectNode(n, opts) {
     navHist.push(selected.id);
     if (navHist.length > 50) navHist.shift();
   }
+  if (n !== selected) selT = performance.now();
   selected = n;
   computeHops();
   if (keepSet) rebuildKeep();
@@ -2108,9 +2135,10 @@ function layoutTargets(name) {
     }
   } else if (name === 'grid') {
     // grid по зонам: каждый домен = свой блок-«полка» с зазором, внутри сорт по degree;
-    // блоки текут лентой и заполняют прямоугольник — сканируется как таблица
+    // блоки текут лентой и заполняют прямоугольник — сканируется как таблица.
+    // шаг = LAYOUT_PITCH.grid: расширен 56→76, чтобы лейбл/карточка влезали в колонну
     const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
-    const CELL = 56, GAPB = 130, maxW = 2.4 * R;
+    const CELL = LAYOUT_PITCH.grid, GAPB = 130, maxW = 2.4 * R;
     let bx = 0, by = 0, rowH = 0;
     const blocks = [];
     for (const z of zs) {
@@ -2141,15 +2169,23 @@ function layoutTargets(name) {
         t.set(n.id, [X(xIdx.get(n.id)), lane + ((i * 37 % 100) - 50) / 100 * laneH * 0.6]));
     });
   } else if (name === 'zones') {
-    // stacked-порт: колонка на зону, внутри — по degree
+    // stacked-порт: колонка на зону, внутри — по degree.
+    // шаг колонн = LAYOUT_PITCH.zones (46→64) + ширина зоны считается от её колонн:
+    // фиксированные 360 на зону давали внахлёст у широких зон и пустоту у узких
     const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
-    zs.forEach((z, zi) => {
+    const COLP = LAYOUT_PITCH.zones, GAPZ = 170;
+    const packs = zs.map(z => {
       const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
-      const cols = Math.max(1, Math.ceil(ns.length / 24));
-      ns.forEach((n, i) => t.set(n.id, [
-        (zi - (zs.length - 1) / 2) * 360 + (i % cols - (cols - 1) / 2) * 46,
-        (Math.floor(i / cols) - 12) * 40]));
+      return { ns, cols: Math.max(1, Math.ceil(ns.length / 24)) };
     });
+    const tot = d3.sum(packs, p => p.cols * COLP) + GAPZ * (packs.length - 1);
+    let x0 = -tot / 2;
+    for (const p of packs) {
+      p.ns.forEach((n, i) => t.set(n.id, [
+        x0 + (i % p.cols + 0.5) * COLP,
+        (Math.floor(i / p.cols) - 12) * 40]));
+      x0 += p.cols * COLP + GAPZ;
+    }
   }
   // ghosts: к центроиду реальных соседей (смысловое место, не случайное)
   for (const n of nodes) {
@@ -2239,25 +2275,56 @@ function draw() {
   const now = performance.now();
   if (toggles.particles) pT += Math.min(60, now - lastPT) / 1000;
   lastPT = now;
+  labelAnim = false;
   magnetStep();
   const fm = focusMode();
   if (selected && fm !== 'dim') drawFocus(fm);
   else paintFrame(ctx, {});
   drawMinimap();
-  // анимационные режимы держат rAF-петлю живой; статика — одиночные кадры
-  if (toggles.particles || magActive || (toggles.magnet && cursorW)) requestDraw();
+  // анимационные режимы держат rAF-петлю живой; статика — одиночные кадры.
+  // labelAnim = лейблы вплывают/гаснут; selT-окно = вплывание blur-фокуса
+  if (toggles.particles || magActive || (toggles.magnet && cursorW) || labelAnim ||
+      (selected && fm !== 'dim' && now - selT < 220)) requestDraw();
 }
-// A/B focus: фон реально блюрится (offscreen blit), ego-подграф резко поверх
+// A/B focus: фон реально блюрится (offscreen), ego-подграф резко поверх.
+// ПЕРФ (v2.1.0): «перерисовать muted-граф → заблюрить → тут же сэмплить» каждый кадр
+// стоило 8.3ms/кадр (paint→readback flush + re-raster блюра всего канваса) — при drag
+// в ego-фокусе fps падал 60→10. Блюр-результат кэшируется в blurCanvas: кадр = чистый
+// блит + ego-проход (0.6ms). Инвалидация: stamp (камера/размер/конфиг) или, пока
+// симуляция живая (drag/morph), по таймеру BG_MS — фон под блюром чуть отстаёт, не видно.
+const blurCanvas = document.createElement('canvas');
+const blurCtx = blurCanvas.getContext('2d');
+let bgStamp = '', bgAt = 0;
+const BG_MS = 150;
 function drawFocus(fm) {
   const ego = new Set([selected.id, ...adj.get(selected.id)]);
   sizeBg();
-  paintFrame(bgCtx, { muted: true });               // весь граф приглушённо → offscreen
+  const stamp = [transform.x.toFixed(1), transform.y.toFixed(1), transform.k.toFixed(3),
+    canvas.width, canvas.height, dpr, selected.id, layoutName, mode(), sizeMode(),
+    nsMul(), maxN, hiddenZones.size, hiddenKinds.size, hiddenNodes.size,
+    toggles.edgesOn, toggles.hulls, toggles.ghosts].join('|');
+  const moving = sim.alpha() > 0.005 || magActive;
+  if (stamp !== bgStamp || (moving && performance.now() - bgAt > BG_MS)) {
+    paintFrame(bgCtx, { muted: true });             // весь граф приглушённо → offscreen
+    if (blurCanvas.width !== canvas.width || blurCanvas.height !== canvas.height) {
+      blurCanvas.width = canvas.width; blurCanvas.height = canvas.height;
+    }
+    blurCtx.save();
+    blurCtx.clearRect(0, 0, blurCanvas.width, blurCanvas.height);
+    blurCtx.filter = `blur(${BLUR * dpr}px)`;
+    blurCtx.drawImage(bgCanvas, 0, 0);              // блюр растеризуется ОДИН раз в кэш
+    blurCtx.restore();
+    bgStamp = stamp; bgAt = performance.now();
+  }
+  // вплывание фокуса: первые ~180ms блюр наплывает поверх резкого кадра, не хлопает
+  const ft = Math.min(1, (performance.now() - selT) / 180);
+  if (ft < 1) paintFrame(ctx, {});                  // живой резкий кадр под полупрозрачный блюр
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.filter = `blur(${BLUR * dpr}px)`;
-  ctx.drawImage(bgCanvas, 0, 0);                     // один блит с фильтром = дёшево
-  ctx.filter = 'none';
+  if (ft >= 1) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = ft;
+  ctx.drawImage(blurCanvas, 0, 0);                  // готовый блюр — обычный блит
+  ctx.globalAlpha = 1;
   ctx.restore();
   paintFrame(ctx, { only: ego, tiles: fm === 'tiles', noClear: true, noBg: true });
 }
@@ -2446,6 +2513,38 @@ function paintFrame(g, opts) {
     }
   }
 
+  // тайл-деклаттер (pre-pass): карточки размещаются жадно по приоритету
+  // (selected > hover > pin > degree); проигравшая место карточка рисуется обычным
+  // кружком — нода не исчезает, текст не мажется. Бюджет lbl ρ действует и тут.
+  const tileMode = !muted && (tiles || transform.k >= TILE_K);
+  let tileSkip = null;
+  const placedTileRects = [];
+  if (tileMode) {
+    tileSkip = new Set();
+    g.save();
+    g.font = `600 ${13*TS}px system-ui`;   // метрики меряются шрифтом карточки
+    const tprio = n => (n === selected ? 8 : 0) + (pinSet.has(n.id) ? 4 : 0) + (n === hovered ? 2 : 0);
+    const tAlways = n => n === selected || n === hovered || pinSet.has(n.id);
+    const tcand = nodes.filter(n => visible(n) && !n.ghost && (!only || only.has(n.id)))
+      .sort((a, b) => tprio(b) - tprio(a) || b.degree - a.degree);
+    let tBudget = only ? Infinity : lblBudget(transform.k);
+    for (const n of tcand) {
+      const m = tileMetrics(g, n);
+      n._tm = m;                            // кэш кадра — node-loop рисует по этим же метрикам
+      if (m.x + m.w < 0 || m.x > W || m.y + m.h < 0 || m.y > H) {
+        tileSkip.add(n.id);                 // за кадром: бюджет не жжём, кружок дёшев
+        continue;
+      }
+      const lost = (!tAlways(n) && tBudget <= 0) ||
+        placedTileRects.some(b => m.x - 4 < b.x + b.w && m.x + m.w + 4 > b.x &&
+                                  m.y - 4 < b.y + b.h && m.y + m.h + 4 > b.y);
+      if (lost && !tAlways(n)) { tileSkip.add(n.id); continue; }
+      placedTileRects.push({ x: m.x, y: m.y, w: m.w, h: m.h });
+      if (!tAlways(n)) tBudget--;
+    }
+    g.restore();
+  }
+
   // nodes
   for (const n of nodes) {
     if (!visible(n)) continue;
@@ -2459,10 +2558,16 @@ function paintFrame(g, opts) {
       continue;
     }
     // тайл-LOD: близкий зум (k≥TILE_K) или focus=тайлы — прямоугольная карточка с подложкой
-    // вместо кружка; кружки остаются на далёком масштабе, где текст всё равно не читается
-    if (!n.ghost && (tiles || (!muted && transform.k >= TILE_K))) {
-      g.globalAlpha = only ? 1 : dimmed(n) ? 0.12 : (pinDimmed(n) && !(n === selected || n === hovered)) ? 0.35 : 1;
-      drawTile(g, n);
+    // вместо кружка; кружки остаются на далёком масштабе, где текст всё равно не читается.
+    // Карточка, проигравшая место в pre-pass (tileSkip), падает в кружок ниже.
+    // На границе LOD (k∈[TILE_K, TILE_K+0.3]) карточка ВПЛЫВАЕТ поверх кружка (кроссфейд
+    // ведёт сам зум — непрерывен), а не хлопает всем экраном разом
+    const tileHere = !n.ghost && tileMode && !tileSkip.has(n.id);
+    const tileT = tiles ? 1 : Math.min(1, Math.max(0, (transform.k - TILE_K) / 0.3));
+    const tileA = only ? 1 : dimmed(n) ? 0.12 : (pinDimmed(n) && !(n === selected || n === hovered)) ? 0.35 : 1;
+    if (tileHere && tileT >= 1) {
+      g.globalAlpha = tileA;
+      drawTile(g, n, n._tm);
       g.globalAlpha = 1;
       continue;
     }
@@ -2521,10 +2626,21 @@ function paintFrame(g, opts) {
       g.stroke();
     }
     g.globalAlpha = 1;
+    if (tileHere && tileT > 0) {   // LOD-кроссфейд: карточка наплывает на кружок
+      g.globalAlpha = tileA * tileT;
+      drawTile(g, n, n._tm);
+      g.globalAlpha = 1;
+    }
   }
 
-  // labels: режимы hubs/hops/near/all (порт labelMode), collision-cull (toggle),
-  // softFade = culled в ghost-alpha 0.12 вместо скрытия (принцип #2).
+  // labels: режимы hubs/hops/near/all (порт labelMode) + ДЕКЛАТТЕР:
+  //   (а) жадный collision-cull по приоритету selected > pin > hover > поиск > degree —
+  //       проигравший место лейбл НЕ рисуется (мазня «призраков 0.12» друг по другу —
+  //       главный баг grid@zoom); softFade вместо текста ставит крошечное тире-метку;
+  //   (б) бюджет плотности lbl ρ — ось, независимая от пространственного зума
+  //       (зум по умолчанию добавляет бюджет сам: коллизии освобождают место);
+  //   (в) подложка-пилюля у КАЖДОГО нарисованного лейбла (ambient — тише);
+  //   (г) в grid/zones имя ужимается «серединным …» в шаг колонны.
   // Рисуются в SCREEN-space (world-transform снят, позиции device-px snap): текст
   // не проходит через масштаб CTM → резкий на любом зуме и не «мылится» при magnet-флоате.
   // muted/tiles несут текст иначе → пропуск.
@@ -2536,64 +2652,106 @@ function paintFrame(g, opts) {
     const snap = v => Math.round(v * dpr) / dpr;    // привязка к device-px: без полупиксельного мыла
     g.textAlign = 'center';
     const lm = labelModeV();
-    const tileL = K >= TILE_K;   // тайлы несут текст сами — их лейблы пропускаем
     const NEAR_D = 320;   // world units от курсора для режима near
-    const thresh = only ? 0 : K > 1.6 ? 0 : K > 0.9 ? degThresh.mid : degThresh.low;
     const always = n => n === selected || n === hovered || n === magNode || pinSet.has(n.id) || searchHit(n);
+    // cull-исключение уже: только одиночные (selected/hover/magnet) рисуются даже внахлёст;
+    // пины/поиск идут через cull с высоким prio — стопка пинов не мажется друг по другу
+    const noCull = n => n === selected || n === hovered || n === magNode;
     // плашка-подложка + крупнее: контекст выделения/hover/pin — «обзор масштабом», зум не трогаем
     const plateFor = n => n === selected || n === hovered || n === magNode || pinSet.has(n.id) ||
       (neighbors && neighbors.has(n.id));
+    // жёсткий degree-порог убран (слепил экраны в дырки на средних зумах):
+    // hubs = кандидаты все, prio-сорт по degree + БЮДЖЕТ выдают «топ-N хабов в кадре»,
+    // и это работает одинаково на любом зуме; all = только collision-cull, без бюджета
     const byMode = n => {
-      if (lm === 'all') return true;
-      if (lm === 'hops') return selected ? hopDist.has(n.id) : n.degree >= thresh;
+      if (lm === 'hops') return selected ? hopDist.has(n.id) : true;
       if (lm === 'near') return cursorW && Math.hypot(n.x - cursorW[0], n.y - cursorW[1]) < NEAR_D;
-      return n.degree >= thresh;   // hubs
+      return true;   // hubs | all
     };
-    const boxes = [];
-    const prio = n => (n === selected ? 4 : 0) + (pinSet.has(n.id) ? 3 : 0) + (n === hovered || n === magNode ? 2 : 0);
-    const cand = nodes.filter(n => visible(n) && !(tileL && !n.ghost) && (!only || only.has(n.id)) && !dimmed(n) &&
+    const boxes = placedTileRects.slice();   // лейблы уворачиваются и от тайл-карточек
+    const prio = n => (n === selected ? 8 : 0) + (pinSet.has(n.id) ? 4 : 0) +
+      (n === hovered || n === magNode ? 2 : 0) + (searchHit(n) ? 1 : 0);
+    // нода с размещённой карточкой имя уже несёт; карточка-неудачник получает шанс на лейбл
+    const skipTiled = n => tileMode && !n.ghost && !tileSkip.has(n.id);
+    const cand = nodes.filter(n => visible(n) && !skipTiled(n) && (!only || only.has(n.id)) && !dimmed(n) &&
       (byMode(n) || always(n)))
       .sort((a, b) => prio(b) - prio(a) || b.degree - a.degree);
     const pad = 6; // screen px: подушка между лейблами — касание = слипание при чтении
+    // ego-проход мал — бюджет не нужен; режим all = осознанное «всё» → только cull
+    let budget = (only || lm === 'all') ? Infinity : lblBudget(K);
+    const pitch = LAYOUT_PITCH[layoutName];
     for (const n of cand) {
+      const isAlways = always(n);
       const sx = snap(NX(n) * K + transform.x), sy = snap(NY(n) * K + transform.y);
-      const rs = radius(n) * K;                     // радиус в screen px
+      // за кадром — не рисуем и НЕ жжём бюджет (иначе невидимые хабы съедают весь бюджет кадра)
+      if (!isAlways && (sx < -80 || sx > W + 80 || sy < -50 || sy > H + 50)) continue;
       const plate = plateFor(n);
       const fs = (plate ? 13.5 : 11) * TS;
       g.font = `${plate ? '600 ' : ''}${fs}px system-ui`;
-      const w = g.measureText(n.label).width, h = fs * 1.1;
+      const rs = radius(n) * K;                     // радиус в screen px
+      // ужимание в шаг раскладки (grid/zones) + общий потолок ambient-имени:
+      // выживший после cull лейбл читается целиком, зум раздвигает шаг → текст раскрывается
+      const maxPx = plate ? 460 : Math.min(240 * TS, pitch ? Math.max(56, pitch * K - 8) : 240 * TS);
+      const lbl = fitLabel(g, n.label, maxPx);
+      const w = g.measureText(lbl).width, h = fs * 1.1;
       const yBase = sy - rs - 4;                    // baseline текста над нодой
       const x = sx - w/2, y = yBase - h;
-      let culled = false;
-      if (toggles.collide && boxes.some(b => x-pad < b.x+b.w && x+w+pad > b.x && y-pad < b.y+b.h && y+h+pad > b.y)) {
-        if (!toggles.softFade || boxes.length > 300) continue;
-        culled = true;   // softFade: ghost-лейбл 0.12 на месте — spatial memory
+      const lost = (!isAlways && budget <= 0) ||
+        (!noCull(n) && toggles.collide &&
+          boxes.some(b => x-pad < b.x+b.w && x+w+pad > b.x && y-pad < b.y+b.h && y+h+pad > b.y));
+      if (lost) {
+        // тексту места нет → НЕ рисуем (и не кликается как лейбл — кружок остаётся).
+        // Уход плавный: остаточная alpha гаснет за ~4 кадра (без плашки, чтобы не мазать),
+        // потом softFade оставляет тире-метку «имя тут есть» — spatial memory без мазни
+        const la0 = n._la || 0;
+        if (la0 > 0.05) {
+          if (rec) { n._la = la0 * 0.62; labelAnim = true; }
+          g.globalAlpha = la0 * 0.85;
+          g.lineWidth = 3; g.strokeStyle = 'rgba(12,12,11,0.85)'; g.lineJoin = 'round';
+          g.strokeText(lbl, sx, yBase);
+          g.fillStyle = '#c3c2b7';
+          g.fillText(lbl, sx, yBase);
+          g.globalAlpha = 1;
+        } else if (toggles.softFade && !n.ghost && sx > -20 && sx < W + 20 && sy > -20 && sy < H + 20) {
+          if (rec) n._la = 0;
+          g.globalAlpha = 0.3;
+          g.fillStyle = '#8b8983';
+          g.fillRect(sx - 2.5, yBase - 1.5, 5, 1.5);
+          g.globalAlpha = 1;
+        } else if (rec) n._la = 0;
+        continue;
       }
-      if (!culled) {
-        boxes.push({x, y, w, h});
-        if (rec) labelHits.push({x: x - 3, y: y - 3, w: w + 6, h: h + 8, n});  // +подушка клика
-      }
+      boxes.push({x, y, w, h});
+      if (rec) labelHits.push({x: x - 3, y: y - 3, w: w + 6, h: h + 8, n});  // +подушка клика
+      if (!isAlways) budget--;
+      // вход лейбла плавный: alpha лерпится 0→1 (~5 кадров), выигравшие место имена вплывают
+      let la = n._la === undefined ? 0.25 : n._la;
+      la += (1 - la) * 0.3;
+      if (la > 0.98) la = 1; else if (rec) labelAnim = true;
+      if (rec) n._la = la;
       // hop-tier тона: соседи selected тускнеют с глубиной (порт hop-rings)
       const hopA = (lm === 'hops' && selected && hopDist.has(n.id)) ? Math.max(0.55, 1 - hopDist.get(n.id) * 0.15) : 1;
-      g.globalAlpha = culled ? 0.12 : hopA;
-      if (plate && !culled) {
-        // подложка: лейбл читается поверх любого фарша; цветной кант = принадлежность
+      g.globalAlpha = hopA * la;
+      // подложка ВСЕГДА (не только у выделенного): имя читается поверх точек/рёбер;
+      // ambient — тише и тоньше, чтобы не стать стеной коробок
+      if (plate) {
         rr(g, x - 5, y - 2, w + 10, h + 5, 4);
         g.fillStyle = 'rgba(20,20,19,0.92)'; g.fill();
         g.strokeStyle = hexA(nodeColor(n), 0.5); g.lineWidth = 1; g.stroke();
       } else {
-        // halo фоном страницы — текст читается поверх рёбер и чужих марок
+        rr(g, x - 4, y - 1.5, w + 8, h + 4, 3);
+        g.fillStyle = 'rgba(14,14,13,0.72)'; g.fill();
+        g.strokeStyle = hexA(nodeColor(n), 0.22); g.lineWidth = 1; g.stroke();
+      }
+      g.fillStyle = n === selected ? '#ffffff' : plate ? '#e2e1d6' : '#c3c2b7';
+      g.fillText(lbl, sx, yBase);
+      // LOD-превью: magnet-нода читается прямо в облаке (принцип #3), pinned — 1 строка
+      if (n.desc && (n === magNode || (pinSet.has(n.id) && K > 0.7))) {
+        const lines = n === magNode ? 3 : 1;
+        g.font = `${9.5*TS}px system-ui`;
         g.lineWidth = 3;
         g.strokeStyle = 'rgba(12,12,11,0.85)';
         g.lineJoin = 'round';
-        g.strokeText(n.label, sx, yBase);
-      }
-      g.fillStyle = n === selected ? '#ffffff' : plate ? '#e2e1d6' : '#c3c2b7';
-      g.fillText(n.label, sx, yBase);
-      // LOD-превью: magnet-нода читается прямо в облаке (принцип #3), pinned — 1 строка
-      if (!culled && n.desc && (n === magNode || (pinSet.has(n.id) && K > 0.7))) {
-        const lines = n === magNode ? 3 : 1;
-        g.font = `${9.5*TS}px system-ui`;
         const lw = 46;
         for (let li = 0; li < lines; li++) {
           const seg = n.desc.slice(li * lw, (li + 1) * lw);
@@ -2613,32 +2771,54 @@ function paintFrame(g, opts) {
 // порог тайл-LOD: с этого зума кружки становятся карточками (screen-конста шрифта = читается)
 const TILE_K = 2.2;
 const DESC_K = 4.5;   // ещё ближе — в карточке появляется превью desc
+// шаг колонны шаблонных раскладок (world units) — единый источник для layoutTargets
+// и деклаттера: имя/карточка ужимаются в шаг, зум раздвигает шаг → текст раскрывается
+const LAYOUT_PITCH = { grid: 76, zones: 64 };
+// имя в maxPx: длинное режется «серединным …» — голова (тип) и хвост (различитель) остаются
+function fitLabel(g, label, maxPx) {
+  if (g.measureText(label).width <= maxPx) return label;
+  let head = label.slice(0, Math.ceil(label.length / 2)), tail = label.slice(head.length);
+  while (head.length + tail.length > 5 && g.measureText(head + '…' + tail).width > maxPx) {
+    if (head.length >= tail.length) head = head.slice(0, -1); else tail = tail.slice(1);
+  }
+  return head + '…' + tail;
+}
 function rr(g, x, y, w, h, r) {
   g.beginPath();
   g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r);
   g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath();
 }
-// тайл-карточка ноды: скруглённый прямоугольник-подложка + заголовок; на близком зуме + desc.
-// Рисуется в SCREEN-space (см. лейблы): текст резкий, рект целиком кликабелен (tileHits).
-function drawTile(g, n) {
-  const label = n.label;
+// метрики тайл-карточки (SCREEN px) — общие для pre-pass коллизий и отрисовки;
+// звать с уже выставленным шрифтом карточки (600 13*TS system-ui)
+function tileMetrics(g, n) {
   const K = transform.k;
-  g.save();
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const nx = Math.round(NX(n) * K + transform.x), ny = Math.round(NY(n) * K + transform.y);
-  g.font = `600 ${13*TS}px system-ui`;
-  g.textAlign = 'center'; g.textBaseline = 'middle';
   const withDesc = K >= DESC_K && n.desc;
+  const pitch = LAYOUT_PITCH[layoutName];
+  const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
+  // потолок ТЕКСТА = шаг колонны минус паддинги карточки и зазор cull (иначе карточки
+  // ровно на шаге сетки чуть шире шага → выживает каждая вторая, полки дырявые)
+  const maxW = Math.max(64, Math.min(280*TS, pitch ? pitch * K - 2*padX - 12 : 280*TS));
+  const label = fitLabel(g, n.label, maxW);
   const dLines = [];
   if (withDesc) {
     const lw = 42;
     for (let i = 0; i < 2; i++) { const seg = n.desc.slice(i*lw, (i+1)*lw); if (seg) dLines.push(seg); }
   }
-  const tw = Math.min(g.measureText(label).width, 280*TS);
-  const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
-  const w = Math.max(tw, withDesc ? 200*TS : 0) + 2*padX;
+  const w = Math.min(Math.max(g.measureText(label).width, withDesc ? 200*TS : 0), maxW) + 2*padX;
   const h = th + dLines.length*dh + 2*padY;
-  const x = nx - w/2, y = ny - h/2;
+  return { label, dLines, x: nx - w/2, y: ny - h/2, w, h, nx, th, padY, dh };
+}
+// тайл-карточка ноды: скруглённый прямоугольник-подложка + заголовок; на близком зуме + desc.
+// Рисуется в SCREEN-space (см. лейблы): текст резкий, рект целиком кликабелен (tileHits).
+// m = метрики из pre-pass (n._tm) — при отсутствии считаются на месте
+function drawTile(g, n, m) {
+  g.save();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.font = `600 ${13*TS}px system-ui`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (!m) m = tileMetrics(g, n);
+  const { label, dLines, x, y, w, h, nx, th, padY, dh } = m;
   if (g === ctx) tileHits.push({x, y, w, h, n});   // карточка кликабельна целиком
   rr(g, x, y, w, h, 5);
   g.fillStyle = 'rgba(20,20,19,0.94)'; g.fill();
@@ -2671,13 +2851,6 @@ function frameEgo(n) {
   const t = d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2);
   d3.select(canvas).transition().duration(450).call(zoom.transform, t);
 }
-
-// пороги лейблов из распределения (fixed 10/20 слепнет на малых графах)
-const degThresh = (() => {
-  const ds = nodes.map(n => n.degree).sort((a,b) => b-a);
-  const at = i => ds[Math.min(i, ds.length-1)] ?? 0;
-  return { mid: at(80), low: at(25) };
-})();
 
 function hexA(hex, a) {
   const v = parseInt(hex.slice(1), 16);

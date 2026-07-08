@@ -47,7 +47,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.0.0"   # prod: flexibility (9 layouts + task-presets + regen-admin) + usability (clickable labels, declutter, crisp render)
+VERSION = "2.1.0"   # label declutter (greedy cull + density axis + plates) + ego-blur perf cache + context-fit + anim polish
 DEFAULT_SRC = os.path.expanduser("~/.claude/projects/-Users-zzalli/memory")
 DEFAULT_OUT = os.path.expanduser("~/.mac-claw/atlas/memory-atlas.html")
 D3_PATH = os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")
