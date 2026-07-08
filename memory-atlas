@@ -49,7 +49,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.1.0"   # label declutter (greedy cull + density axis + plates) + ego-blur perf cache + context-fit + anim polish
+VERSION = "2.2.0"   # тег-линза (блюр-пустота) + hover-превью + бар-блоки + dash/settings (арч-пасс) + аудит-фиксы B2/B3/B8/B19/B21
 DEFAULT_SRC = os.path.expanduser("~/.claude/projects/-Users-zzalli/memory")
 DEFAULT_OUT = os.path.expanduser("~/.mac-claw/atlas/memory-atlas.html")
 D3_PATH = os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")
