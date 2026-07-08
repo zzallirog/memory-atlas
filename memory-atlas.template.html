@@ -216,13 +216,36 @@
   .tag .tx:hover { color: #e66767; }
   .tag.addtag { border-style: dashed; }
   .tag.addtag input {
-    width: 58px; background: none; border: none; outline: none;
+    width: 84px; background: none; border: none; outline: none;
     color: var(--ink); font: inherit;
   }
   #tagHead { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
   #tagHead .t { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
-  #tagHead .clr { margin-left: auto; cursor: pointer; color: var(--muted); font: 10px var(--mono); }
+  #tagHead .clr { cursor: pointer; color: var(--muted); font: 10px var(--mono); }
   #tagHead .clr:hover { color: var(--accent); }
+  #tagHead #tagMode { margin-left: auto; }
+  /* быстрый тег в панели: dashed-чипы существующих своих тегов, один клик вешает */
+  .tag.sug { border-style: dashed; opacity: .68; }
+  .tag.sug:hover { opacity: 1; border-color: var(--border-hi); }
+  #panel .taglinks.sugrow { margin-top: -4px; }
+  /* линза-пилюля: активные фильтры вида всегда на виду и снимаются по месту */
+  #lens {
+    position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 7;
+    display: none; align-items: center; gap: 6px; max-width: 72vw; flex-wrap: wrap; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 5px 11px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--shadow); animation: floatIn .18s cubic-bezier(.2,.85,.3,1.12) both;
+    font: 10.5px var(--mono); color: var(--ink-2);
+  }
+  #lens.on { display: flex; }
+  #lens .lchip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+    border-radius: 14px; border: 1px solid var(--grid); }
+  #lens .lchip .sw { width: 7px; height: 7px; border-radius: 50%; }
+  #lens .lchip .x { cursor: pointer; color: var(--muted); padding: 0 1px; }
+  #lens .lchip .x:hover { color: #e66767; }
+  #lens .lcnt { color: var(--muted); }
+  #lens .lsave { cursor: pointer; color: var(--muted); border: 1px dashed var(--grid); border-radius: 14px; padding: 2px 8px; }
+  #lens .lsave:hover { color: var(--ink); border-color: var(--accent); }
 
   /* панель: чуть крупнее база для читаемости */
   #panel h2 { font-size: 15.5px; }
@@ -403,7 +426,7 @@
   #panel .zsel { background: rgba(0,0,0,0.35); color: var(--ink-2); border: 1px solid var(--grid); border-radius: 6px; font: 10px var(--mono); padding: 1px 3px; }
   /* V = hide panels, context остаётся (принцип #4) */
   body.panels-hidden #hud, body.panels-hidden #panel, body.panels-hidden #bar,
-  body.panels-hidden #viewtabs, body.panels-hidden #minimap { display: none !important; }
+  body.panels-hidden #viewtabs, body.panels-hidden #minimap, body.panels-hidden #lens { display: none !important; }
 
   /* ==== browse module: ДО-ребренд memory-map, ТЕРМИНАЛЬНЫЙ стиль вербатим ==== */
   /* scoped под #browse — Catppuccin-палитра не течёт в atlas-граф */
@@ -536,6 +559,7 @@
   <div class="vt" data-v="browse">▤ browse</div>
   <div class="vt" data-v="dash">▦ dash</div>
 </div>
+<div id="lens" data-hint="что сейчас режет вид: теги-линза / поиск / изоляция / зоны / top-N; ✕ снимает по месту, 💾 = сохранить линзу как вид"></div>
 
 <div id="dash"></div>
 
@@ -675,8 +699,8 @@
     <div id="legendTitle"></div>
     <div id="legend"></div>
   </div>
-  <div class="card" id="tagCard" data-hint="клик по тегу = изолировать его ноды; свои теги: «+ тег» в панели ноды или 🏷 из пинов; ✕ там же снимает">
-    <div id="tagHead"><span class="t">рабочие теги</span><span class="clr" id="tagClr">сброс</span></div>
+  <div class="card" id="tagCard" data-hint="клик по тегу = ЛИНЗА: остаются только ноды с тегом, остальное растворяется в блюр-пустоту (в focus=dim — приглушается). Свои теги: «+ тег» в панели ноды (клавиша t) или 🏷 из пинов; ∪/∩ = режим нескольких тегов">
+    <div id="tagHead"><span class="t">теги · линза</span><span class="clr" id="tagMode" title="несколько тегов: ∪ = любой из них, ∩ = все сразу">∪ any</span><span class="clr" id="tagClr">сброс</span></div>
     <div id="tags"></div>
   </div>
 </div>
@@ -699,6 +723,7 @@
     <tr><td>[ ]</td><td>цикл раскладки force → semantic → pack → ring → petals → radial → grid → zones → timeline; морф анимирован. «Задача» в HUD ставит раскладку+цвет+слои пресетом</td></tr>
     <tr><td>f / h</td><td>fit по графу / home (стартовый вид)</td></tr>
     <tr><td>c</td><td>подтянуть выделенную ноду + соседей в кадр — ЕДИНСТВЕННЫЙ автоперелёт при cam=stay</td></tr>
+    <tr><td>t</td><td>тег на выделенную ноду (фокус в «+ тег», enter вешает, можно цепочкой)</td></tr>
     <tr><td>9 / 0</td><td>edges toggle / particles toggle</td></tr>
     <tr><td>w a s d · q e</td><td>пан · зум (shift = boost)</td></tr>
     <tr><td>b / ⌫</td><td>назад по истории выделений</td></tr>
@@ -715,7 +740,7 @@
     <tr><td>↗ open</td><td>открыть в редакторе (scheme ниже; fallback = copy path)</td></tr>
     <tr><td>▾ у зоны</td><td>override зоны ноды (localStorage; ★ = переопределена)</td></tr>
     <tr><td>✕ у линка</td><td>negative assertion — спрятать авто-ребро (overlay)</td></tr>
-    <tr><td>+ тег / ✕ на теге</td><td>свои теги на ноде (localStorage); 🏷 в pins-карте = один тег на всю пачку пинов</td></tr>
+    <tr><td>+ тег / ✕ на теге</td><td>свои теги на ноде (localStorage); 🏷 в pins-карте = один тег на пачку пинов; клик по тегу = ЛИНЗА: остаются только помеченные ноды (+ пины), остальное в блюр-пустоту — это задумано; виды и ?state= несут линзу</td></tr>
     <tr><td>⌖ в кадр</td><td>явный перелёт к ноде+соседям (= клавиша c)</td></tr>
   </table>
   <h3>масштаб</h3>
@@ -780,7 +805,7 @@
   <button id="helpBtn" data-hint="справка по всем клавишам и типам рёбер (?)" title="справка (?)">?</button>
   <div id="tsz" data-hint="масштаб текста на графе И панелей UI (сохраняется)"><span class="lbl">текст</span><button id="tszMinus" title="мельче">A−</button><button id="tszPlus" title="крупнее">A+</button></div>
   <div id="hint"></div>
-  <div id="keys"><b>/</b> search · <b>c</b> в кадр · <b>f</b> fit · <b>rmb</b> pin · <b>?</b> help</div>
+  <div id="keys"><b>/</b> search · <b>c</b> в кадр · <b>t</b> тег · <b>f</b> fit · <b>rmb</b> pin · <b>?</b> help</div>
 </div>
 
 <script>
@@ -1044,14 +1069,14 @@ function rebuildKeep() {
   for (const p of pinIds) { keepSet.add(p); for (const nb of adj.get(p) || []) keepSet.add(nb); }
 }
 const inKeep = n => !keepSet || n.ghost || keepSet.has(n.id);
-$('maxN').addEventListener('input', () => { maxN = +$('maxN').value; rebuildKeep(); saveCfg(); requestDraw(); });
+$('maxN').addEventListener('input', () => { maxN = +$('maxN').value; rebuildKeep(); saveCfg(); renderLens(); requestDraw(); });
 
 // text-scale: множитель на канвас-текст (лейблы/тайлы/hull-подписи) И на UI-панели — ручка юзера.
 // дефолт 1.25: 11px на 2K не читается (фидбек 07-07)
 let TS = 1.25;
 function applyUIZoom() {
   const z = Math.max(0.9, Math.min(1.7, TS));
-  for (const id of ['hud', 'panel', 'bar', 'viewtabs', 'minimap']) { const el = $(id); if (el) el.style.zoom = z; }
+  for (const id of ['hud', 'panel', 'bar', 'viewtabs', 'minimap', 'lens']) { const el = $(id); if (el) el.style.zoom = z; }
 }
 function bumpTS(d) { TS = Math.max(0.7, Math.min(2.4, +(TS + d).toFixed(2))); applyUIZoom(); saveCfg(); requestDraw(); }
 document.getElementById('tszPlus').addEventListener('click', () => bumpTS(0.15));
@@ -1071,6 +1096,15 @@ function nodeTags(n) {
   return [...new Set(a)];
 }
 const isUserTag = (n, t) => (userTags[n.id] || []).includes(t);
+// быстрый тег в панели: dashed-чипы уже существующих СВОИХ тегов, которых нет на ноде —
+// один клик вешает; + datalist для инпута. Тегирование = вход в линзу, поэтому мгновенно.
+function tagSuggest(n) {
+  const have = new Set(nodeTags(n));
+  const sug = allUserTags().filter(t => !have.has(t));
+  return `${sug.length ? `<div class="taglinks sugrow">${sug.slice(0, 6).map(t =>
+      `<span class="tag sug" data-addtag="${esc(t)}" title="повесить этот тег на ноду"><span class="sw" style="background:${tagColor(t)}"></span>+ ${esc(t)}</span>`).join('')}</div>` : ''}
+    <datalist id="tagDatalist">${allUserTags().map(t => `<option value="${esc(t)}">`).join('')}</datalist>`;
+}
 function addTagTo(ids, t) {
   t = (t || '').trim();
   if (!t) return;
@@ -1093,8 +1127,29 @@ function removeUserTag(id, t) {
   toast(`тег «${t}» снят`);
   requestDraw();
 }
-const hasTag = n => !tagSel.size || nodeTags(n).some(t => tagSel.has(t));
-const tagColor = t => t.startsWith('◆') ? '#3987e5' : t.startsWith('tier') ? '#c98500' : '#199e70';
+// ∪ any (хотя бы один выбранный тег) | ∩ все (пересечение) — тумблер в шапке тегов
+let tagAnd = false;
+const hasTag = n => {
+  if (!tagSel.size) return true;
+  const ts = nodeTags(n);
+  return tagAnd ? [...tagSel].every(t => ts.includes(t)) : ts.some(t => tagSel.has(t));
+};
+// свои теги различимы: стабильный цвет из хэша имени (были все зелёные);
+// ◆ part_of / tier держат системные цвета
+const TAGC = ['#199e70', '#9085e9', '#d55181', '#4aa3a3', '#c07be0', '#8fae3a', '#e08a3c', '#5da0ee'];
+const tagHash = t => { let h = 5381; for (const c of t) h = (h * 33 + c.codePointAt(0)) >>> 0; return h; };
+const tagColor = t => t.startsWith('◆') ? '#3987e5' : t.startsWith('tier') ? '#c98500'
+  : TAGC[tagHash(t) % TAGC.length];
+// все СВОИ теги корпуса по частоте — быстрый тег в панели + datalist
+function allUserTags() {
+  const c = new Map();
+  for (const arr of Object.values(userTags)) for (const t of arr) c.set(t, (c.get(t) || 0) + 1);
+  return [...c.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+}
+// линза: в blur/tiles-фокусе скрытое тегом НЕ тапается — «тапаешь и ничего не видишь,
+// и это норм»: тег скрывает незапланированное (пины/selected — явный интент, живут)
+const lensPass = n => !tagSel.size || focusMode() === 'dim' ||
+  hasTag(n) || pinSet.has(n.id) || n === selected;
 const sizeScale = {
   degree: d3.scaleSqrt().domain([0, d3.max(nodes, n => n.degree) || 1]).range([2.5, 14]),
   bytes:  d3.scaleSqrt().domain([0, d3.max(nodes, n => n.bytes) || 1]).range([2.5, 14]),
@@ -1225,7 +1280,7 @@ function pick(mx, my) {
   const [x, y] = transform.invert([mx, my]);
   let best = null, bd = Infinity;
   for (const n of nodes) {
-    if (!visible(n)) continue;
+    if (!visible(n) || !lensPass(n)) continue;   // растворённое линзой не тапается (by-design)
     const dx = NX(n)-x, dy = NY(n)-y, d2 = dx*dx+dy*dy, r = radius(n)+3;
     if (d2 < r*r && d2 < bd) { bd = d2; best = n; }
   }
@@ -1286,6 +1341,7 @@ function pickEdge(mx, my) {
     if (x < Math.min(sx, tx) - tol || x > Math.max(sx, tx) + tol ||
         y < Math.min(sy, ty) - tol || y > Math.max(sy, ty) + tol) continue;
     if (!visible(s) || !visible(t)) continue;
+    if (!(lensPass(s) && lensPass(t))) continue;
     if (keepSet && !(inKeep(s) && inKeep(t))) continue;
     const dx = tx - sx, dy = ty - sy, L2 = dx*dx + dy*dy || 1;
     const u = Math.max(0, Math.min(1, ((x - sx) * dx + (y - sy) * dy) / L2));
@@ -1328,6 +1384,7 @@ canvas.addEventListener('contextmenu', ev => {
 
 let selected = null;
 let selT = 0;         // момент выделения: focus-blur вплывает, не хлопает (fade-in ~180ms)
+let lensT = 0;        // момент смены тег-линзы: её блюр вплывает так же
 const navHist = [];   // порт GraphState.pushHistory: b/⌫ = назад по выделениям
 let histLock = false;
 function selectNode(n, opts) {
@@ -1371,9 +1428,11 @@ function selectNode(n, opts) {
       <button class="abtn" data-hide="1" title="скрыть до перезагрузки">👁 hide</button>
       <button class="abtn" data-frame="1" title="подтянуть ноду+соседей в кадр (c)">⌖ в кадр</button>
     </div>
+    <h3>теги · клик = линза</h3>
     <div class="taglinks">${nodeTags(n).map(t =>
       `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-tag="${esc(t)}"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}${isUserTag(n, t) ? `<span class="tx" data-deltag="${esc(t)}" title="снять свой тег">✕</span>` : ''}</span>`).join('')}${
-      n.ghost ? '' : `<span class="tag addtag"><input id="tagAdd" placeholder="+ тег" autocomplete="off" title="enter = повесить тег на ноду"></span>`}</div>
+      n.ghost ? '' : `<span class="tag addtag"><input id="tagAdd" list="tagDatalist" placeholder="+ тег (t)" autocomplete="off" title="enter = повесить тег; клавиша t фокусирует сюда"></span>`}</div>
+    ${n.ghost ? '' : tagSuggest(n)}
     <div class="meta">${n.path ? `${esc(n.path)} · ${(n.bytes/1024).toFixed(1)}k · изменена ${n.age_days}д назад<br>` : ''}degree ${n.degree} (out ${outLinks.get(n.id).length} / in ${inLinks.get(n.id).length}) · cluster ${n.cluster}</div>
     ${n.ghost ? '' : `<span class="readbrowse" data-read="${esc(n.id)}">▤ читать полностью</span>`}
     ${n.desc ? `<div class="desc">${esc(n.desc)}</div>` : ''}
@@ -1383,7 +1442,10 @@ function selectNode(n, opts) {
   if (zs) zs.addEventListener('change', () => setZoneOverride(n, zs.value));
   const ta = document.getElementById('tagAdd');
   if (ta) ta.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') { addTagTo([n.id], ta.value); }
+    if (ev.key === 'Enter') {   // цепочка тегов: после enter фокус возвращается в свежий инпут
+      addTagTo([n.id], ta.value);
+      setTimeout(() => { const e2 = document.getElementById('tagAdd'); if (e2) e2.focus(); }, 0);
+    }
     ev.stopPropagation();
   });
   // stay = абсолют: select камеру НЕ трогает ни в одном focus-режиме; перелёт только явно (c / ⌖ / поиск)
@@ -1402,7 +1464,7 @@ document.getElementById('panelBody').addEventListener('click', ev => {
   if (tg) { toggleTag(tg.dataset.tag); return; }
   const rb = ev.target.closest('.readbrowse');   // fuse: graph → browse (полное тело)
   if (rb && window.openInBrowse) { window.openInBrowse(rb.dataset.read); return; }
-  const el = ev.target.closest('[data-copy],[data-copypath],[data-copydesc],[data-opened],[data-pinbtn],[data-hide],[data-frame],[data-neg],[data-deluser],[data-restore],[data-deltag]');
+  const el = ev.target.closest('[data-copy],[data-copypath],[data-copydesc],[data-opened],[data-pinbtn],[data-hide],[data-frame],[data-neg],[data-deluser],[data-restore],[data-deltag],[data-addtag]');
   if (!el || !n) return;
   if (el.dataset.copy) copyText(el.dataset.copy, 'id');
   else if (el.dataset.copypath) copyText(absPath(n), 'path');
@@ -1411,6 +1473,7 @@ document.getElementById('panelBody').addEventListener('click', ev => {
   else if (el.dataset.pinbtn) togglePin(n, true);
   else if (el.dataset.hide) { hiddenNodes.add(n.id); $('hiddenCnt').textContent = hiddenNodes.size; selectNode(null); toast('скрыта до перезагрузки (вернуть — в ?)'); }
   else if (el.dataset.frame) frameEgo(n);
+  else if (el.dataset.addtag) addTagTo([n.id], el.dataset.addtag);
   else if (el.dataset.deltag) removeUserTag(n.id, el.dataset.deltag);
   else if (el.dataset.neg) addNegative(n.id, el.dataset.neg);
   else if (el.dataset.restore) removeNegative(n.id, el.dataset.restore);
@@ -1495,6 +1558,7 @@ searchEl.addEventListener('input', ev => {
   query = ev.target.value.toLowerCase().split(/\s+/).filter(Boolean);
   rebuildMatch();
   buildDrop(ev.target.value.trim().toLowerCase());
+  renderLens();
   requestDraw();
 });
 function hideDrop() { sdrop.style.display = 'none'; sHits = []; sSel = -1; }
@@ -1542,7 +1606,7 @@ function renderDrop(divider) {
 function pickHit(i) {
   const h = sHits[i];
   if (!h) return;
-  searchEl.value = ''; query = []; rebuildMatch();
+  searchEl.value = ''; query = []; rebuildMatch(); renderLens();
   hideDrop(); searchEl.blur();
   selectNode(h.n);
   flyToNeighbourhood(h.n, true);
@@ -1620,7 +1684,7 @@ window.addEventListener('keydown', ev => {
     else if (regenEl.classList.contains('on')) regenEl.classList.remove('on');
     else if (settingsEl.classList.contains('on')) settingsEl.classList.remove('on');
     else if (dashEl.classList.contains('on')) window.showTab('graph');
-    else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; rebuildMatch(); hideDrop(); searchEl.blur(); }
+    else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; rebuildMatch(); renderLens(); hideDrop(); searchEl.blur(); }
     else if (selected) selectNode(null);
     else if (pinIds.length) setPins([]);                      // камера НЕ откатывается (spatial memory)
     else if (tagSel.size) { tagSel.clear(); renderTags(); }
@@ -1642,6 +1706,9 @@ window.addEventListener('keydown', ev => {
   else if (k === 'f') fitView();
   else if (k === 'h') goHome();
   else if (k === 'c') { if (selected) frameEgo(selected); }   // явный перелёт: selected+ego в кадр
+  else if (k === 't') {   // быстрый тег: фокус сразу в «+ тег» выделенной ноды
+    if (selected && !selected.ghost) { const e2 = $('tagAdd'); if (e2) { ev.preventDefault(); e2.focus(); } }
+  }
   else if (k === 'l') {                                       // cycle labelMode
     const el = $('labelMode'), ord = ['hubs', 'hops', 'near', 'all'];
     el.value = ord[(ord.indexOf(el.value) + 1) % 4];
@@ -1699,6 +1766,7 @@ function renderLegend() {
     isolate.has(key) ? isolate.delete(key) : isolate.add(key);
     renderLegend(); requestDraw();
   }));
+  renderLens();
 }
 function clusterName(c) {
   // самый связный узел кластера как имя
@@ -1712,7 +1780,8 @@ function renderTags() {
   const counts = new Map();
   for (const n of nodes) { if (n.ghost) continue; for (const t of nodeTags(n)) counts.set(t, (counts.get(t) || 0) + 1); }
   const card = document.getElementById('tagCard');
-  if (!counts.size) { card.style.display = 'none'; return; }
+  if (!counts.size) { card.style.display = 'none'; renderLens(); return; }
+  card.style.display = '';
   // порядок: part_of (◆) → tier → ручные; внутри по частоте
   const rank = t => t.startsWith('◆') ? 0 : t.startsWith('tier') ? 1 : 2;
   const items = [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1]);
@@ -1721,9 +1790,11 @@ function renderTags() {
     `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-t="${esc(t)}">
       <span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}<span class="n">${c}</span></span>`).join('');
   el.querySelectorAll('.tag').forEach(s => s.addEventListener('click', () => toggleTag(s.dataset.t)));
+  renderLens();
 }
 function toggleTag(t) {
   tagSel.has(t) ? tagSel.delete(t) : tagSel.add(t);
+  lensT = performance.now();   // линза вплывает, не хлопает
   renderTags();
   // фрейм на выбранный набор — только если камера не в ручном режиме
   if (tagSel.size && camPolicy() !== 'stay') {
@@ -1733,6 +1804,12 @@ function toggleTag(t) {
   requestDraw();
 }
 document.getElementById('tagClr').addEventListener('click', () => { tagSel.clear(); renderTags(); requestDraw(); });
+$('tagMode').addEventListener('click', () => {   // ∪ any ↔ ∩ все (пересечение выбранных тегов)
+  tagAnd = !tagAnd;
+  $('tagMode').textContent = tagAnd ? '∩ все' : '∪ any';
+  lensT = performance.now();
+  renderTags(); requestDraw();
+});
 function frameSet(es) {
   const pad = 90;
   const x0 = Math.min(...es.map(m => m.x)) - pad, x1 = Math.max(...es.map(m => m.x)) + pad;
@@ -1741,6 +1818,40 @@ function frameSet(es) {
   d3.select(canvas).transition().duration(450).call(zoom.transform,
     d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2));
 }
+
+// ---- линза-пилюля (top-center): «что я сейчас вижу» — активные срезы вида одним взглядом,
+// каждый снимается ✕ по месту; 💾 = сохранить комбинацию как вид ----
+const lensEl = document.getElementById('lens');
+function renderLens() {
+  const parts = [];
+  for (const t of tagSel) parts.push(`<span class="lchip"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}<span class="x" data-deltag="${esc(t)}" title="снять тег из линзы">✕</span></span>`);
+  if (tagSel.size > 1) parts.push(`<span class="lcnt">${tagAnd ? '∩ все' : '∪ any'}</span>`);
+  if (query.length) parts.push(`<span class="lchip">⌕ ${esc(query.join(' '))}<span class="x" data-clrq="1" title="снять поиск">✕</span></span>`);
+  const dispIso = k => mode() === 'cluster' && typeof k === 'number' ? clusterName(k) : String(k);
+  for (const k of isolate) parts.push(`<span class="lchip">⊙ ${esc(dispIso(k))}<span class="x" data-deliso="${esc(String(k))}" title="снять изоляцию">✕</span></span>`);
+  if (hiddenZones.size) parts.push(`<span class="lchip">зоны −${hiddenZones.size}<span class="x" data-zones="1" title="показать все зоны">✕</span></span>`);
+  if (keepSet) parts.push(`<span class="lchip">top ${maxN}<span class="x" data-maxn="1" title="вернуть все ноды">✕</span></span>`);
+  if (!parts.length) { lensEl.classList.remove('on'); return; }
+  const vis = nodes.filter(n => !n.ghost && visible(n) && matches(n) && hasTag(n) &&
+    (!isolate.size || isolate.has(groupKey(n))) && inKeep(n)).length;
+  parts.push(`<span class="lcnt">· ${vis} нот</span>`);
+  parts.push(`<span class="lsave" data-lsave="1" title="сохранить линзу как вид">💾 в вид</span>`);
+  lensEl.innerHTML = parts.join('');
+  lensEl.classList.add('on');
+}
+lensEl.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-deltag],[data-clrq],[data-deliso],[data-zones],[data-maxn],[data-lsave]');
+  if (!el) return;
+  if (el.dataset.deltag) toggleTag(el.dataset.deltag);
+  else if (el.dataset.clrq) { searchEl.value = ''; query = []; rebuildMatch(); hideDrop(); renderLens(); requestDraw(); }
+  else if (el.dataset.deliso) {
+    for (const k of isolate) if (String(k) === el.dataset.deliso) { isolate.delete(k); break; }
+    renderLegend(); requestDraw();
+  }
+  else if (el.dataset.zones) { hiddenZones.clear(); saveCfg(); renderZoneChips(); requestDraw(); }
+  else if (el.dataset.maxn) { maxN = realCount; $('maxN').value = maxN; rebuildKeep(); saveCfg(); renderLens(); requestDraw(); }
+  else if (el.dataset.lsave) saveView([...tagSel].join('+') || query.join(' ') || 'линза');
+});
 
 // ==== graph-lab ports: pins / chips / overlay / views / misc ====
 
@@ -1838,6 +1949,7 @@ function renderZoneChips() {
       <span class="sw" style="background:${zoneColor(z)}"></span>${esc(z)}<span class="n">${cnt}</span></span>`;
   }).join('');
   $('zoneChips').querySelectorAll('.zc').forEach(c => c.addEventListener('click', () => toggleZone(c.dataset.z)));
+  renderLens();
 }
 
 // ---- edge-kind chips (per-type фильтр рёбер; стиль = EDGE_STYLES) ----
@@ -1937,6 +2049,9 @@ function applyView(v) {
   hiddenZones.clear(); (v.hiddenZones || []).forEach(z => hiddenZones.add(z));
   hiddenKinds.clear(); (v.hiddenKinds || []).forEach(k => hiddenKinds.add(k));
   sessionKinds.clear();   // вид = явное состояние слоёв, session-override пресета сгорает
+  tagSel.clear(); (v.tags || []).forEach(t => tagSel.add(t));   // вид несёт линзу
+  lensT = performance.now();
+  renderTags();
   if (v.color) $('colorMode').value = v.color;
   if (v.size) $('sizeMode').value = v.size;
   // вид без раскладки = камера летит в координаты ЧУЖОЙ раскладки (дебаг-кейс аудита 07-08)
@@ -1951,14 +2066,17 @@ function applyView(v) {
     d3.zoomIdentity.translate(v.t.x, v.t.y).scale(v.t.k));
   toast('вид: ' + v.name);
 }
-$('viewSave').addEventListener('click', () => {
-  const name = $('viewName').value.trim() || 'view ' + (views.length + 1);
+function saveView(name) {
   views.push({ name, t: { x: transform.x, y: transform.y, k: transform.k },
     hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
+    tags: [...tagSel],   // вид несёт линзу: «tag-driven saved view»
     color: mode(), size: sizeMode(), layout: layoutName });
   lsSet(KEYP + 'views', views);
-  $('viewName').value = '';
   renderViews(); toast('вид сохранён: ' + name);
+}
+$('viewSave').addEventListener('click', () => {
+  saveView($('viewName').value.trim() || 'view ' + (views.length + 1));
+  $('viewName').value = '';
 });
 
 // ---- DATA-кнопки: reload / export view|full / home (порт DATA toolbar) ----
@@ -2467,13 +2585,14 @@ function draw() {
   labelAnim = false;
   magnetStep();
   const fm = focusMode();
-  if (selected && fm !== 'dim') drawFocus(fm);
+  // тег-линза без выделения — тот же blur-движок, что ego: matched-резко / остальное-пустота
+  if ((selected || tagSel.size) && fm !== 'dim') drawFocus(fm);
   else paintFrame(ctx, {});
   drawMinimap();
   // анимационные режимы держат rAF-петлю живой; статика — одиночные кадры.
-  // labelAnim = лейблы вплывают/гаснут; selT-окно = вплывание blur-фокуса
+  // labelAnim = лейблы вплывают/гаснут; selT/lensT-окно = вплывание blur-фокуса/линзы
   if (toggles.particles || magActive || (toggles.magnet && cursorW) || labelAnim ||
-      (selected && fm !== 'dim' && now - selT < 220)) requestDraw();
+      ((selected || tagSel.size) && fm !== 'dim' && now - Math.max(selT, lensT) < 220)) requestDraw();
 }
 // A/B focus: фон реально блюрится (offscreen), ego-подграф резко поверх.
 // ПЕРФ (v2.1.0): «перерисовать muted-граф → заблюрить → тут же сэмплить» каждый кадр
@@ -2485,11 +2604,30 @@ const blurCanvas = document.createElement('canvas');
 const blurCtx = blurCanvas.getContext('2d');
 let bgStamp = '', bgAt = 0;
 const BG_MS = 150;
+// ТЕГ-ЛИНЗА (×20): выбранный тег превращает вид в «красивый блюр + пустота» — резкими
+// остаются ТОЛЬКО ноды с тегом (+ пины: явный ручной интент). Остальное растворяется
+// в кэшированный блюр, тап по пустоте ничего не выбирает (pick смотрит через lensPass):
+// тег скрывает всё незапланированное / не human-authored — это поведение by-design.
+// selected поверх линзы режет ego ЕЮ же: непомеченные соседи остаются в тумане.
+const LENS_BG_ALPHA = 0.82;   // глубина пустоты: насколько блюр-фон линзы утоплен (1 = как ego)
 function drawFocus(fm) {
-  const ego = new Set([selected.id, ...adj.get(selected.id)]);
+  const lens = tagSel.size > 0;
+  let sharp;
+  if (selected) {
+    sharp = new Set([selected.id]);
+    for (const id of adj.get(selected.id) || []) {
+      const m = byId.get(id);
+      if (m && (!lens || hasTag(m) || pinSet.has(id))) sharp.add(id);
+    }
+  } else {
+    sharp = new Set();
+    for (const n of nodes) if (visible(n) && (hasTag(n) || pinSet.has(n.id))) sharp.add(n.id);
+  }
   sizeBg();
   const stamp = [transform.x.toFixed(1), transform.y.toFixed(1), transform.k.toFixed(3),
-    canvas.width, canvas.height, dpr, selected.id, layoutName, mode(), sizeMode(),
+    canvas.width, canvas.height, dpr, selected ? selected.id : '·',
+    lens ? [...tagSel].join('§') + (tagAnd ? '∩' : '∪') : '·',
+    layoutName, mode(), sizeMode(),
     nsMul(), maxN, hiddenZones.size, hiddenKinds.size, sessionKinds.size, hiddenNodes.size,
     toggles.edgesOn, toggles.hulls, toggles.ghosts].join('|');
   const moving = sim.alpha() > 0.005 || magActive;
@@ -2505,17 +2643,18 @@ function drawFocus(fm) {
     blurCtx.restore();
     bgStamp = stamp; bgAt = performance.now();
   }
-  // вплывание фокуса: первые ~180ms блюр наплывает поверх резкого кадра, не хлопает
-  const ft = Math.min(1, (performance.now() - selT) / 180);
+  // вплывание фокуса/линзы: первые ~180ms блюр наплывает поверх резкого кадра, не хлопает
+  const ft = Math.min(1, (performance.now() - Math.max(selT, lensT)) / 180);
   if (ft < 1) paintFrame(ctx, {});                  // живой резкий кадр под полупрозрачный блюр
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (ft >= 1) ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.globalAlpha = ft;
+  // линза глубже ego: блюр-фон чуть утоплен в страницу — пустота читается пустотой
+  ctx.globalAlpha = ft * (lens && !selected ? LENS_BG_ALPHA : 1);
   ctx.drawImage(blurCanvas, 0, 0);                  // готовый блюр — обычный блит
   ctx.globalAlpha = 1;
   ctx.restore();
-  paintFrame(ctx, { only: ego, tiles: fm === 'tiles', noClear: true, noBg: true });
+  paintFrame(ctx, { only: sharp, tiles: fm === 'tiles' && !!selected, noClear: true, noBg: true, lens });
 }
 function paintFrame(g, opts) {
   const only = opts.only || null, muted = !!opts.muted, tiles = !!opts.tiles;
@@ -2816,6 +2955,17 @@ function paintFrame(g, opts) {
       g.strokeStyle = 'rgba(57,135,229,0.85)';
       g.lineWidth = 1.4/transform.k;
       g.stroke();
+    }
+    // линза: выжившая нода несёт кольцо ЦВЕТА тега — видно, каким тегом она тут
+    if (opts.lens && only && !n.ghost && tagSel.size) {
+      const mt = nodeTags(n).find(t => tagSel.has(t));
+      if (mt) {
+        g.beginPath();
+        g.arc(nx, ny, r + 2.5/transform.k, 0, 2*Math.PI);
+        g.strokeStyle = hexA(tagColor(mt), 0.6);
+        g.lineWidth = 1.3/transform.k;
+        g.stroke();
+      }
     }
     if (pinSet.has(n.id)) {
       // pinned-маркер: виден издалека даже вне highlighted set (v1.1 pin-контракта)
@@ -3438,6 +3588,7 @@ function importProfile(p) {
 $('stShare').addEventListener('click', () => {
   const s = { v: 1, layout: layoutName, color: mode(), size: sizeMode(),
     hz: [...hiddenZones], hk: [...hiddenKinds].filter(k => !sessionKinds.has(k)),   // шарим то, что ВИДНО
+    tags: tagSel.size ? [...tagSel] : undefined, and: tagAnd || undefined,
     node: selected ? selected.id : undefined, k: +transform.k.toFixed(3),
     q: searchEl.value.trim() || undefined };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(s))));
@@ -3471,6 +3622,11 @@ if (bootState) {
   if (Array.isArray(bootState.hz)) { hiddenZones.clear(); bootState.hz.forEach(z => hiddenZones.add(z)); renderZoneChips(); }
   if (Array.isArray(bootState.hk)) { hiddenKinds.clear(); bootState.hk.forEach(k => hiddenKinds.add(k)); renderKindChips(); }
   if (bootState.q) { searchEl.value = bootState.q; query = bootState.q.toLowerCase().split(/\s+/).filter(Boolean); rebuildMatch(); }
+  if (Array.isArray(bootState.tags) && bootState.tags.length) {   // линза приезжает по ссылке
+    if (bootState.and) { tagAnd = true; $('tagMode').textContent = '∩ все'; }
+    bootState.tags.forEach(t => tagSel.add(t));
+    renderTags();
+  }
   renderLegend();
 }
 const bootLayout = (bootState && bootState.layout) || params.get('layout') || CFG.layout;   // deep-link бьёт сохранённый
@@ -3496,6 +3652,7 @@ if (zk > 0) {
   const cy = selected ? selected.y : d3.mean(nodes.filter(visible), n => n.y) || 0;
   d3.select(canvas).call(zoom.transform, d3.zoomIdentity.translate(W/2, H/2).scale(zk).translate(-cx, -cy));
 }
+renderLens();   // пилюля видит фильтры из ?q= / ?state=
 requestDraw();
 document.body.dataset.ready = '1';   // smoke-test marker: скрипт дошёл до конца без исключений
 </script>
