@@ -39,6 +39,7 @@ import argparse
 import bisect
 import hashlib
 import itertools
+import math
 import json
 import os
 import platform
@@ -66,12 +67,25 @@ def _resolve_default_src():
 
 DEFAULT_SRC = _resolve_default_src()
 DEFAULT_OUT = os.path.expanduser("~/.mac-claw/atlas/memory-atlas.html")
-D3_PATH = os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")
+# env-оверрайды — путь portable-дистрибутива (.pyz кладёт ресурсы во временную папку)
+D3_PATH = os.environ.get("ATLAS_D3") or os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")
 EXCLUDE_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
                 ".obsidian", ".trash", "node_modules"}   # G7: чужие вульты (Obsidian и пр.)
 INDEX_FILES = {"MEMORY.md", "MEMORY-work.md", "FEEDBACK_INDEX.md"}
 ZONES = {"light": [-0.55, 0.05], "work": [0.75, -0.15], "glados": [-0.1, -0.75],
          "bastra": [0.65, 0.65], "feedback": [-0.2, 0.6], "unindexed": [-0.85, 0.8]}
+
+def zone_anchors(nodes):
+    """Якоря зон [-1..1]. Наш корпус = фиксированный ZONES; foreign = круг по алфавиту.
+    >8 зон — легенда красит первые 8, остальное OTHER-grey (контракт B22)."""
+    zs = sorted({n["zone"] for n in nodes})
+    if set(zs) <= set(ZONES):
+        return ZONES
+    step = 2 * math.pi / max(1, len(zs))
+    return {z: [round(0.72 * math.cos(i * step - math.pi / 2), 3),
+                round(0.72 * math.sin(i * step - math.pi / 2), 3)]
+            for i, z in enumerate(zs)}
+
 
 FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 # [[target]] и [[target|alias]] — берём target до |
@@ -151,6 +165,10 @@ def build_graph(src):
     # FEEDBACK_INDEX — тоже recall-поверхность: её членство НЕ unindexed
     # (иначе 81 фидбек-нота травит вход gap-аудита ложным «never-indexed»)
     fb_idx = index_members(src, "FEEDBACK_INDEX.md")
+    # foreign vault (наших индексов нет — Obsidian и пр.): зона = top-level папка.
+    # Без этого всё падает в unindexed = одна зона, и cross-zone детекторы
+    # (весь оверлап-слой, value-prop для чужого вульта) молча мертвы.
+    foreign = not (light_idx or work_idx or fb_idx)
 
     nodes, lookup = [], {}
     bodies = {}
@@ -174,7 +192,9 @@ def build_graph(src):
         st = os.stat(path)
 
         top = rel.split(os.sep)[0] if os.sep in rel else ""
-        if top == "glados":
+        if foreign:
+            zone = top or "notes"
+        elif top == "glados":
             zone = "glados"
         elif top == "bastra":
             zone = "bastra"
@@ -207,7 +227,7 @@ def build_graph(src):
             "ghost": False,
             "light": in_light,
             "heavy": in_heavy,
-            "orphan": not in_light and not in_heavy and not in_fb and not top,
+            "orphan": not foreign and not in_light and not in_heavy and not in_fb and not top,
             "conflict": "sync-conflict" in base,
             # рабочие теги: part_of (ведомый) + tier + ручные tags; session для fire-хука
             "part_of": fm["part_of"],
@@ -430,8 +450,8 @@ def detect_structural(nodes, edges, max_motifs=5000):
 
 # semantic: эмбеддинги через Ollama loopback (Mac: embeddinggemma/nomic), sha-кэш.
 EMB_MODEL = "nomic-embed-text"
-EMB_CACHE = os.path.expanduser("~/.mac-claw/atlas/emb-cache.json")
-OLLAMA = "http://127.0.0.1:11434"
+EMB_CACHE = os.environ.get("ATLAS_EMB_CACHE") or os.path.expanduser("~/.mac-claw/atlas/emb-cache.json")
+OLLAMA = os.environ.get("ATLAS_OLLAMA") or "http://127.0.0.1:11434"
 
 
 def _ollama_up(timeout=3):
@@ -675,8 +695,9 @@ def render(data, out, d3js=None, tpl=None, lang="ru"):
         with open(D3_PATH, encoding="utf-8") as f:
             d3js = f.read()
     if tpl is None:
-        tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                "memory-atlas.template.html")
+        tpl_path = os.environ.get("ATLAS_TEMPLATE") or \
+            os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                         "memory-atlas.template.html")
         with open(tpl_path, encoding="utf-8") as f:
             tpl = f.read()
     # </script> внутри desc разорвал бы инлайн-скрипт — экранируем слэш
@@ -696,6 +717,8 @@ def main():
     ap.add_argument("--src", default=DEFAULT_SRC)
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--data", help="готовый graph JSON (файл или '-' = stdin) вместо скана memory")
+    ap.add_argument("--demo", action="store_true",
+                    help="встроенный демо-вульт: 2 кластера + скрытый ghost-мост (shared_ref)")
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--lang", choices=["ru", "en"], default="ru",
                     help="стартовый язык UI (toggle в баре меняет и переживает пересборку)")
@@ -724,6 +747,16 @@ def main():
         run_self_test()
         return
 
+    if args.demo:
+        args.src = os.environ.get("ATLAS_DEMO") or \
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), "demo")
+        if args.out == DEFAULT_OUT:
+            args.out = os.path.abspath("atlas-demo.html")
+        # bundled demo has no meaningful edit-timeline (zip extraction flattens
+        # mtimes to one instant → co-mod noise). Kill temporal so the demo shows
+        # only the honest bridges: shared_ref (ghost) + tag_overlap.
+        args.temporal_cross = False
+
     if args.data:
         raw = sys.stdin.read() if args.data == "-" else open(args.data, encoding="utf-8").read()
         data = json.loads(raw)
@@ -740,13 +773,18 @@ def main():
         browse = to_browse_data(nodes, edges, bodies, time.time())
         detectors, cross = ([], []) if args.no_detectors else \
             run_detectors(nodes, edges, bodies, args.src, args)
+        zones_payload = zone_anchors(nodes)
+        # foreign вульт получает свой title = свой localStorage-неймспейс (KEYP),
+        # чтобы конфиг/виды демо и реального вульта не текли друг в друга
+        title = "memory-atlas" if zones_payload is ZONES else \
+            (os.path.basename(os.path.abspath(args.src)) or "atlas")
         data = {
-            "title": "memory-atlas",
+            "title": title,
             "version": VERSION,
             "generated": time.strftime("%Y-%m-%d %H:%M"),
             "host": platform.node(),
             "src": args.src,
-            "zones": ZONES,
+            "zones": zones_payload,
             "heat": {"label": "freshness", "high": "fresh", "low": "stale"},
             "nodes": nodes,
             "edges": edges + cross,
@@ -768,7 +806,17 @@ def main():
     print(f"nodes={len(data['nodes'])} (ghosts={ghosts}) edges={len(data['edges'])}")
     print(f"out: {args.out}")
     if not args.no_open:
-        subprocess.run(["open", args.out], check=False)
+        open_file(args.out)
+
+
+def open_file(path):
+    # кросс-ОС: `open` — только macOS; Daniel-машина неизвестна (§1 installer-handoff)
+    if sys.platform == "darwin":
+        subprocess.run(["open", path], check=False)
+    elif os.name == "nt":
+        os.startfile(path)  # noqa: E1101  (Windows-only API)
+    else:
+        subprocess.run(["xdg-open", path], check=False)
 
 
 # ---------------------------------------------------------------- self-test
@@ -821,6 +869,28 @@ def run_self_test():
             # G2: Obsidian YAML-список тегов
             fm, _ = parse_frontmatter("---\nname: n\ntags:\n  - one\n  - two\n---\nx")
             self.assertEqual(fm["tags"], ["one", "two"])
+
+        def test_foreign_vault_zones_by_folder(self):
+            # чужой вульт (наших индексов нет): зона = top-level папка, не unindexed.
+            # без этого cross-zone детекторы (весь оверлап) молча мертвы у Daniel.
+            self.w("cooking/a.md", "---\nname: a\n---\n[[ghostx]]")
+            self.w("chemistry/b.md", "---\nname: b\n---\n[[ghostx]]")
+            self.w("top.md", "---\nname: t\n---\nx")
+            by, _ = self.graph()
+            self.assertEqual(by["a"]["zone"], "cooking")
+            self.assertEqual(by["b"]["zone"], "chemistry")
+            self.assertEqual(by["top"]["zone"], "notes")   # root-level fallback
+            self.assertFalse(by["a"]["orphan"])            # foreign → orphan off
+
+        def test_zone_anchors_foreign_circle(self):
+            # наш корпус → фикс ZONES (тот же объект); чужой → круг по алфавиту
+            our = [{"zone": z, "ghost": False} for z in ("light", "work")]
+            self.assertIs(zone_anchors(our), ZONES)
+            foreign = [{"zone": z, "ghost": False} for z in ("chemistry", "cooking")]
+            an = zone_anchors(foreign)
+            self.assertEqual(set(an), {"chemistry", "cooking"})
+            for xy in an.values():
+                self.assertTrue(all(-1 <= v <= 1 for v in xy))
 
         def test_obsidian_dir_excluded(self):
             # G7: .obsidian/ не жуётся
