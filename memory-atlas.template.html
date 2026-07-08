@@ -1,0 +1,2897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>memory-atlas</title>
+<style>
+  :root {
+    --page: #0c0c0b;
+    --surface: rgba(24, 24, 23, 0.78);
+    --surface-solid: #181817;
+    --ink: #f4f3ee;
+    --ink-2: #c3c2b7;
+    --muted: #8b8983;
+    --grid: #2c2c2a;
+    --border: rgba(255,255,255,0.09);
+    --border-hi: rgba(255,255,255,0.16);
+    --accent: #3987e5;
+    --accent-dim: rgba(57,135,229,0.35);
+    --ghost: #c98500;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow: 0 8px 28px rgba(0,0,0,0.45);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--page); color: var(--ink-2);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  #canvas { position: absolute; inset: 0; display: block; cursor: grab; }
+  #canvas.dragging { cursor: grabbing; }
+
+  #hud {
+    position: absolute; top: 14px; left: 14px; bottom: 46px; z-index: 5;
+    display: flex; flex-direction: column; gap: 10px; width: 264px;
+    overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+  }
+  #hud::-webkit-scrollbar { display: none; }
+  #hud .card { flex: none; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+  }
+  #wordmark {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    font: 600 12px/1 var(--mono); color: var(--ink);
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  #wordmark svg { flex: none; }
+  #wordmark .counts {
+    margin-left: auto; font-weight: 400; letter-spacing: 0;
+    color: var(--muted); font-size: 10px; text-transform: none;
+  }
+  #search {
+    width: 100%; padding: 7px 9px; border-radius: 8px;
+    border: 1px solid var(--grid); background: rgba(0,0,0,0.35);
+    color: var(--ink); font: inherit; outline: none;
+    transition: border-color .15s;
+  }
+  #search::placeholder { color: var(--muted); }
+  #search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .row { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+  .row label { color: var(--muted); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; min-width: 44px; }
+  .row select {
+    flex: 1; background: rgba(0,0,0,0.35); color: var(--ink-2);
+    border: 1px solid var(--grid); border-radius: 6px; padding: 4px 5px; font: inherit; font-size: 12px;
+    outline: none;
+  }
+  .row select:focus { border-color: var(--accent); }
+  .toggles { display: flex; gap: 5px; margin-top: 10px; }
+  .tg {
+    flex: 1; text-align: center; padding: 4px 0; border-radius: 6px;
+    border: 1px solid var(--grid); color: var(--muted);
+    font: 10px var(--mono); letter-spacing: .05em; text-transform: uppercase;
+    cursor: pointer; user-select: none; transition: all .12s;
+  }
+  .tg.on { border-color: var(--accent); color: var(--ink); background: var(--accent-dim); }
+  .tg:hover { border-color: var(--border-hi); }
+
+  #legend { display: flex; flex-direction: column; gap: 2px; max-height: 38vh; overflow-y: auto; }
+  #legendTitle { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+  .lg {
+    display: flex; align-items: center; gap: 8px; font-size: 11.5px;
+    padding: 3px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .lg:hover { background: rgba(255,255,255,0.05); }
+  .lg.active { border-color: var(--border-hi); background: rgba(255,255,255,0.06); }
+  .lg.faded { opacity: 0.4; }
+  .lg .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .lg .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lg .n { color: var(--muted); margin-left: auto; font: 10px var(--mono); }
+
+  #panel {
+    position: absolute; top: 14px; right: 14px; bottom: 46px; width: 330px; z-index: 5;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+    padding: 16px; overflow-y: auto; display: none;
+  }
+  #panel.open { display: block; }
+  #panel h2 { font-size: 14px; color: var(--ink); word-break: break-word; padding-right: 22px; line-height: 1.3; }
+  #panel .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0 10px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font: 10px var(--mono); letter-spacing: .04em;
+    padding: 3px 8px; border-radius: 20px;
+    border: 1px solid var(--grid); color: var(--ink-2);
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chip.ghostchip { border-color: var(--ghost); color: var(--ghost); }
+  #panel .meta { color: var(--muted); font: 10.5px/1.7 var(--mono); margin-bottom: 10px; }
+  #panel .desc {
+    color: var(--ink-2); margin-bottom: 12px; white-space: pre-wrap;
+    border-left: 2px solid var(--grid); padding-left: 10px; font-size: 12.5px;
+  }
+  #panel h3 {
+    font: 10px var(--mono); color: var(--muted); text-transform: uppercase;
+    letter-spacing: .08em; margin: 12px 0 4px;
+  }
+  #panel .lnk {
+    display: block; color: var(--accent); text-decoration: none;
+    padding: 2px 6px; margin: 0 -6px; border-radius: 5px;
+    word-break: break-all; cursor: pointer; font-size: 12px;
+  }
+  #panel .lnk:hover { background: rgba(57,135,229,0.12); }
+  #panel .lnk .gm { color: var(--ghost); font-size: 10px; font-family: var(--mono); }
+  #panel .close {
+    position: absolute; top: 10px; right: 12px; cursor: pointer;
+    color: var(--muted); font-size: 15px; background: none; border: none;
+    width: 24px; height: 24px; border-radius: 6px;
+  }
+  #panel .close:hover { background: rgba(255,255,255,0.07); color: var(--ink); }
+
+  #tooltip {
+    position: absolute; z-index: 6; pointer-events: none; display: none;
+    background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; color: var(--ink); max-width: 340px;
+    box-shadow: var(--shadow);
+  }
+  #tooltip .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 2px; }
+  #tooltip .tg-mark { color: var(--ghost); font: 10px var(--mono); }
+
+  #bar {
+    position: absolute; left: 14px; bottom: 12px; right: 14px; z-index: 5;
+    display: flex; align-items: center; gap: 10px; pointer-events: none;
+  }
+  #stats {
+    color: var(--muted); font: 10.5px var(--mono);
+    background: var(--surface); border: 1px solid var(--border);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-radius: 8px; padding: 5px 12px; pointer-events: auto;
+  }
+  #hint {
+    flex: 1; min-width: 0; color: var(--ink-2); font: 11px var(--mono);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+  }
+  #keys { margin-left: auto; color: var(--muted); font: 10px var(--mono); opacity: .75; flex: none; }
+  #keys b { color: var(--ink-2); font-weight: 500; }
+  #fit, #homeBtn, #reloadBtn, #rebuildBtn, #exportBtn, #helpBtn {
+    pointer-events: auto; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); color: var(--ink-2);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-radius: 8px; padding: 5px 12px; font: 10.5px var(--mono);
+  }
+  #fit:hover, #homeBtn:hover, #reloadBtn:hover, #rebuildBtn:hover, #exportBtn:hover, #helpBtn:hover { border-color: var(--accent); color: var(--ink); }
+
+  /* ---- text-size stepper (канвас-читаемость под рукой юзера) ---- */
+  #tsz { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
+  #tsz button {
+    pointer-events: auto; cursor: pointer; width: 26px; height: 26px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--ink-2);
+    border-radius: 7px; font: 600 13px var(--mono); line-height: 1;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  }
+  #tsz button:hover { border-color: var(--accent); color: var(--ink); }
+  #tsz .lbl { color: var(--muted); font: 10px var(--mono); }
+
+  /* ---- tag rail (рабочие теги: part_of / tier / ручные) ---- */
+  #tags { display: flex; flex-wrap: wrap; gap: 4px; max-height: 26vh; overflow-y: auto; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+    font: 10.5px var(--mono); letter-spacing: .02em;
+    padding: 3px 8px; border-radius: 20px;
+    border: 1px solid var(--grid); color: var(--ink-2); transition: all .12s;
+  }
+  .tag:hover { border-color: var(--border-hi); }
+  .tag.on { border-color: var(--accent); background: var(--accent-dim); color: var(--ink); }
+  .tag .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .tag .n { color: var(--muted); font-size: 9.5px; }
+  .tag .tx { cursor: pointer; color: var(--muted); padding: 0 1px; }
+  .tag .tx:hover { color: #e66767; }
+  .tag.addtag { border-style: dashed; }
+  .tag.addtag input {
+    width: 58px; background: none; border: none; outline: none;
+    color: var(--ink); font: inherit;
+  }
+  #tagHead { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  #tagHead .t { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  #tagHead .clr { margin-left: auto; cursor: pointer; color: var(--muted); font: 10px var(--mono); }
+  #tagHead .clr:hover { color: var(--accent); }
+
+  /* панель: чуть крупнее база для читаемости */
+  #panel h2 { font-size: 15.5px; }
+  #panel .desc { font-size: 13.5px; line-height: 1.55; }
+  #panel .lnk { font-size: 12.5px; }
+  #panel .meta { font-size: 11px; }
+  #panel .taglinks { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 8px; }
+
+  /* ---- view tabs (graph / browse) ---- */
+  #viewtabs {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 8;
+    display: flex; gap: 3px; padding: 3px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow);
+  }
+  #viewtabs .vt {
+    padding: 5px 14px; border-radius: 7px; cursor: pointer; user-select: none;
+    font: 11px var(--mono); letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid transparent; transition: all .12s;
+  }
+  #viewtabs .vt:hover { color: var(--ink-2); }
+  #viewtabs .vt.on { background: var(--accent-dim); border-color: var(--accent); color: var(--ink); }
+
+  /* fuse: graph→browse connector in graph node panel (atlas side) */
+  #panel .readbrowse {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    margin: 2px 0 10px; padding: 4px 10px; border-radius: 6px;
+    background: var(--accent-dim); border: 1px solid var(--accent); color: var(--ink);
+    font: 10px var(--mono); letter-spacing: .04em;
+  }
+  #panel .readbrowse:hover { background: rgba(57,135,229,0.28); }
+
+  /* ==== graph-lab ports: knobs / chips / pins / views / search / help / misc ==== */
+  .row input[type=range] {
+    flex: 1; accent-color: var(--accent); height: 3px; min-width: 0;
+  }
+  .row .rv { color: var(--muted); font: 10px var(--mono); min-width: 30px; text-align: right; }
+  .row select.mini { flex: 0 0 auto; width: auto; }
+  .chips-rail { display: flex; flex-wrap: wrap; gap: 4px; }
+  .zc {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+    font: 10.5px var(--mono); padding: 3px 8px; border-radius: 20px;
+    border: 1px solid var(--grid); color: var(--ink-2); transition: all .12s;
+  }
+  .zc:hover { border-color: var(--border-hi); }
+  .zc.off { opacity: 0.32; }
+  .zc .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .zc .swl { width: 14px; height: 0; border-top: 2px solid; flex: none; }
+  .zc .n { color: var(--muted); font-size: 9.5px; }
+  .cardHead { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .cardHead .t { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  .cardHead .act { margin-left: auto; cursor: pointer; color: var(--muted); font: 10px var(--mono); }
+  .cardHead .act:hover { color: var(--accent); }
+  /* pin stack (graph-lab PinStack: FIFO 6, persisted) */
+  #pinsCard { display: none; }
+  .pin-row {
+    display: flex; align-items: center; gap: 7px; padding: 3px 6px; margin: 0 -6px;
+    border-radius: 6px; cursor: pointer; font-size: 11.5px;
+  }
+  .pin-row:hover { background: rgba(255,255,255,0.05); }
+  .pin-row .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .pin-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pin-row .x { margin-left: auto; color: var(--muted); cursor: pointer; padding: 0 3px; }
+  .pin-row .x:hover { color: var(--e66767, #e66767); }
+  /* saved views */
+  #viewsCard .vrow { display: flex; align-items: center; gap: 7px; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; font-size: 11.5px; cursor: pointer; }
+  #viewsCard .vrow:hover { background: rgba(255,255,255,0.05); }
+  #viewsCard .vrow .x { margin-left: auto; color: var(--muted); padding: 0 3px; }
+  #viewsCard .vrow .x:hover { color: #e66767; }
+  #viewsCard .vnew { display: flex; gap: 5px; margin-top: 6px; }
+  #viewsCard .vnew input {
+    flex: 1; min-width: 0; padding: 4px 7px; border-radius: 6px; font: 11px var(--mono);
+    border: 1px solid var(--grid); background: rgba(0,0,0,0.35); color: var(--ink); outline: none;
+  }
+  #viewsCard .vnew button {
+    cursor: pointer; border: 1px solid var(--grid); background: none; color: var(--ink-2);
+    border-radius: 6px; font: 10px var(--mono); padding: 0 8px;
+  }
+  #viewsCard .vnew button:hover { border-color: var(--accent); color: var(--ink); }
+  /* search dropdown (SearchBar port) */
+  #sdrop {
+    position: fixed; z-index: 40; display: none; max-height: 320px; overflow-y: auto;
+    background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 4px;
+  }
+  #sdrop .sr { padding: 5px 9px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--ink-2);
+    display: flex; align-items: baseline; gap: 7px; }
+  #sdrop .sr .sm { color: var(--muted); font: 9.5px var(--mono); margin-left: auto; white-space: nowrap; }
+  #sdrop .sr.sel, #sdrop .sr:hover { background: var(--accent-dim); color: var(--ink); }
+  #sdrop .sdiv { font: 9px var(--mono); color: var(--muted); text-transform: uppercase;
+    letter-spacing: .1em; padding: 5px 9px 2px; border-top: 1px solid var(--border); margin-top: 3px; }
+  /* toasts (graph-lab showToast) */
+  #toasts { position: fixed; right: 16px; bottom: 52px; z-index: 60; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .toast {
+    background: var(--surface-solid); border: 1px solid var(--border-hi); color: var(--ink-2);
+    font: 11px var(--mono); padding: 7px 12px; border-radius: 8px; box-shadow: var(--shadow);
+    opacity: 0; transform: translateY(6px); transition: all .25s;
+  }
+  .toast.in { opacity: 1; transform: none; }
+  /* minimap (orientation port) */
+  #minimap {
+    position: absolute; right: 14px; bottom: 46px; z-index: 5; cursor: crosshair;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow);
+  }
+  body.panel-open #minimap { right: 358px; }
+  /* help overlay (`?`) */
+  #help {
+    position: absolute; inset: 0; z-index: 50; display: none; overflow-y: auto;
+    background: rgba(12,12,11,0.82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  #help.on { display: block; }
+  #help .sheet {
+    max-width: 720px; margin: 6vh auto; background: var(--surface-solid);
+    border: 1px solid var(--border-hi); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow);
+  }
+  #help h2 { color: var(--ink); font: 600 14px var(--mono); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; }
+  #help h3 { color: var(--muted); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; margin: 14px 0 6px; }
+  #help table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  #help td { padding: 3px 10px 3px 0; color: var(--ink-2); vertical-align: top; }
+  #help td:first-child { color: var(--ink); font: 11px var(--mono); white-space: nowrap; }
+  #help .hbtn {
+    cursor: pointer; border: 1px solid var(--grid); background: none; color: var(--ink-2);
+    border-radius: 6px; font: 10.5px var(--mono); padding: 4px 10px; margin: 8px 8px 0 0;
+  }
+  #help .hbtn:hover, #regen .hbtn:hover { border-color: var(--accent); color: var(--ink); }
+  #help select { background: rgba(0,0,0,0.35); color: var(--ink-2); border: 1px solid var(--grid); border-radius: 6px; padding: 3px 5px; font: 11px var(--mono); }
+  /* rebuild-модалка (⚙): эргономика graph-lab rebuild-queue без сервера — команда → терминал */
+  #regen {
+    position: absolute; inset: 0; z-index: 50; display: none; overflow-y: auto;
+    background: rgba(12,12,11,0.82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  #regen.on { display: block; }
+  #regen .sheet {
+    max-width: 620px; margin: 10vh auto; background: var(--surface-solid);
+    border: 1px solid var(--border-hi); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow);
+  }
+  #regen h2 { color: var(--ink); font: 600 14px var(--mono); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+  #regen .age { color: var(--muted); font: 11px var(--mono); margin-bottom: 12px; }
+  #regen .note { color: var(--ink-2); font: 12px/1.5 system-ui, sans-serif; margin-bottom: 10px; }
+  #regen label.opt { display: flex; gap: 9px; align-items: flex-start; color: var(--ink-2);
+    font: 12px/1.45 system-ui, sans-serif; padding: 5px 0; cursor: pointer; }
+  #regen label.opt input { margin-top: 2px; accent-color: var(--accent); }
+  #regen label.opt code { color: var(--ink); font: 11px var(--mono); }
+  #regen .cmd { margin: 14px 0 4px; background: rgba(0,0,0,0.4); border: 1px solid var(--grid);
+    border-radius: 8px; padding: 9px 12px; }
+  #regen .cmd code { color: var(--ink); font: 11.5px var(--mono); word-break: break-all; }
+  #regen .hbtn {
+    cursor: pointer; border: 1px solid var(--grid); background: none; color: var(--ink-2);
+    border-radius: 6px; font: 10.5px var(--mono); padding: 4px 10px; margin: 8px 8px 0 0;
+  }
+  /* hint-карточка: человекочитаемая подсказка у самого контрола (бар-строка остаётся) */
+  #hintCard {
+    position: fixed; z-index: 60; display: none; max-width: 300px; pointer-events: none;
+    background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 10px;
+    padding: 8px 11px; box-shadow: var(--shadow);
+    color: var(--ink-2); font: 12px/1.45 system-ui, sans-serif;
+  }
+  #hintCard b {
+    display: block; color: var(--ink); font: 600 10.5px var(--mono);
+    letter-spacing: .07em; text-transform: uppercase; margin-bottom: 3px;
+  }
+  /* panel action buttons + link suppress */
+  #panel .acts { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 10px; }
+  #panel .abtn {
+    cursor: pointer; border: 1px solid var(--grid); background: none; color: var(--ink-2);
+    border-radius: 6px; font: 10px var(--mono); padding: 3px 8px;
+  }
+  #panel .abtn:hover { border-color: var(--accent); color: var(--ink); }
+  #panel .lnkrow { display: flex; align-items: center; }
+  #panel .lnkrow .lnk { flex: 1; }
+  #panel .lnkrow .neg { visibility: hidden; cursor: pointer; color: var(--muted); font-size: 11px; padding: 0 5px; }
+  #panel .lnkrow:hover .neg { visibility: visible; }
+  #panel .lnkrow .neg:hover { color: #e66767; }
+  #panel .zsel { background: rgba(0,0,0,0.35); color: var(--ink-2); border: 1px solid var(--grid); border-radius: 6px; font: 10px var(--mono); padding: 1px 3px; }
+  /* V = hide panels, context остаётся (принцип #4) */
+  body.panels-hidden #hud, body.panels-hidden #panel, body.panels-hidden #bar,
+  body.panels-hidden #viewtabs, body.panels-hidden #minimap { display: none !important; }
+
+  /* ==== browse module: ДО-ребренд memory-map, ТЕРМИНАЛЬНЫЙ стиль вербатим ==== */
+  /* scoped под #browse — Catppuccin-палитра не течёт в atlas-граф */
+  #browse {
+    --base:#1e1e2e;--mantle:#181825;--crust:#11111b;--surf0:#313244;--surf1:#45475a;
+    --ovl0:#6c7086;--ovl1:#7f849c;--text:#cdd6f4;--sub:#a6adc8;--sub1:#bac2de;
+    --mauve:#cba6f7;--blue:#89b4fa;--sapphire:#74c7ec;--teal:#94e2d5;--green:#a6e3a1;
+    --yellow:#f9e2af;--peach:#fab387;--red:#f38ba8;--pink:#f5c2e7;
+    --bmono:'JetBrains Mono','JetBrainsMono Nerd Font',ui-monospace,'Cascadia Code',Menlo,monospace;
+    position:absolute; inset:0; z-index:4; display:none; flex-direction:column;
+    background:var(--crust); color:var(--text); font-family:var(--bmono);
+    font-size:13.5px; line-height:1.5; overflow:hidden; -webkit-font-smoothing:antialiased;
+  }
+  #browse.on { display:flex; }
+  #browse .top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 16px;
+    background:var(--mantle);border-bottom:1px solid var(--surf0);flex:none}
+  #browse .path{color:var(--mauve);font-weight:700}
+  #browse .who{color:var(--sub)}
+  #browse .date{margin-left:auto;color:var(--ovl1);font-size:.8rem}
+  #browse .stats{display:flex;gap:0;flex-wrap:wrap;background:var(--crust);border-bottom:1px solid var(--surf0);flex:none}
+  #browse .stat{flex:1 1 0;min-width:96px;padding:9px 14px;border-right:1px solid var(--surf0);cursor:pointer}
+  #browse .stat:last-child{border-right:0}
+  #browse .stat:hover{background:var(--mantle)}
+  #browse .stat .n{font-size:1.4rem;font-weight:700;letter-spacing:-.5px}
+  #browse .stat .l{font-size:.68rem;color:var(--ovl1);text-transform:lowercase;letter-spacing:.5px}
+  #browse .stat.tot .n{color:var(--text)}#browse .stat.lt .n{color:var(--green)}#browse .stat.hv .n{color:var(--blue)}
+  #browse .stat.or .n{color:var(--yellow)}#browse .stat.dg .n{color:var(--red)}#browse .stat.cf .n{color:var(--pink)}
+  #browse .stat.eg .n{color:var(--teal)}
+  #browse .stat.sel{background:var(--surf0)}
+  #browse .panes{display:grid;grid-template-columns:182px 1.1fr 1.5fr;flex:1;min-height:0}
+  #browse .pane{border-right:1px solid var(--surf0);overflow-y:auto}
+  #browse .pane:last-child{border-right:0}
+  #browse .pane h4{font-size:.66rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--ovl0);
+    padding:9px 14px 6px;position:sticky;top:0;background:var(--base);z-index:2}
+  #browse .cat{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;color:var(--sub);
+    border-left:2px solid transparent;font-size:.84rem}
+  #browse .cat .dot{width:7px;height:7px;border-radius:50%;background:var(--ovl0);flex:none}
+  #browse .cat .cnt{margin-left:auto;font-size:.7rem;color:var(--ovl0)}
+  #browse .cat:hover{background:var(--mantle);color:var(--text)}
+  #browse .cat.sel{background:var(--surf0);color:var(--text);border-left-color:var(--cur,var(--mauve))}
+  #browse .cat.sel .dot{background:var(--cur,var(--mauve))}
+  #browse .srch{padding:8px 12px;position:sticky;top:0;background:var(--base);border-bottom:1px solid var(--surf0);z-index:2}
+  #browse .srch input{width:100%;background:var(--crust);border:1px solid var(--surf0);border-radius:6px;
+    color:var(--text);font-family:var(--bmono);font-size:.82rem;padding:6px 9px;outline:none}
+  #browse .srch input:focus{border-color:var(--mauve)}
+  #browse .row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:baseline;padding:6px 14px;
+    cursor:pointer;border-left:2px solid transparent}
+  #browse .row:hover{background:var(--mantle)}
+  #browse .row.sel{background:var(--surf0);border-left-color:var(--cur,var(--mauve))}
+  #browse .row .nm{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.83rem}
+  #browse .row .bd{font-size:.6rem;padding:1px 5px;border-radius:4px;white-space:nowrap}
+  #browse .bd.orphan{color:var(--yellow);background:#f9e2af18}#browse .bd.dangling{color:var(--red);background:#f38ba818}
+  #browse .bd.conflict{color:var(--pink);background:#f5c2e718}#browse .bd.light{color:var(--green);background:#a6e3a118}
+  #browse .bd.heavy{color:var(--blue);background:#89b4fa18}#browse .bd.old{color:var(--ovl1);background:#6c708618}
+  #browse .prev{padding:16px 20px}
+  #browse .prev .ph{border-bottom:1px solid var(--surf0);padding-bottom:9px;margin-bottom:12px}
+  #browse .prev .ph .fn{color:var(--mauve);font-weight:700;font-size:.95rem}
+  #browse .prev .ph .meta{color:var(--ovl1);font-size:.72rem;margin-top:4px}
+  #browse .prev .ph .meta span{margin-right:12px}
+  #browse .prev .ph .meta .gp{color:var(--sapphire);cursor:pointer;border-bottom:1px dotted var(--sapphire)}
+  #browse .md{font-size:.84rem;color:var(--sub1)}
+  #browse .md h1,#browse .md h2,#browse .md h3{color:var(--text);margin:14px 0 6px;line-height:1.3}
+  #browse .md h1{font-size:1.1rem}#browse .md h2{font-size:1rem}#browse .md h3{font-size:.9rem}
+  #browse .md p{margin:7px 0}#browse .md ul,#browse .md ol{margin:7px 0 7px 20px}#browse .md li{margin:2px 0}
+  #browse .md code{background:var(--crust);padding:1px 5px;border-radius:4px;color:var(--peach);font-size:.82em}
+  #browse .md pre{background:var(--crust);padding:10px 12px;border-radius:7px;overflow-x:auto;margin:8px 0;border:1px solid var(--surf0)}
+  #browse .md pre code{background:none;padding:0;color:var(--sub1)}
+  #browse .md strong{color:var(--text)}
+  #browse .md a{color:var(--blue);text-decoration:none}#browse .md a:hover{text-decoration:underline}
+  #browse .md .wl{color:var(--mauve);cursor:pointer;border-bottom:1px dotted var(--mauve)}
+  #browse .md .wl.dead{color:var(--red);border-color:var(--red)}
+  #browse .md table{border-collapse:collapse;margin:8px 0;font-size:.78rem}
+  #browse .md td,#browse .md th{border:1px solid var(--surf0);padding:3px 8px}#browse .md th{background:var(--mantle);color:var(--text)}
+  #browse .empty{color:var(--ovl0);padding:40px;text-align:center;font-size:.85rem}
+</style>
+<script>/*__D3__*/</script>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="viewtabs">
+  <div class="vt on" data-v="graph">◌ graph</div>
+  <div class="vt" data-v="browse">▤ browse</div>
+</div>
+
+<div id="browse">
+  <div class="top">
+    <span class="path" id="bpath">~/memory</span>
+    <span class="who">· zzalli@mac · self-audit</span>
+    <span class="date" id="bgen"></span>
+  </div>
+  <div class="stats" id="bstats"></div>
+  <div class="panes">
+    <div class="pane"><h4>фильтр</h4><div id="cats"></div></div>
+    <div class="pane"><div class="srch"><input id="bq" placeholder="поиск имя/описание…" autocomplete="off"></div><div id="list"></div></div>
+    <div class="pane prev" id="prev"><div class="empty">← выбери файл</div></div>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="card">
+    <div id="wordmark">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="3" cy="11" r="2" fill="#3987e5"/>
+        <circle cx="11" cy="3" r="2" fill="#199e70"/>
+        <circle cx="11" cy="11" r="1.5" fill="#c98500"/>
+        <path d="M3 11 L11 3 M11 3 L11 11" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+      </svg>
+      <span id="titleText">atlas</span>
+      <span class="counts" id="counts"></span>
+    </div>
+    <input id="search" type="search" placeholder="search — terms OR'ed  ( / )" spellcheck="false" autocomplete="off"
+      data-hint="фильтр: термы через пробел = OR; дропдаун: ↑↓ + enter = перелёт к ноде">
+    <div class="row" data-hint="цвет нод: cluster = тематики из топологии (louvain) · zone = зона памяти · type = тип ноты · heat = свежесть"><label>color</label>
+      <select id="colorMode">
+        <option value="cluster">cluster (louvain)</option>
+        <option value="zone">zone</option>
+        <option value="type">type</option>
+        <option value="heat">heat</option>
+      </select>
+    </div>
+    <div class="row" data-hint="размер ноды: degree = число wikilinks · file size = байты файла"><label>size</label>
+      <select id="sizeMode">
+        <option value="degree">degree</option>
+        <option value="bytes">file size</option>
+      </select>
+    </div>
+    <div class="row" data-hint="что делает клик по ноде: dim = приглушить остальное · ego blur = фон в блюр, нода+соседи резко · тайлы = ego карточками"><label>focus</label>
+      <select id="focusMode" title="что делает выделение ноды">
+        <option value="dim">dim · приглушить</option>
+        <option value="blur" selected>ego · blur фона</option>
+        <option value="tiles">ego · тайлы</option>
+      </select>
+    </div>
+    <div class="row" data-hint="кто подписан: hubs = топ-degree · hops = N шагов от выделенной · near = вокруг курсора · all (клавиша l = цикл)"><label>lbls</label>
+      <select id="labelMode" title="какие ноды получают лейбл (l = cycle)">
+        <option value="hubs">hubs</option>
+        <option value="hops">hops (от selected)</option>
+        <option value="near">near (у курсора)</option>
+        <option value="all">all</option>
+      </select>
+      <select id="labelHops" class="mini" title="BFS-глубина для hops">
+        <option>1</option><option selected>2</option><option>3</option><option>4</option>
+      </select>
+    </div>
+    <div class="row" data-hint="камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner"><label>cam</label>
+      <select id="camPolicy" title="framing при select; stay = зум ручной, камера не трогается">
+        <option value="stay" selected>stay · ручной</option>
+        <option value="adaptive">adaptive</option>
+        <option value="fit">fit</option>
+        <option value="corner">corner</option>
+      </select>
+    </div>
+    <div class="row" data-hint="раскладка ([ ] = цикл): force = зоны силами · semantic = близость по смыслу · pack = вложенные круги зона⊃кластер, всё поле · ring = кольцо синергии зон · petals = спираль-подсолнух на зону · radial = хабы в центр · grid = полки по зонам · zones = колонки · timeline = свежесть по X"><label>layout</label>
+      <select id="layoutMode" title="раскладка ([ ] = cycle)">
+        <option value="force">force · зоны</option>
+        <option value="semantic">semantic · cosine</option>
+        <option value="pack">pack · круги зон</option>
+        <option value="ring">ring · синергия зон</option>
+        <option value="petals">petals · лепестки</option>
+        <option value="radial">radial · хабы в центр</option>
+        <option value="grid">grid · полки</option>
+        <option value="zones">zones · columns</option>
+        <option value="timeline">timeline · свежесть</option>
+      </select>
+    </div>
+    <div class="row" data-hint="представление под задачу одним выбором: ставит раскладку+цвет+слои разом; дальше всё крутится вручную как обычно"><label>задача</label>
+      <select id="taskPreset">
+        <option value="">—</option>
+        <option value="overview">обзор · где что лежит</option>
+        <option value="themes">тематики · кластеры</option>
+        <option value="synergy">синергия зон</option>
+        <option value="fresh">свежесть · что живо</option>
+        <option value="hubs">хабы · опорные ноты</option>
+        <option value="meaning">смысловая карта</option>
+        <option value="debts">долги · ghost-ноты</option>
+      </select>
+    </div>
+    <div class="row" data-hint="оставить яркими только top-N нод по degree, остальные притушить (не удалять)"><label>max n</label><input type="range" id="maxN" min="20" max="2000" step="10"><span class="rv" id="maxNv">all</span></div>
+    <div class="row" data-hint="множитель прозрачности всех рёбер"><label>edge α</label><input type="range" id="edgeAlpha" min="0" max="2" step="0.05" value="1"><span class="rv" id="edgeAlphav">1.0</span></div>
+    <div class="row" data-hint="множитель размера нод"><label>node ×</label><input type="range" id="nodeSize" min="0.5" max="3" step="0.05" value="1"><span class="rv" id="nodeSizev">1.0</span></div>
+    <div class="toggles">
+      <div class="tg on" id="hulls" data-hint="контуры зон памяти на подложке">hulls</div>
+      <div class="tg" id="clusters" data-hint="мягкие блобы вокруг louvain-кластеров (тематики из топологии)">clusters</div>
+      <div class="tg on" id="ghosts" data-hint="пунктирные ноды = [[ссылка]] без файла — «стоит написать»">ghosts</div>
+      <div class="tg on" id="labels" data-hint="подписи нод на графе">labels</div>
+    </div>
+    <div class="toggles">
+      <div class="tg on" id="edgesOn" data-hint="все рёбра; off = только у выделенной/пинов/hover (клавиша 9)">edges</div>
+      <div class="tg" id="particles" data-hint="бегущие частицы вдоль semantic/session/user рёбер (клавиша 0)">parts</div>
+      <div class="tg" id="magnet" data-hint="курсор-магнит: раздвигает облако; ближняя нода после ~1.3с липнет к курсору">magnet</div>
+      <div class="tg" id="gestures" data-hint="жесты вебкамерой: ладонь = пан, щипок = зум (нужен CDN)">🎥</div>
+    </div>
+    <div class="toggles">
+      <div class="tg on" id="collide" data-hint="прятать налезающие друг на друга лейблы">cull</div>
+      <div class="tg on" id="softFade" data-hint="спрятанные лейблы оставить призраком 0.12 (место читается)">soft</div>
+      <div class="tg" id="lockZoom" data-hint="перелёты камеры не меняют масштаб, только пан">lockz</div>
+    </div>
+  </div>
+  <div class="card" id="zonesCard" data-hint="клик по чипу = скрыть/показать зону целиком (клавиши 1-8)">
+    <div class="cardHead"><span class="t">зоны · 1-8 hide</span></div>
+    <div class="chips-rail" id="zoneChips"></div>
+  </div>
+  <div class="card" id="kindsCard" data-hint="слои рёбер по типу детектора: клик = вкл/выкл слой; что значит каждый тип — в ? справке">
+    <div class="cardHead"><span class="t">рёбра по типу</span></div>
+    <div class="chips-rail" id="kindChips"></div>
+  </div>
+  <div class="card" id="pinsCard" data-hint="rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; 🏷 = собрать пачку пинов в свой тег">
+    <div class="cardHead"><span class="t">pins · rmb</span><span class="act" id="pinsTag" title="повесить один тег на все запиненные ноды">🏷 в тег</span><span class="act" id="pinsClr">сброс</span></div>
+    <div id="pinsList"></div>
+  </div>
+  <div class="card" id="viewsCard" data-hint="сохранить текущую камеру + фильтры под именем; клик по строке = вернуть вид">
+    <div class="cardHead"><span class="t">views</span></div>
+    <div id="viewsList"></div>
+    <div class="vnew"><input id="viewName" placeholder="имя вида…"><button id="viewSave">＋</button></div>
+  </div>
+  <div class="card" data-hint="легенда цвета; клик по строке = изолировать группу (второй клик = вернуть)">
+    <div id="legendTitle"></div>
+    <div id="legend"></div>
+  </div>
+  <div class="card" id="tagCard" data-hint="клик по тегу = изолировать его ноды; свои теги: «+ тег» в панели ноды или 🏷 из пинов; ✕ там же снимает">
+    <div id="tagHead"><span class="t">рабочие теги</span><span class="clr" id="tagClr">сброс</span></div>
+    <div id="tags"></div>
+  </div>
+</div>
+
+<div id="panel">
+  <button class="close" id="panelClose">✕</button>
+  <div id="panelBody"></div>
+</div>
+<div id="tooltip"></div>
+<div id="sdrop"></div>
+<div id="toasts"></div>
+<canvas id="minimap" width="150" height="110"></canvas>
+<div id="help"><div class="sheet">
+  <h2>atlas — справка</h2>
+  <h3>клавиши</h3>
+  <table>
+    <tr><td>/</td><td>поиск (дропдаун: ↑↓ enter esc; enter = снять фильтр + перелёт)</td></tr>
+    <tr><td>1–8</td><td>скрыть/показать зону</td></tr>
+    <tr><td>l</td><td>цикл label-режима hubs → hops → near → all</td></tr>
+    <tr><td>[ ]</td><td>цикл раскладки force → semantic → pack → ring → petals → radial → grid → zones → timeline; морф анимирован. «Задача» в HUD ставит раскладку+цвет+слои пресетом</td></tr>
+    <tr><td>f / h</td><td>fit по графу / home (стартовый вид)</td></tr>
+    <tr><td>c</td><td>подтянуть выделенную ноду + соседей в кадр — ЕДИНСТВЕННЫЙ автоперелёт при cam=stay</td></tr>
+    <tr><td>9 / 0</td><td>edges toggle / particles toggle</td></tr>
+    <tr><td>w a s d · q e</td><td>пан · зум (shift = boost)</td></tr>
+    <tr><td>b / ⌫</td><td>назад по истории выделений</td></tr>
+    <tr><td>v</td><td>скрыть панели, контекст остаётся (второй v — вернуть)</td></tr>
+    <tr><td>esc</td><td>каскад: поиск → selected → pins → изоляция/теги</td></tr>
+    <tr><td>lmb / rmb / ctrl+rmb</td><td>select / pin (context delivery) / multi-pin стек</td></tr>
+    <tr><td>ctrl+lmb ×2</td><td>нарисовать user-ребро между двумя нодами (overlay)</td></tr>
+  </table>
+  <h3>cross-zone рёбра (детекторы graph-lab; зоны = canvases)</h3>
+  <table id="helpKinds"></table>
+  <h3>панель ноды</h3>
+  <table>
+    <tr><td>⧉ id/path/desc</td><td>копировать в буфер</td></tr>
+    <tr><td>↗ open</td><td>открыть в редакторе (scheme ниже; fallback = copy path)</td></tr>
+    <tr><td>▾ у зоны</td><td>override зоны ноды (localStorage; ★ = переопределена)</td></tr>
+    <tr><td>✕ у линка</td><td>negative assertion — спрятать авто-ребро (overlay)</td></tr>
+    <tr><td>+ тег / ✕ на теге</td><td>свои теги на ноде (localStorage); 🏷 в pins-карте = один тег на всю пачку пинов</td></tr>
+    <tr><td>⌖ в кадр</td><td>явный перелёт к ноде+соседям (= клавиша c)</td></tr>
+  </table>
+  <h3>масштаб</h3>
+  <table>
+    <tr><td>zoom ≥ 2.2</td><td>ноды становятся карточками с подложкой (заголовок читается); ещё ближе — с превью описания</td></tr>
+    <tr><td>A− / A+</td><td>масштаб текста графа и панелей UI</td></tr>
+  </table>
+  <h3>настройки</h3>
+  <div>editor: <select id="editorPref">
+    <option value="copy">copy path</option><option value="vscode">vscode://</option>
+    <option value="idea">idea://</option><option value="hx">hx://</option>
+  </select></div>
+  <button class="hbtn" id="helpRestoreHidden">показать скрытые ноды (<span id="hiddenCnt">0</span>)</button>
+  <button class="hbtn" id="helpExportOverlay">экспорт overlay.json</button>
+  <button class="hbtn" id="helpReset">сбросить конфиг + localStorage атласа</button>
+  <button class="hbtn" id="helpClose">закрыть (esc)</button>
+</div></div>
+<div id="regen"><div class="sheet">
+  <h2>⚙ пересборка данных</h2>
+  <div class="age" id="regenAge"></div>
+  <div class="note">Атлас — статичный file://, данные пересобирает генератор в терминале.
+    Отметь нужное, скопируй команду, прогони — затем «⟳ перезагрузить». Раскладки/цвета/слои
+    пересборки не требуют — они живые, крути прямо в HUD.</div>
+  <label class="opt"><input type="checkbox" id="rgVecs"><span><code>--search-vecs</code> — семантический поиск в дропдауне (эмбеддинги внутрь файла, +≈1.3MB)</span></label>
+  <label class="opt"><input type="checkbox" id="rgStruct"><span><code>--structural-cross</code> — детектор структурных близнецов (медленнее)</span></label>
+  <label class="opt"><input type="checkbox" id="rgNoSem"><span><code>--no-semantic-cross</code> — без Ollama-эмбеддингов (если Ollama лежит)</span></label>
+  <label class="opt"><input type="checkbox" id="rgNoDet"><span><code>--no-detectors</code> — только wikilink-граф, самый быстрый прогон</span></label>
+  <div class="cmd"><code id="rgCmd"></code></div>
+  <button class="hbtn" id="rgCopy">⧉ копировать команду</button>
+  <button class="hbtn" id="rgReload">⟳ перезагрузить (после прогона)</button>
+  <button class="hbtn" id="rgClose">закрыть (esc)</button>
+</div></div>
+<div id="bar">
+  <div id="stats"></div>
+  <button id="fit" data-hint="вписать весь видимый граф в свободную часть экрана (клавиша f)">⤢ fit</button>
+  <button id="homeBtn" data-hint="вернуться к стартовому виду (клавиша h)" title="стартовый вид (h)">⌂</button>
+  <button id="reloadBtn" data-hint="перезагрузить страницу (свежий файл атласа после пересборки)" title="перезагрузить">⟳</button>
+  <button id="rebuildBtn" data-hint="пересборка ДАННЫХ атласа: собрать команду генератора с нужными флагами — выполняется в терминале" title="пересборка данных">⚙</button>
+  <button id="exportBtn" data-hint="скачать видимый срез графа как JSON; shift+клик = полный корпус" title="экспорт видимого среза JSON; shift = полный корпус">↓</button>
+  <button id="helpBtn" data-hint="справка по всем клавишам и типам рёбер (?)" title="справка (?)">?</button>
+  <div id="tsz" data-hint="масштаб текста на графе И панелей UI (сохраняется)"><span class="lbl">текст</span><button id="tszMinus" title="мельче">A−</button><button id="tszPlus" title="крупнее">A+</button></div>
+  <div id="hint"></div>
+  <div id="keys"><b>/</b> search · <b>c</b> в кадр · <b>f</b> fit · <b>rmb</b> pin · <b>?</b> help</div>
+</div>
+
+<script>
+const DATA = "__DATA__";
+
+// ---- palette: validated dark categorical (dataviz, 8 slots) + chrome ----
+const CAT = ['#3987e5','#199e70','#c98500','#008300','#9085e9','#e66767','#d55181','#d95926'];
+const OTHER = '#8b8983';
+const GHOST_C = '#7a786f';
+const PAGE = '#0c0c0b';
+const ZONES = DATA.zones || {};
+const HEAT = DATA.heat || { label: 'heat', high: 'hot', low: 'cold' };
+
+const nodes = DATA.nodes, edges = DATA.edges;
+const byId = new Map(nodes.map(n => [n.id, n]));
+
+// ==== graph-lab ports: persisted state ====
+// per-corpus ключи (аналог graph-lab:config:v1 / pins:v1 / overlay.<cid>.json)
+const KEYP = 'atlas:' + (DATA.title || 'atlas') + ':';
+function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v === null ? fb : JSON.parse(v); } catch (e) { return fb; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+const CFG = lsGet(KEYP + 'cfg', {});
+const hiddenZones = new Set(CFG.hiddenZones || []);
+// объёмные детектор-слои по дефолту скрыты (принцип #3: линии = шум, включает юзер чипом);
+// wiki/md/shared_ref/user видны сразу
+const hiddenKinds = new Set(CFG.hiddenKinds ||
+  ['semantic', 'tag_overlap', 'temporal_proximity', 'session_co_occurrence', 'structural_homology']);
+const hiddenNodes = new Set();   // context-menu hide: до refresh (контракт graph-lab)
+
+// zone override (порт layers.overrides: приоритет №1, recolor без re-layout)
+const zOver = lsGet(KEYP + 'zoneOverride', {});
+for (const n of nodes) if (zOver[n.id] && ZONES[zOver[n.id]]) { n.zone_auto = n.zone; n.zone = zOver[n.id]; }
+
+// OverlayStore-порт: user-рёбра + negative assertions, переживают rebuild (localStorage)
+const overlay = lsGet(KEYP + 'overlay', { edges: [], negatives: [] });
+let overlayStale = 0;
+for (const ue of overlay.edges) {
+  if (byId.has(ue.source) && byId.has(ue.target))
+    edges.push({ source: ue.source, target: ue.target, kind: 'user', cross: true, user: true });
+  else overlayStale++;   // stale refs скипаются молча, считаются (контракт P0.3)
+}
+const negKey = (a, b) => a < b ? a + ' ' + b : b + ' ' + a;
+const negSet = new Set(overlay.negatives.map(x => negKey(x.s, x.t)));
+function saveOverlay() { lsSet(KEYP + 'overlay', overlay); }
+
+// EDGE_STYLES — per-kind визуал (порт scene-config: color/dash/curve/particles)
+const EDGE_STYLES = {
+  shared_ref:            { c: '#c98500', a: 0.30, dash: [4, 3], curve: 0.18 },
+  semantic:              { c: '#9085e9', a: 0.35, curve: 0.18, particles: true },
+  tag_overlap:           { c: '#199e70', a: 0.35, dash: [2, 3], curve: 0.18 },
+  temporal_proximity:    { c: '#d55181', a: 0.28, dash: [6, 3], curve: 0.18 },
+  session_co_occurrence: { c: '#e66767', a: 0.35, curve: 0.18, particles: true },
+  structural_homology:   { c: '#d95926', a: 0.28, dash: [1, 3], curve: 0.18 },
+  user:                  { c: '#3987e5', a: 0.65, dash: [5, 4], curve: 0.12, particles: true, w: 1.6 },
+};
+
+document.title = DATA.title || 'atlas';
+document.getElementById('titleText').textContent = DATA.title || 'atlas';
+
+// ---- degree + adjacency (on string ids, before sim mutates links) ----
+const adj = new Map(nodes.map(n => [n.id, []]));
+const inLinks = new Map(nodes.map(n => [n.id, []]));
+const outLinks = new Map(nodes.map(n => [n.id, []]));
+const deg0 = new Map(nodes.map(n => [n.id, 0]));   // degree = только wikilink-граф (метрика стабильна)
+for (const e of edges) {
+  adj.get(e.source).push(e.target); adj.get(e.target).push(e.source);
+  outLinks.get(e.source).push(e.target); inLinks.get(e.target).push(e.source);
+  if (!e.cross) { deg0.set(e.source, deg0.get(e.source) + 1); deg0.set(e.target, deg0.get(e.target) + 1); }
+}
+for (const n of nodes) n.degree = deg0.get(n.id);
+
+// ---- Louvain clustering (детерминированный порядок; LP схлопывался в гигант-кластер) ----
+(function clusterize() {
+  let graph = new Map();
+  const addW = (a, b, w) => {
+    if (!graph.has(a)) graph.set(a, new Map());
+    const m = graph.get(a);
+    m.set(b, (m.get(b) || 0) + w);
+  };
+  for (const e of edges) { if (e.cross) continue; addW(e.source, e.target, 1); addW(e.target, e.source, 1); }   // Louvain на wikilink-графе: детекторы не мутят тематики
+  for (const n of nodes) if (!graph.has(n.id)) graph.set(n.id, new Map());
+
+  let mapping = new Map(nodes.map(n => [n.id, n.id]));
+  for (let level = 0; level < 4; level++) {
+    const ids = [...graph.keys()].sort();
+    const deg = new Map(ids.map(id => [id, [...graph.get(id).values()].reduce((a,b) => a+b, 0)]));
+    const m2 = [...deg.values()].reduce((a,b) => a+b, 0);
+    if (!m2) break;
+    const comm = new Map(ids.map(id => [id, id]));
+    const commDeg = new Map(ids.map(id => [id, deg.get(id)]));
+    let moved = true, guard = 0;
+    while (moved && guard++ < 12) {
+      moved = false;
+      for (const id of ids) {
+        const cn = comm.get(id);
+        commDeg.set(cn, commDeg.get(cn) - deg.get(id));
+        const nbrC = new Map([[cn, 0]]);
+        for (const [nb, w] of graph.get(id)) {
+          if (nb === id) continue;
+          const c = comm.get(nb);
+          nbrC.set(c, (nbrC.get(c) || 0) + w);
+        }
+        let best = cn, bestScore = -Infinity;
+        for (const [c, w] of [...nbrC.entries()].sort()) {
+          const score = w - deg.get(id) * commDeg.get(c) / m2;
+          if (score > bestScore + 1e-12) { bestScore = score; best = c; }
+        }
+        comm.set(id, best);
+        commDeg.set(best, commDeg.get(best) + deg.get(id));
+        if (best !== cn) moved = true;
+      }
+    }
+    const nComms = new Set(comm.values()).size;
+    for (const [orig, c] of mapping) mapping.set(orig, comm.get(c));
+    if (nComms === ids.length) break;
+    const agg = new Map();
+    const addAgg = (a, b, w) => {
+      if (!agg.has(a)) agg.set(a, new Map());
+      const m = agg.get(a);
+      m.set(b, (m.get(b) || 0) + w);
+    };
+    for (const id of ids)
+      for (const [nb, w] of graph.get(id))
+        addAgg(comm.get(id), comm.get(nb), w);
+    for (const c of new Set(comm.values())) if (!agg.has(c)) agg.set(c, new Map());
+    graph = agg;
+  }
+  const sizes = new Map();
+  for (const l of mapping.values()) sizes.set(l, (sizes.get(l)||0)+1);
+  const ranked = [...sizes.entries()].sort((a,b) => b[1]-a[1]).map(e => e[0]);
+  const slot = new Map(ranked.map((l,i) => [l, i]));
+  for (const n of nodes) n.cluster = slot.get(mapping.get(n.id));
+})();
+
+// ---- fixed color assignment per mode (entity-stable, never re-cycled) ----
+function rankValues(key) {
+  const counts = new Map();
+  for (const n of nodes) counts.set(n[key], (counts.get(n[key])||0)+1);
+  return [...counts.entries()].sort((a,b) => b[1]-a[1]);
+}
+const typeRank = rankValues('type');
+const typeSlot = new Map(typeRank.map((e,i) => [e[0], i]));
+const zoneOrder = Object.keys(ZONES);
+const zoneSlot = new Map(zoneOrder.map((z,i) => [z, i]));
+const heatScale = d3.scaleLinear().domain([1, 0]).range(['#3987e5', '#3a3a37']); // heat 1 bright, 0 recedes
+const zoneColor = z => { const i = zoneSlot.get(z); return i !== undefined && i < 8 ? CAT[i] : OTHER; };
+
+function groupKey(n) {
+  switch (mode()) {
+    case 'cluster': return n.cluster < 8 ? n.cluster : 'other';
+    case 'zone':    return n.zone;
+    case 'type':    return typeSlot.get(n.type) < 8 ? n.type : 'other';
+    default:        return null;
+  }
+}
+function nodeColor(n) {
+  if (mode() === 'heat') return n.ghost ? GHOST_C : heatScale(n.heat ?? 0);
+  if (n.ghost) return GHOST_C;
+  switch (mode()) {
+    case 'cluster': return n.cluster < 8 ? CAT[n.cluster] : OTHER;
+    case 'zone':    return zoneColor(n.zone);
+    case 'type':    { const i = typeSlot.get(n.type); return i < 8 ? CAT[i] : OTHER; }
+  }
+}
+
+// ---- controls (до симуляции: collide зовёт radius при инициализации) ----
+const $ = id => document.getElementById(id);
+const mode = () => $('colorMode').value;
+const sizeMode = () => $('sizeMode').value;
+const focusMode = () => $('focusMode').value;   // dim | blur | tiles (A/B)
+const labelModeV = () => $('labelMode').value;  // hubs | hops | near | all
+const labelHopsV = () => +$('labelHops').value;
+const camPolicy = () => $('camPolicy').value;   // adaptive | fit | corner
+$('focusMode').addEventListener('change', () => {
+  if (selected && focusMode() !== 'dim' && camPolicy() !== 'stay') frameEgo(selected);
+  requestDraw();
+});
+const toggles = { hulls: true, clusters: false, ghosts: true, labels: true,
+  edgesOn: true, particles: false, magnet: false, gestures: false,
+  collide: true, softFade: true, lockZoom: false };
+// persisted knobs (порт graph-lab:config:v1) — restore ДО первого draw
+if (CFG.toggles) Object.assign(toggles, CFG.toggles, { gestures: false });  // 🎥 не автостартуем (webcam)
+for (const [sel, key] of [['colorMode','color'],['sizeMode','size'],['focusMode','focus2'],
+    ['labelMode','labelMode'],['labelHops','labelHops'],['camPolicy','camPolicy2']]) {   // v2-ключи: старые дефолты (adaptive / dim) не восстанавливаем — зум ручной, ego дефолт
+  const el = $(sel);
+  if (CFG[key] !== undefined && [...el.options].some(o => o.value === String(CFG[key]))) el.value = CFG[key];
+}
+for (const id of ['edgeAlpha', 'nodeSize']) if (CFG[id] !== undefined) $(id).value = CFG[id];
+function saveCfg() {
+  lsSet(KEYP + 'cfg', {
+    color: mode(), size: sizeMode(), focus2: focusMode(), labelMode: labelModeV(),
+    labelHops: labelHopsV(), camPolicy2: camPolicy(),
+    edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value,
+    maxN: maxN, TS: TS, toggles: toggles, layout: layoutName,
+    hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
+  });
+}
+for (const id of Object.keys(toggles)) {
+  const el = $(id);
+  el.classList.toggle('on', toggles[id]);
+  el.addEventListener('click', ev => {
+    toggles[id] = !toggles[id];
+    ev.currentTarget.classList.toggle('on', toggles[id]);
+    if (id === 'gestures') gesturesToggle(toggles[id]);
+    if (id === 'particles' && toggles[id]) lastPT = performance.now();
+    if (id === 'hulls' && toggles.hulls && layoutName === 'semantic')
+      toast('в semantic hulls не рисуются (зоны перемешаны) — контраст зон несут кольца нод');
+    saveCfg(); requestDraw();
+  });
+}
+for (const id of ['colorMode','sizeMode','focusMode','labelMode','labelHops','camPolicy'])
+  $(id).addEventListener('change', saveCfg);
+const showGhosts = () => toggles.ghosts;
+// в semantic-раскладке зонные hulls лгут (позиции = cosine, зоны перемешаны) — авто-выкл;
+// зонный контраст там несут цветные кольца нод (см. paintFrame)
+const showHulls = () => toggles.hulls && layoutName !== 'semantic';
+const showLabels = () => toggles.labels;
+const showClusters = () => toggles.clusters;
+
+// VIEW-множители (edgeAlphaMul / nodeSizeMul) + подписи значений
+const eaMul = () => +$('edgeAlpha').value;
+const nsMul = () => +$('nodeSize').value;
+for (const [id, lab] of [['edgeAlpha', 'edgeAlphav'], ['nodeSize', 'nodeSizev']])
+  $(id).addEventListener('input', () => { $(lab).textContent = (+$(id).value).toFixed(2).replace(/0$/, ''); saveCfg(); requestDraw(); });
+$('edgeAlphav').textContent = (+$('edgeAlpha').value).toFixed(1);
+$('nodeSizev').textContent = (+$('nodeSize').value).toFixed(1);
+
+// FILTER maxNodes: top-N по degree; вне keep — не удалять, dim 0.10 (принцип #2)
+const realCount = nodes.filter(n => !n.ghost).length;
+$('maxN').max = Math.max(realCount, 20);
+let maxN = Math.min(CFG.maxN || realCount, realCount);
+$('maxN').value = maxN;
+let keepSet = null;
+function rebuildKeep() {
+  if (maxN >= realCount) { keepSet = null; $('maxNv').textContent = 'all'; return; }
+  $('maxNv').textContent = maxN;
+  keepSet = new Set(nodes.filter(n => !n.ghost).sort((a, b) => b.degree - a.degree)
+    .slice(0, maxN).map(n => n.id));
+  if (selected) keepSet.add(selected.id);
+  // pinned + их соседи всегда в пуле, даже ниже порога (контракт pin=context delivery)
+  for (const p of pinIds) { keepSet.add(p); for (const nb of adj.get(p) || []) keepSet.add(nb); }
+}
+const inKeep = n => !keepSet || n.ghost || keepSet.has(n.id);
+$('maxN').addEventListener('input', () => { maxN = +$('maxN').value; rebuildKeep(); saveCfg(); requestDraw(); });
+
+// text-scale: множитель на канвас-текст (лейблы/тайлы/hull-подписи) И на UI-панели — ручка юзера.
+// дефолт 1.25: 11px на 2K не читается (фидбек 07-07)
+let TS = 1.25;
+function applyUIZoom() {
+  const z = Math.max(0.9, Math.min(1.7, TS));
+  for (const id of ['hud', 'panel', 'bar', 'viewtabs', 'minimap']) { const el = $(id); if (el) el.style.zoom = z; }
+}
+function bumpTS(d) { TS = Math.max(0.7, Math.min(2.4, +(TS + d).toFixed(2))); applyUIZoom(); saveCfg(); requestDraw(); }
+document.getElementById('tszPlus').addEventListener('click', () => bumpTS(0.15));
+document.getElementById('tszMinus').addEventListener('click', () => bumpTS(-0.15));
+
+// рабочие теги: part_of (ведомый) + tier + фронтматтер tags + СВОИ (localStorage);
+// клик = изолировать пересечение. Свои теги = ручная группировка нод («пачку в тег»).
+const tagSel = new Set();
+const userTags = lsGet(KEYP + 'userTags', {});   // {nodeId: [tag,...]}, переживает rebuild
+const saveUserTags = () => lsSet(KEYP + 'userTags', userTags);
+function nodeTags(n) {
+  const a = [];
+  if (n.part_of) a.push('◆ ' + n.part_of);
+  if (n.tier !== undefined && n.tier !== '') a.push('tier ' + n.tier);
+  for (const t of (n.tags || [])) a.push(t);
+  for (const t of (userTags[n.id] || [])) a.push(t);
+  return [...new Set(a)];
+}
+const isUserTag = (n, t) => (userTags[n.id] || []).includes(t);
+function addTagTo(ids, t) {
+  t = (t || '').trim();
+  if (!t) return;
+  let added = 0;
+  for (const id of ids) {
+    if (!byId.has(id) || byId.get(id).ghost) continue;
+    const arr = userTags[id] || (userTags[id] = []);
+    if (!arr.includes(t)) { arr.push(t); added++; }
+  }
+  saveUserTags(); renderTags();
+  if (selected) selectNode(selected, { noFly: true });
+  toast(`тег «${t}»: +${added} нод`);
+  requestDraw();
+}
+function removeUserTag(id, t) {
+  userTags[id] = (userTags[id] || []).filter(x => x !== t);
+  if (!userTags[id].length) delete userTags[id];
+  saveUserTags(); renderTags();
+  if (selected) selectNode(selected, { noFly: true });
+  toast(`тег «${t}» снят`);
+  requestDraw();
+}
+const hasTag = n => !tagSel.size || nodeTags(n).some(t => tagSel.has(t));
+const tagColor = t => t.startsWith('◆') ? '#3987e5' : t.startsWith('tier') ? '#c98500' : '#199e70';
+const sizeScale = {
+  degree: d3.scaleSqrt().domain([0, d3.max(nodes, n => n.degree) || 1]).range([2.5, 14]),
+  bytes:  d3.scaleSqrt().domain([0, d3.max(nodes, n => n.bytes) || 1]).range([2.5, 14]),
+};
+let magNode = null;   // ближайшая к курсору нода в magnet-режиме (LOD bump)
+function radius(n) {
+  const r = (n.ghost ? 3 : sizeScale[sizeMode()](n[sizeMode()])) * nsMul();
+  return n === magNode ? r * 1.6 : r;   // magnet LOD bump (принцип #3)
+}
+
+// ---- simulation ----
+const R = 780;
+for (const n of nodes) {
+  const a = ZONES[n.zone] || [0, 0];
+  n.ax = a[0]*R; n.ay = a[1]*R;
+}
+// детектор/user-рёбра (cross) НЕ тянут layout: рёбра = семантика связи, не позиционирование
+// (контракт graph-lab «layout = смысл»; разреженность-pass настроен на wikilink-граф).
+// Резолвим все рёбра в объекты руками — forceLink получает только layout-подмножество.
+for (const e of edges) {
+  if (typeof e.source === 'string') e.source = byId.get(e.source);
+  if (typeof e.target === 'string') e.target = byId.get(e.target);
+}
+const layoutEdges = edges.filter(e => !e.cross);
+// cross-zone рёбра почти не тянут: иначе межзонные линки схлопывают зоны в центральный клубок
+const sameZone = e => e.source.zone === e.target.zone;
+// charge растёт с degree: хабы расталкивают своё ядро — плотные сердцевины зон (LIGHT)
+// не слипаются в кашу лейблов; кап 24 связей, чтобы супер-хаб не разрывал зону
+const makeCharge = () => d3.forceManyBody()
+  .strength(n => -100 - 7 * Math.min(24, n.degree)).theta(0.9).distanceMax(480);
+const sim = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(layoutEdges).id(d => d.id)
+    .distance(e => sameZone(e) ? 46 : 110)
+    .strength(e => sameZone(e) ? 0.22 : 0.035))
+  .force('charge', makeCharge())
+  .force('collide', d3.forceCollide(n => radius(n) + 6.5).iterations(2))   // 2 прохода: соседи реально разлипаются
+  .force('ax', d3.forceX(n => n.ax).strength(0.26))
+  .force('ay', d3.forceY(n => n.ay).strength(0.26))
+  .on('tick', requestDraw);
+// синхронный прогрев раскладки до первого кадра: атлас открывается сформированным,
+// без 8 секунд «влетающих» узлов; остаток alpha досаживается уже живым таймером
+sim.stop().tick(200);
+sim.restart();
+
+// ---- canvas + zoom/drag ----
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+// offscreen для реального blur фона в focus-режиме (blit-with-filter = 1 проход, дёшево)
+const bgCanvas = document.createElement('canvas');
+const bgCtx = bgCanvas.getContext('2d');
+const BLUR = 5;
+function sizeBg() { if (bgCanvas.width !== canvas.width || bgCanvas.height !== canvas.height) { bgCanvas.width = canvas.width; bgCanvas.height = canvas.height; } }
+let W, H, dpr;
+let transform = d3.zoomIdentity;
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  requestDraw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+const zoom = d3.zoom().scaleExtent([0.05, 24]).on('zoom', ev => { transform = ev.transform; requestDraw(); });
+
+// видимый прямоугольник экрана: HUD слева и панель ноды справа съедают место —
+// fit целится в остаток, граф не прячется под стеклом (жалоба «клубок за панелью»)
+function viewRect() {
+  let x0 = 12, x1 = W - 12;
+  if (!document.body.classList.contains('panels-hidden')) {
+    const hud = document.getElementById('hud');
+    if (hud && hud.offsetWidth) x0 = Math.min(W * 0.4, hud.getBoundingClientRect().right + 20);
+  }
+  if (document.body.classList.contains('panel-open')) {
+    const p = document.getElementById('panel');
+    if (p && p.offsetWidth) x1 = Math.max(W * 0.6, p.getBoundingClientRect().left - 20);
+  }
+  return { x0, x1, y0: 14, y1: H - 58 };   // низ = #bar
+}
+function fitTransform() {
+  const vis = nodes.filter(visible);
+  if (!vis.length) return d3.zoomIdentity;
+  // паддинг world-юнитов: hull-выступ (26) + зонный лейбл над ним (сверху запас больше)
+  const x0 = d3.min(vis, n => n.x) - 70, x1 = d3.max(vis, n => n.x) + 70;
+  const y0 = d3.min(vis, n => n.y) - 120, y1 = d3.max(vis, n => n.y) + 70;
+  const vr = viewRect(), vw = vr.x1 - vr.x0, vh = vr.y1 - vr.y0;
+  const k = Math.min(8, 0.92 / Math.max((x1-x0)/vw, (y1-y0)/vh, 1e-6));
+  return d3.zoomIdentity.translate((vr.x0+vr.x1)/2, (vr.y0+vr.y1)/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2);
+}
+function fitView() {
+  d3.select(canvas).transition().duration(500).call(zoom.transform, fitTransform());
+}
+document.getElementById('fit').addEventListener('click', fitView);
+// стартовый вид = fit по прогретой раскладке; он же = home (⌂ / h, ставится в boot-блоке)
+d3.select(canvas).call(zoom).call(zoom.transform, fitTransform());
+
+// видимость ноды: зона не скрыта, нода не hidden (context-menu), ghost по toggle
+function visible(n) {
+  return !hiddenZones.has(n.zone) && !hiddenNodes.has(n.id) && (!n.ghost || showGhosts());
+}
+const NX = n => n.x + (n._mx || 0), NY = n => n.y + (n._my || 0);   // magnet render-offset
+// хит-ректы нарисованных лейблов/тайлов текущего кадра (SCREEN css-px, пишет paintFrame):
+// имя ноды кликабельно наравне с кружком — «имена = пустое место» фикс. Только реально
+// отрисованные (labelMode/cull учтены сами собой: culled/скрытые сюда не попадают).
+let labelHits = [], tileHits = [];
+const inBox = (b, mx, my) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
+function pick(mx, my) {
+  const [x, y] = transform.invert([mx, my]);
+  let best = null, bd = Infinity;
+  for (const n of nodes) {
+    if (!visible(n)) continue;
+    const dx = NX(n)-x, dy = NY(n)-y, d2 = dx*dx+dy*dy, r = radius(n)+3;
+    if (d2 < r*r && d2 < bd) { bd = d2; best = n; }
+  }
+  if (best) return best;   // кружок точнее по интенту — приоритет над текстом
+  for (const b of tileHits)  if (inBox(b, mx, my) && visible(b.n)) return b.n;
+  for (const b of labelHits) if (inBox(b, mx, my) && visible(b.n)) return b.n;
+  return null;
+}
+d3.select(canvas).call(d3.drag()
+  .container(canvas)
+  .subject(ev => pick(ev.x, ev.y))
+  .on('start', ev => { canvas.classList.add('dragging'); if (!ev.active) sim.alphaTarget(0.25).restart(); ev.subject.fx = ev.subject.x; ev.subject.fy = ev.subject.y; })
+  .on('drag', ev => { const [x,y] = transform.invert([ev.x, ev.y]); ev.subject.fx = x; ev.subject.fy = y; })
+  .on('end', ev => { canvas.classList.remove('dragging'); if (!ev.active) sim.alphaTarget(0); ev.subject.fx = null; ev.subject.fy = null; }));
+
+// ---- hover / click ----
+const tooltip = document.getElementById('tooltip');
+let hovered = null;
+let cursorW = null;   // курсор в world-координатах: magnet + label-режим near
+canvas.addEventListener('mousemove', ev => {
+  cursorW = transform.invert([ev.clientX, ev.clientY]);
+  const n = pick(ev.clientX, ev.clientY);
+  if (n !== hovered) { hovered = n; requestDraw(); }
+  if (toggles.magnet) requestDraw();
+  if (n) {
+    tooltip.style.display = 'block';
+    tooltip.innerHTML = `<div>${esc(n.label)}${n.ghost?' <span class="tg-mark">ghost</span>':''}</div>
+      <div class="tmeta">${esc(n.zone)} · ${esc(n.type)} · deg ${n.degree}${mode()==='heat'&&!n.ghost?` · ${HEAT.label} ${(n.heat??0).toFixed(2)}`:''}</div>`;
+    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    tooltip.style.left = Math.min(ev.clientX+14, W-tw-10)+'px';
+    tooltip.style.top = Math.min(ev.clientY+14, H-th-10)+'px';
+  } else tooltip.style.display = 'none';
+});
+canvas.addEventListener('mouseleave', () => { cursorW = null; hovered = null; requestDraw(); });
+
+// Ctrl+click ×2 = user-ребро (overlay, thought-cloud контракт: связи рисует юзер)
+let pendingLink = null;
+canvas.addEventListener('click', ev => {
+  const n = pick(ev.clientX, ev.clientY);
+  if (ev.ctrlKey && n && !n.ghost) {
+    if (!pendingLink) { pendingLink = n; toast('overlay: кликни вторую ноду для user-ребра'); return; }
+    if (pendingLink !== n) addUserEdge(pendingLink, n);
+    pendingLink = null;
+    return;
+  }
+  pendingLink = null;
+  selectNode(n);
+});
+// RMB = pin (context delivery); Ctrl+RMB = multi-pin стек (принцип #4)
+canvas.addEventListener('contextmenu', ev => {
+  ev.preventDefault();
+  const n = pick(ev.clientX, ev.clientY);
+  if (n) togglePin(n, ev.ctrlKey);
+});
+
+let selected = null;
+const navHist = [];   // порт GraphState.pushHistory: b/⌫ = назад по выделениям
+let histLock = false;
+function selectNode(n, opts) {
+  if (n && selected && n !== selected && !histLock) {
+    navHist.push(selected.id);
+    if (navHist.length > 50) navHist.shift();
+  }
+  selected = n;
+  computeHops();
+  if (keepSet) rebuildKeep();
+  const panel = document.getElementById('panel');
+  document.body.classList.toggle('panel-open', !!n);
+  if (!n) { panel.classList.remove('open'); requestDraw(); return; }
+  panel.classList.add('open');
+  const userPairs = new Set(overlay.edges.map(e => negKey(e.source, e.target)));
+  const links = (ids, title) => ids.length
+    ? `<h3>${title} · ${ids.length}</h3>` + ids.map(id => {
+        const t = byId.get(id);
+        const isUser = userPairs.has(negKey(n.id, id));
+        const isNeg = negSet.has(negKey(n.id, id));
+        return `<div class="lnkrow"><a class="lnk" data-id="${esc(id)}" style="${isNeg?'opacity:.35;text-decoration:line-through':''}">${esc(t?t.label:id)}${t&&t.ghost?' <span class=gm>ghost</span>':''}${isUser?' <span class=gm>user</span>':''}</a>` +
+          `<span class="neg" data-${isUser?'deluser':isNeg?'restore':'neg'}="${esc(id)}" title="${isUser?'удалить user-ребро':isNeg?'вернуть ребро':'negative: спрятать авто-ребро'}">${isNeg?'↺':'✕'}</span></div>`;
+      }).join('')
+    : '';
+  const zopts = ['auto', ...zoneOrder].map(z =>
+    `<option value="${z}"${(zOver[n.id] || 'auto') === z && (z !== 'auto' || !zOver[n.id]) ? ' selected' : ''}>${z}</option>`).join('');
+  document.getElementById('panelBody').innerHTML = `
+    <h2>${esc(n.label)}</h2>
+    <div class="chips">
+      <span class="chip"><span class="dot" style="background:${zoneColor(n.zone)}"></span>${esc(n.zone)}${zOver[n.id] ? ' ★' : ''}
+        <select class="zsel" id="zoverSel" title="override зоны (порт layers.overrides)">${zopts}</select></span>
+      <span class="chip">${esc(n.type)}</span>
+      ${n.ghost ? '<span class="chip ghostchip">ghost — нота не написана</span>' : ''}
+    </div>
+    <div class="acts">
+      <button class="abtn" data-copy="${esc(n.id)}" title="копировать id">⧉ id</button>
+      ${n.path ? `<button class="abtn" data-copypath="1">⧉ path</button><button class="abtn" data-opened="1" title="открыть в редакторе (пресет в ?)">↗ open</button>` : ''}
+      ${n.desc ? '<button class="abtn" data-copydesc="1">⧉ desc</button>' : ''}
+      <button class="abtn" data-pinbtn="1">${pinIds.includes(n.id) ? '✕ unpin' : '📌 pin'}</button>
+      <button class="abtn" data-hide="1" title="скрыть до перезагрузки">👁 hide</button>
+      <button class="abtn" data-frame="1" title="подтянуть ноду+соседей в кадр (c)">⌖ в кадр</button>
+    </div>
+    <div class="taglinks">${nodeTags(n).map(t =>
+      `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-tag="${esc(t)}"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}${isUserTag(n, t) ? `<span class="tx" data-deltag="${esc(t)}" title="снять свой тег">✕</span>` : ''}</span>`).join('')}${
+      n.ghost ? '' : `<span class="tag addtag"><input id="tagAdd" placeholder="+ тег" autocomplete="off" title="enter = повесить тег на ноду"></span>`}</div>
+    <div class="meta">${n.path ? `${esc(n.path)} · ${(n.bytes/1024).toFixed(1)}k · изменена ${n.age_days}д назад<br>` : ''}degree ${n.degree} (out ${outLinks.get(n.id).length} / in ${inLinks.get(n.id).length}) · cluster ${n.cluster}</div>
+    ${n.ghost ? '' : `<span class="readbrowse" data-read="${esc(n.id)}">▤ читать полностью</span>`}
+    ${n.desc ? `<div class="desc">${esc(n.desc)}</div>` : ''}
+    ${links(outLinks.get(n.id), 'links out')}
+    ${links(inLinks.get(n.id), 'links in')}`;
+  const zs = document.getElementById('zoverSel');
+  if (zs) zs.addEventListener('change', () => setZoneOverride(n, zs.value));
+  const ta = document.getElementById('tagAdd');
+  if (ta) ta.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { addTagTo([n.id], ta.value); }
+    ev.stopPropagation();
+  });
+  // stay = абсолют: select камеру НЕ трогает ни в одном focus-режиме; перелёт только явно (c / ⌖ / поиск)
+  if (camPolicy() !== 'stay' && (!opts || !opts.noFly)) {
+    if (focusMode() !== 'dim') frameEgo(n);
+    else flyToNeighbourhood(n);
+  }
+  requestDraw();
+}
+document.getElementById('panelClose').addEventListener('click', () => selectNode(null));
+document.getElementById('panelBody').addEventListener('click', ev => {
+  const n = selected;
+  const a = ev.target.closest('.lnk');
+  if (a) { focusNode(a.dataset.id); return; }
+  const tg = ev.target.closest('.tag[data-tag]');   // тег из панели → изолировать
+  if (tg) { toggleTag(tg.dataset.tag); return; }
+  const rb = ev.target.closest('.readbrowse');   // fuse: graph → browse (полное тело)
+  if (rb && window.openInBrowse) { window.openInBrowse(rb.dataset.read); return; }
+  const el = ev.target.closest('[data-copy],[data-copypath],[data-copydesc],[data-openned],[data-opened],[data-pinbtn],[data-hide],[data-frame],[data-neg],[data-deluser],[data-restore],[data-deltag]');
+  if (!el || !n) return;
+  if (el.dataset.copy) copyText(el.dataset.copy, 'id');
+  else if (el.dataset.copypath) copyText(absPath(n), 'path');
+  else if (el.dataset.copydesc) copyText(n.desc, 'desc');
+  else if (el.dataset.opened) openInEditor(n);
+  else if (el.dataset.pinbtn) togglePin(n, true);
+  else if (el.dataset.hide) { hiddenNodes.add(n.id); $('hiddenCnt').textContent = hiddenNodes.size; selectNode(null); toast('скрыта до перезагрузки (вернуть — в ?)'); }
+  else if (el.dataset.frame) frameEgo(n);
+  else if (el.dataset.deltag) removeUserTag(n.id, el.dataset.deltag);
+  else if (el.dataset.neg) addNegative(n.id, el.dataset.neg);
+  else if (el.dataset.restore) removeNegative(n.id, el.dataset.restore);
+  else if (el.dataset.deluser) removeUserEdge(n.id, el.dataset.deluser);
+});
+function focusNode(id) {
+  const n = byId.get(id);
+  if (!n) return;
+  selectNode(n, { noFly: true });
+  if (camPolicy() === 'stay') return;   // руль у юзера: клик по линку камеру не двигает (c = в кадр)
+  if (focusMode() !== 'dim') { frameEgo(n); return; }
+  flyToNeighbourhood(n, true);
+}
+
+// ---- camera policies (порт flyToNeighbourhood: adaptive / fit / corner + lockZoom) ----
+function flyToNeighbourhood(n, force) {
+  const pol = camPolicy();
+  if (pol === 'stay' && !force) return;   // зум ручной: select камеру НЕ трогает
+  const es = egoNodes(n), pad = 110;
+  const x0 = Math.min(...es.map(m => m.x)) - pad, x1 = Math.max(...es.map(m => m.x)) + pad;
+  const y0 = Math.min(...es.map(m => m.y)) - pad, y1 = Math.max(...es.map(m => m.y)) + pad;
+  if (pol === 'adaptive' && !force) {
+    // no-op если ego-окрестность уже целиком в кадре (сохраняем ракурс юзера)
+    const [sx0, sy0] = transform.apply([x0, y0]), [sx1, sy1] = transform.apply([x1, y1]);
+    if (sx0 >= 0 && sy0 >= 0 && sx1 <= W && sy1 <= H) return;
+  }
+  const k = toggles.lockZoom ? transform.k
+    : Math.min(3.2, 0.9 / Math.max((x1-x0)/W, (y1-y0)/H, 1e-6));
+  const cx = (x0+x1)/2, cy = (y0+y1)/2;
+  // corner: rule-of-thirds — окрестность в правую-верхнюю треть, панель не накрывает
+  const tx = pol === 'corner' ? W*0.62 : W/2, ty = pol === 'corner' ? H*0.38 : H/2;
+  d3.select(canvas).transition().duration(450).call(zoom.transform,
+    d3.zoomIdentity.translate(tx, ty).scale(k).translate(-cx, -cy));
+}
+
+// ---- hop set (порт GraphState.computeHopSet: labelMode hops + tier-тона) ----
+let hopDist = new Map();
+function computeHops() {
+  hopDist = new Map();
+  if (!selected) return;
+  const maxH = labelHopsV();
+  let frontier = [selected.id];
+  hopDist.set(selected.id, 0);
+  for (let d = 1; d <= maxH; d++) {
+    const next = [];
+    for (const id of frontier)
+      for (const nb of adj.get(id) || [])
+        if (!hopDist.has(nb)) { hopDist.set(nb, d); next.push(nb); }
+    frontier = next;
+  }
+}
+$('labelHops').addEventListener('change', () => { computeHops(); requestDraw(); });
+
+// ---- search (input = live-фильтр; дропдаун = SearchBar-порт: substring + semantic) ----
+let query = [];
+const searchEl = document.getElementById('search');
+const sdrop = document.getElementById('sdrop');
+let sHits = [], sSel = -1, sSeq = 0;
+const BODIES = (DATA.browse && DATA.browse.bodies) || {};
+searchEl.addEventListener('input', ev => {
+  query = ev.target.value.toLowerCase().split(/\s+/).filter(Boolean);
+  buildDrop(ev.target.value.trim().toLowerCase());
+  requestDraw();
+});
+function matches(n) {
+  if (!query.length) return true;
+  const hay = (n.id+' '+n.label+' '+n.desc+' '+n.type+' '+n.zone).toLowerCase();
+  return query.some(q => hay.includes(q));
+}
+function hideDrop() { sdrop.style.display = 'none'; sHits = []; sSel = -1; }
+function buildDrop(q) {
+  if (q.length < 2) { hideDrop(); return; }
+  // substring pass: id/label раньше desc, desc раньше body (SEARCH.md ranking)
+  const hits = [];
+  for (const n of nodes) {
+    if (!visible(n)) continue;
+    let tier = -1, pos = 0;
+    const idl = (n.id + ' ' + n.label).toLowerCase();
+    const dsc = (n.desc || '').toLowerCase();
+    if ((pos = idl.indexOf(q)) >= 0) tier = 0;
+    else if ((pos = dsc.indexOf(q)) >= 0) tier = 1;
+    else if (BODIES[n.id] && (pos = BODIES[n.id].toLowerCase().indexOf(q)) >= 0) tier = 2;
+    if (tier >= 0) hits.push({ n, tier, pos });
+  }
+  hits.sort((a, b) => a.tier - b.tier || a.pos - b.pos);
+  sHits = hits.slice(0, 10).map(h => ({ n: h.n }));
+  sSel = sHits.length ? 0 : -1;
+  renderDrop();
+  // semantic fallback: <3 substring-хитов + DATA.vecs (нужен OLLAMA_ORIGINS для file://)
+  if (sHits.length < 3 && DATA.vecs) semanticPass(q);
+}
+function renderDrop(divider) {
+  if (!sHits.length) { hideDrop(); return; }
+  const r = searchEl.getBoundingClientRect();
+  sdrop.style.display = 'block';
+  sdrop.style.left = r.left + 'px'; sdrop.style.top = (r.bottom + 6) + 'px';
+  sdrop.style.width = Math.max(r.width, 300) + 'px';
+  sdrop.innerHTML = sHits.map((h, i) =>
+    (h.sem && (i === 0 || !sHits[i-1].sem) ? '<div class="sdiv">semantic</div>' : '') +
+    `<div class="sr${i === sSel ? ' sel' : ''}" data-i="${i}">
+      <span>${esc(h.n.label)}</span><span class="sm">${esc(h.n.zone)} · ${esc(h.n.type)}${h.score ? ' · ' + h.score.toFixed(2) : ''}</span></div>`).join('');
+  sdrop.querySelectorAll('.sr').forEach(row => {
+    row.addEventListener('click', () => pickHit(+row.dataset.i));
+    row.addEventListener('mouseenter', () => {   // hover = preview-fly (SEARCH.md); stay = off
+      if (camPolicy() === 'stay') return;
+      const h = sHits[+row.dataset.i];
+      if (h) flyToNeighbourhood(h.n);
+    });
+  });
+}
+// Enter/клик → select + СНЯТЬ фильтр (иначе камера летит в пустую сцену — контракт SEARCH.md)
+function pickHit(i) {
+  const h = sHits[i];
+  if (!h) return;
+  searchEl.value = ''; query = [];
+  hideDrop(); searchEl.blur();
+  selectNode(h.n);
+  flyToNeighbourhood(h.n, true);
+}
+searchEl.addEventListener('keydown', ev => {
+  if (!sHits.length) return;
+  if (ev.key === 'ArrowDown') { ev.preventDefault(); sSel = (sSel + 1) % sHits.length; renderDrop(); }
+  else if (ev.key === 'ArrowUp') { ev.preventDefault(); sSel = (sSel - 1 + sHits.length) % sHits.length; renderDrop(); }
+  else if (ev.key === 'Enter') { ev.preventDefault(); pickHit(sSel < 0 ? 0 : sSel); }
+});
+document.addEventListener('click', ev => {   // click outside: дропдаун закрыть, фильтр не трогать
+  if (!sdrop.contains(ev.target) && ev.target !== searchEl) hideDrop();
+});
+let vecsNorm = null;
+function normVecs() {
+  if (vecsNorm) return vecsNorm;
+  vecsNorm = DATA.vecs.q.map(row => {
+    const f = Float32Array.from(row);
+    let s = 0; for (const x of f) s += x * x;
+    s = Math.sqrt(s) || 1;
+    return f.map(x => x / s);
+  });
+  return vecsNorm;
+}
+async function semanticPass(q) {
+  const seq = ++sSeq;
+  let vec;
+  try {
+    const resp = await fetch('http://127.0.0.1:11434/api/embed', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: DATA.vecs.model, input: q }) });
+    vec = (await resp.json()).embeddings[0];
+  } catch (e) { return; }   // offline / CORS → тихая деградация до substring
+  if (seq !== sSeq || !vec) return;   // stale-request discard (монотонный seq)
+  let s = 0; for (const x of vec) s += x * x; s = Math.sqrt(s) || 1;
+  const qv = vec.map(x => x / s);
+  const rows = normVecs();
+  const seen = new Set(sHits.map(h => h.n.id));
+  const cands = [];
+  DATA.vecs.ids.forEach((id, i) => {
+    if (seen.has(id) || !byId.has(id) || !visible(byId.get(id))) return;
+    let dot = 0; const r = rows[i];
+    for (let j = 0; j < r.length; j++) dot += r[j] * qv[j];
+    if (dot >= 0.72) cands.push({ n: byId.get(id), score: dot, sem: true });
+  });
+  cands.sort((a, b) => b.score - a.score);
+  sHits = sHits.concat(cands.slice(0, 10 - sHits.length));
+  renderDrop();
+}
+
+// ---- keyboard (порт graph-lab hotkeys + WASD/QE fly + esc-каскад) ----
+const held = new Set();
+let wasdRAF = null;
+function wasdStep() {
+  wasdRAF = null;
+  if (!held.size) return;
+  const boost = held.has('shift') ? 3 : 1;
+  const d = 11 * boost / transform.k;
+  const sel = d3.select(canvas);
+  if (held.has('w')) sel.call(zoom.translateBy, 0, d);
+  if (held.has('s')) sel.call(zoom.translateBy, 0, -d);
+  if (held.has('a')) sel.call(zoom.translateBy, d, 0);
+  if (held.has('d')) sel.call(zoom.translateBy, -d, 0);
+  if (held.has('q')) sel.call(zoom.scaleBy, 1 - 0.02 * boost);
+  if (held.has('e')) sel.call(zoom.scaleBy, 1 + 0.02 * boost);
+  wasdRAF = requestAnimationFrame(wasdStep);
+}
+window.addEventListener('keyup', ev => held.delete(ev.key.toLowerCase()));
+window.addEventListener('blur', () => held.clear());
+const typing = () => /INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '');
+window.addEventListener('keydown', ev => {
+  if (ev.key === '/' && !typing()) { ev.preventDefault(); searchEl.focus(); searchEl.select(); return; }
+  if (ev.key === 'Escape') {
+    if (helpEl.classList.contains('on')) helpEl.classList.remove('on');
+    else if (regenEl.classList.contains('on')) regenEl.classList.remove('on');
+    else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; hideDrop(); searchEl.blur(); }
+    else if (selected) selectNode(null);
+    else if (pinIds.length) setPins([]);                      // камера НЕ откатывается (spatial memory)
+    else if (tagSel.size) { tagSel.clear(); renderTags(); }
+    else if (isolate.size) { isolate.clear(); renderLegend(); }
+    requestDraw();
+    return;
+  }
+  if (typing()) return;
+  const k = ev.key.toLowerCase();
+  if ('wasdqe'.includes(k) && k.length === 1) {
+    held.add(k); if (ev.shiftKey) held.add('shift'); else held.delete('shift');
+    if (!wasdRAF) wasdRAF = requestAnimationFrame(wasdStep);
+    return;
+  }
+  if (ev.key >= '1' && ev.key <= '8') {                       // toggle зоны (LAYERS chips)
+    const z = zoneOrder[+ev.key - 1];
+    if (z) toggleZone(z);
+  }
+  else if (k === 'f') fitView();
+  else if (k === 'h') goHome();
+  else if (k === 'c') { if (selected) frameEgo(selected); }   // явный перелёт: selected+ego в кадр
+  else if (k === 'l') {                                       // cycle labelMode
+    const el = $('labelMode'), ord = ['hubs', 'hops', 'near', 'all'];
+    el.value = ord[(ord.indexOf(el.value) + 1) % 4];
+    saveCfg(); requestDraw(); toast('labels: ' + el.value);
+  }
+  else if (k === '0') { toggles.particles = !toggles.particles; $('particles').classList.toggle('on', toggles.particles); lastPT = performance.now(); saveCfg(); requestDraw(); }
+  else if (k === '9') { toggles.edgesOn = !toggles.edgesOn; $('edgesOn').classList.toggle('on', toggles.edgesOn); saveCfg(); requestDraw(); }
+  else if (k === 'v') document.body.classList.toggle('panels-hidden');   // контекст остаётся
+  else if (k === 'b' || ev.key === 'Backspace') {             // назад по истории выделений
+    const id = navHist.pop();
+    if (id && byId.has(id)) { histLock = true; focusNode(id); histLock = false; }
+  }
+  else if (k === '[' || k === ']') {                          // cycle layout (порт keybinding)
+    const opts = [...$('layoutMode').options].map(o => o.value);
+    const i = Math.max(0, opts.indexOf(layoutName));
+    applyLayout(opts[(i + (k === ']' ? 1 : opts.length - 1)) % opts.length]);
+    toast('layout: ' + layoutName);
+  }
+  else if (ev.key === '?') helpEl.classList.toggle('on');
+});
+
+// ---- legend (click = isolate group) ----
+let isolate = new Set();
+for (const id of ['colorMode','sizeMode'])
+  document.getElementById(id).addEventListener('change', () => { isolate.clear(); renderLegend(); requestDraw(); });
+
+function renderLegend() {
+  const el = document.getElementById('legend');
+  const m = mode();
+  document.getElementById('legendTitle').textContent =
+    m === 'heat' ? HEAT.label : m;
+  let items = [];   // [color, displayName, count, key]
+  if (m === 'cluster') {
+    const counts = new Map();
+    for (const n of nodes) counts.set(n.cluster, (counts.get(n.cluster)||0)+1);
+    items = [...counts.entries()].sort((a,b) => a[0]-b[0]).slice(0, 8)
+      .map(([c, cnt]) => [CAT[c], clusterName(c), cnt, c]);
+    const rest = nodes.filter(n => n.cluster >= 8).length;
+    if (rest) items.push([OTHER, 'other clusters', rest, 'other']);
+  } else if (m === 'zone') {
+    items = zoneOrder.map(z => [zoneColor(z), z, nodes.filter(n => n.zone === z).length, z]).filter(e => e[2]);
+  } else if (m === 'type') {
+    items = typeRank.slice(0, 8).map(([t, cnt], i) => [CAT[i], t || '?', cnt, t]);
+    const rest = typeRank.slice(8).reduce((s,e) => s+e[1], 0);
+    if (rest) items.push([OTHER, 'other types', rest, 'other']);
+  } else {
+    items = [[heatScale(1), HEAT.high, '', null], [heatScale(0.5), '', '', null], [heatScale(0), HEAT.low, '', null]];
+  }
+  el.innerHTML = items.map(([c, name, cnt, key], i) =>
+    `<div class="lg${key!==null&&isolate.has(key)?' active':''}${isolate.size&&key!==null&&!isolate.has(key)?' faded':''}" data-i="${i}">
+      <span class="sw" style="background:${c}"></span><span class="name">${esc(String(name))}</span><span class="n">${cnt}</span></div>`).join('');
+  el.querySelectorAll('.lg').forEach((row, i) => row.addEventListener('click', () => {
+    const key = items[i][3];
+    if (key === null) return;
+    isolate.has(key) ? isolate.delete(key) : isolate.add(key);
+    renderLegend(); requestDraw();
+  }));
+}
+function clusterName(c) {
+  // самый связный узел кластера как имя
+  let best = null;
+  for (const n of nodes) if (n.cluster === c && !n.ghost && (!best || n.degree > best.degree)) best = n;
+  return best ? best.label : 'cluster '+c;
+}
+
+// ---- рабочие теги: агрегат по корпусу, клик = изолировать (AND-фильтр по пересечению) ----
+function renderTags() {
+  const counts = new Map();
+  for (const n of nodes) { if (n.ghost) continue; for (const t of nodeTags(n)) counts.set(t, (counts.get(t) || 0) + 1); }
+  const card = document.getElementById('tagCard');
+  if (!counts.size) { card.style.display = 'none'; return; }
+  // порядок: part_of (◆) → tier → ручные; внутри по частоте
+  const rank = t => t.startsWith('◆') ? 0 : t.startsWith('tier') ? 1 : 2;
+  const items = [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1]);
+  const el = document.getElementById('tags');
+  el.innerHTML = items.map(([t, c]) =>
+    `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-t="${esc(t)}">
+      <span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}<span class="n">${c}</span></span>`).join('');
+  el.querySelectorAll('.tag').forEach(s => s.addEventListener('click', () => toggleTag(s.dataset.t)));
+}
+function toggleTag(t) {
+  tagSel.has(t) ? tagSel.delete(t) : tagSel.add(t);
+  renderTags();
+  // фрейм на выбранный набор — только если камера не в ручном режиме
+  if (tagSel.size && camPolicy() !== 'stay') {
+    const hit = nodes.filter(n => !n.ghost && hasTag(n) && (!n.ghost || showGhosts()));
+    if (hit.length) frameSet(hit);
+  }
+  requestDraw();
+}
+document.getElementById('tagClr').addEventListener('click', () => { tagSel.clear(); renderTags(); requestDraw(); });
+function frameSet(es) {
+  const pad = 90;
+  const x0 = Math.min(...es.map(m => m.x)) - pad, x1 = Math.max(...es.map(m => m.x)) + pad;
+  const y0 = Math.min(...es.map(m => m.y)) - pad, y1 = Math.max(...es.map(m => m.y)) + pad;
+  const k = Math.min(3.0, 0.9 / Math.max((x1-x0)/W, (y1-y0)/H, 1e-6));
+  d3.select(canvas).transition().duration(450).call(zoom.transform,
+    d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2));
+}
+
+// ==== graph-lab ports: pins / chips / overlay / views / misc ====
+
+// ---- toast (порт showToast) ----
+function toast(msg) {
+  const host = $('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  host.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('in'));
+  setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 300); }, 2400);
+}
+function copyText(txt, label) {
+  const done = () => toast('⧉ ' + (label || 'скопировано'));
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
+  else fallbackCopy(txt, done);
+}
+function fallbackCopy(txt, done) {
+  const ta = document.createElement('textarea');
+  ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast('copy не удался'); }
+  ta.remove();
+}
+
+// ---- editor dispatch (порт EditorHandler: URL-scheme; abs-путь всегда в буфер) ----
+const absPath = n => n.path ? (DATA.src ? DATA.src.replace(/\/$/, '') + '/' + n.path : n.path) : '';
+const EDITOR_TPL = { vscode: 'vscode://file/{abs}', idea: 'idea://open?file={abs}', hx: 'hx://{abs}' };
+$('editorPref').value = lsGet('atlas:editor', 'copy');
+$('editorPref').addEventListener('change', () => lsSet('atlas:editor', $('editorPref').value));
+function openInEditor(n) {
+  const abs = absPath(n);
+  if (!abs) return;
+  copyText(abs, 'path');   // fallback в каждый бранч (контракт EditorHandler)
+  const pref = lsGet('atlas:editor', 'copy');
+  if (EDITOR_TPL[pref]) location.href = EDITOR_TPL[pref].replace('{abs}', abs);
+}
+
+// ---- pin stack (порт PinStack + принцип #4 pin=context delivery) ----
+let pinIds = (lsGet(KEYP + 'pins', [])).filter(id => byId.has(id));
+let pinSet = new Set(pinIds);
+let pinHl = new Set();
+function rebuildPinHl() {
+  pinHl = new Set();
+  for (const id of pinIds) { pinHl.add(id); for (const nb of adj.get(id) || []) pinHl.add(nb); }
+}
+function setPins(ids) {
+  pinIds = ids.slice(-6);   // capped FIFO (PinStack.MAX)
+  pinSet = new Set(pinIds);
+  rebuildPinHl();
+  if (keepSet) rebuildKeep();
+  lsSet(KEYP + 'pins', pinIds);
+  renderPins();
+  requestDraw();
+}
+function togglePin(n, multi) {
+  if (n.ghost) return;
+  const has = pinSet.has(n.id);
+  if (multi) setPins(has ? pinIds.filter(i => i !== n.id) : [...pinIds, n.id]);
+  else setPins(has && pinIds.length === 1 ? [] : [n.id]);
+  // context delivery: камера sticky-tween к ноде; unpin камеру НЕ возвращает; stay = не трогать
+  if (!has && camPolicy() !== 'stay') d3.select(canvas).transition().duration(450).call(zoom.transform,
+    d3.zoomIdentity.translate(W/2, H/2).scale(Math.max(transform.k, 1.2)).translate(-n.x, -n.y));
+}
+function renderPins() {
+  const card = $('pinsCard');
+  card.style.display = pinIds.length ? '' : 'none';
+  $('pinsList').innerHTML = pinIds.map(id => {
+    const n = byId.get(id);
+    return `<div class="pin-row" data-id="${esc(id)}"><span class="sw" style="background:${nodeColor(n)}"></span>
+      <span class="name">${esc(n.label)}</span><span class="x" data-x="${esc(id)}">✕</span></div>`;
+  }).join('');
+  $('pinsList').querySelectorAll('.pin-row').forEach(row => row.addEventListener('click', ev => {
+    if (ev.target.dataset.x) { setPins(pinIds.filter(i => i !== ev.target.dataset.x)); return; }
+    focusNode(row.dataset.id);
+  }));
+}
+$('pinsClr').addEventListener('click', () => setPins([]));
+// пачку в тег: пины (ctrl+rmb = мультивыбор) → один тег на всех; фильтруется в «рабочих тегах»
+$('pinsTag').addEventListener('click', () => {
+  if (!pinIds.length) { toast('нет пинов: rmb = пин, ctrl+rmb = стек'); return; }
+  const t = prompt(`тег для ${pinIds.length} запиненных нод:`);
+  if (t) addTagTo(pinIds, t);
+});
+
+// ---- zone chips (порт LAYERS chips: toggle видимости слоя, 1-8) ----
+function toggleZone(z) {
+  hiddenZones.has(z) ? hiddenZones.delete(z) : hiddenZones.add(z);
+  saveCfg(); renderZoneChips(); requestDraw();
+}
+function renderZoneChips() {
+  $('zoneChips').innerHTML = zoneOrder.map((z, i) => {
+    const cnt = nodes.filter(n => n.zone === z && !n.ghost).length;
+    return `<span class="zc${hiddenZones.has(z) ? ' off' : ''}" data-z="${esc(z)}" title="${i + 1}">
+      <span class="sw" style="background:${zoneColor(z)}"></span>${esc(z)}<span class="n">${cnt}</span></span>`;
+  }).join('');
+  $('zoneChips').querySelectorAll('.zc').forEach(c => c.addEventListener('click', () => toggleZone(c.dataset.z)));
+}
+
+// ---- edge-kind chips (per-type фильтр рёбер; стиль = EDGE_STYLES) ----
+const kindCounts = new Map();
+for (const e of edges) kindCounts.set(e.kind || '?', (kindCounts.get(e.kind || '?') || 0) + 1);
+function renderKindChips() {
+  const items = [...kindCounts.entries()].sort((a, b) => b[1] - a[1]);
+  $('kindsCard').style.display = items.length > 1 ? '' : 'none';
+  $('kindChips').innerHTML = items.map(([k, cnt]) => {
+    const st = EDGE_STYLES[k];
+    const sw = st ? `<span class="swl" style="border-color:${st.c};border-top-style:${st.dash ? 'dashed' : 'solid'}"></span>`
+                  : '<span class="swl" style="border-color:#8b8983"></span>';
+    return `<span class="zc${hiddenKinds.has(k) ? ' off' : ''}" data-k="${esc(k)}">${sw}${esc(k)}<span class="n">${cnt}</span></span>`;
+  }).join('');
+  $('kindChips').querySelectorAll('.zc').forEach(c => c.addEventListener('click', () => {
+    const k = c.dataset.k;
+    hiddenKinds.has(k) ? hiddenKinds.delete(k) : hiddenKinds.add(k);
+    saveCfg(); renderKindChips(); requestDraw();
+  }));
+}
+
+// ---- overlay CRUD (порт OverlayStore: user-edges + negatives, tombstone не нужен — LS) ----
+function addUserEdge(a, b) {
+  const key = negKey(a.id, b.id);
+  if (overlay.edges.some(e => negKey(e.source, e.target) === key)) { toast('ребро уже есть'); return; }
+  overlay.edges.push({ source: a.id, target: b.id, type: 'user', ts: Date.now() });
+  saveOverlay();
+  const e = { source: a, target: b, kind: 'user', cross: true, user: true };
+  edges.push(e);
+  adj.get(a.id).push(b.id); adj.get(b.id).push(a.id);
+  outLinks.get(a.id).push(b.id); inLinks.get(b.id).push(a.id);
+  kindCounts.set('user', (kindCounts.get('user') || 0) + 1);
+  renderKindChips(); rebuildPinHl();
+  toast(`user-ребро: ${a.label} → ${b.label}`);
+  if (selected) selectNode(selected, { noFly: true });
+  requestDraw();
+}
+function removeUserEdge(aid, bid) {
+  const key = negKey(aid, bid);
+  overlay.edges = overlay.edges.filter(e => negKey(e.source, e.target) !== key);
+  saveOverlay();
+  const idx = edges.findIndex(e => e.user && negKey(e.source.id, e.target.id) === key);
+  if (idx >= 0) edges.splice(idx, 1);
+  kindCounts.set('user', Math.max(0, (kindCounts.get('user') || 1) - 1));
+  renderKindChips();
+  toast('user-ребро удалено');
+  if (selected) selectNode(selected, { noFly: true });
+  requestDraw();
+}
+function addNegative(aid, bid) {
+  overlay.negatives.push({ s: aid, t: bid, ts: Date.now() });
+  negSet.add(negKey(aid, bid));
+  saveOverlay();
+  toast('negative: ребро спрятано');
+  if (selected) selectNode(selected, { noFly: true });
+  requestDraw();
+}
+function removeNegative(aid, bid) {
+  const key = negKey(aid, bid);
+  overlay.negatives = overlay.negatives.filter(x => negKey(x.s, x.t) !== key);
+  negSet.delete(key);
+  saveOverlay();
+  if (selected) selectNode(selected, { noFly: true });
+  requestDraw();
+}
+const edgeSuppressed = e => negSet.size && negSet.has(negKey(e.source.id, e.target.id));
+
+// ---- zone override (порт /layers override: recolor, позиции не трогаем) ----
+function setZoneOverride(n, z) {
+  if (z === 'auto') {
+    delete zOver[n.id];
+    if (n.zone_auto) n.zone = n.zone_auto;
+  } else {
+    n.zone_auto = n.zone_auto || n.zone;
+    n.zone = z;
+    zOver[n.id] = z;
+  }
+  lsSet(KEYP + 'zoneOverride', zOver);
+  const a = ZONES[n.zone] || [0, 0];
+  n.ax = a[0]*R; n.ay = a[1]*R;   // якорь обновлён; двинется только при следующем reheat
+  renderZoneChips(); renderLegend();
+  selectNode(n, { noFly: true });
+}
+
+// ---- saved views (порт SavedViews: camera + фильтры, per-corpus в LS) ----
+let views = lsGet(KEYP + 'views', []);
+function renderViews() {
+  $('viewsList').innerHTML = views.map((v, i) =>
+    `<div class="vrow" data-i="${i}"><span class="name">${esc(v.name)}</span><span class="x" data-x="${i}">✕</span></div>`).join('');
+  $('viewsList').querySelectorAll('.vrow').forEach(row => row.addEventListener('click', ev => {
+    const i = +row.dataset.i;
+    if (ev.target.dataset.x !== undefined) {
+      views.splice(i, 1); lsSet(KEYP + 'views', views); renderViews(); return;
+    }
+    applyView(views[i]);
+  }));
+}
+function applyView(v) {
+  hiddenZones.clear(); (v.hiddenZones || []).forEach(z => hiddenZones.add(z));
+  hiddenKinds.clear(); (v.hiddenKinds || []).forEach(k => hiddenKinds.add(k));
+  if (v.color) $('colorMode').value = v.color;
+  if (v.size) $('sizeMode').value = v.size;
+  // вид без раскладки = камера летит в координаты ЧУЖОЙ раскладки (дебаг-кейс аудита 07-08)
+  if (v.layout && v.layout !== layoutName &&
+      [...$('layoutMode').options].some(o => o.value === v.layout))
+    applyLayout(v.layout, true);
+  renderZoneChips(); renderKindChips(); renderLegend();
+  d3.select(canvas).transition().duration(500).call(zoom.transform,
+    d3.zoomIdentity.translate(v.t.x, v.t.y).scale(v.t.k));
+  toast('вид: ' + v.name);
+}
+$('viewSave').addEventListener('click', () => {
+  const name = $('viewName').value.trim() || 'view ' + (views.length + 1);
+  views.push({ name, t: { x: transform.x, y: transform.y, k: transform.k },
+    hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
+    color: mode(), size: sizeMode(), layout: layoutName });
+  lsSet(KEYP + 'views', views);
+  $('viewName').value = '';
+  renderViews(); toast('вид сохранён: ' + name);
+});
+
+// ---- DATA-кнопки: reload / export view|full / home (порт DATA toolbar) ----
+let homeTransform = null;   // стартовый fit, ставится после прогрева
+function goHome() {
+  if (homeTransform) d3.select(canvas).transition().duration(500).call(zoom.transform, homeTransform);
+}
+$('homeBtn').addEventListener('click', goHome);
+$('reloadBtn').addEventListener('click', () => location.reload());
+$('exportBtn').addEventListener('click', ev => exportJSON(ev.shiftKey));
+function exportJSON(full) {
+  const neighbors = selected ? new Set([selected.id, ...adj.get(selected.id)]) : null;
+  const keepN = full ? nodes : nodes.filter(n => visible(n) && inKeep(n) && matches(n) && hasTag(n) &&
+    (!isolate.size || isolate.has(groupKey(n))) && (!neighbors || neighbors.has(n.id)));
+  const ids = new Set(keepN.map(n => n.id));
+  const eOut = edges.filter(e => ids.has(e.source.id) && ids.has(e.target.id) &&
+      (full || (!hiddenKinds.has(e.kind) && !edgeSuppressed(e))))
+    .map(e => ({ source: e.source.id, target: e.target.id, kind: e.kind,
+      ...(e.w ? { w: e.w } : {}), ...(e.score ? { score: e.score } : {}) }));
+  const out = { title: DATA.title, generated: DATA.generated, src: DATA.src, zones: ZONES,
+    heat: HEAT, detectors: DATA.detectors || [],
+    nodes: keepN.map(n => ({ ...n, _mx: undefined, _my: undefined, vx: undefined, vy: undefined,
+      index: undefined, fx: undefined, fy: undefined })),
+    edges: eOut };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' }));
+  a.download = full ? 'atlas.full.json' : `atlas.view-${keepN.length}n.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('экспорт: ' + a.download);
+}
+
+// ---- hint: hover по контролу = строка в баре СРАЗУ + через 350мс человекочитаемая
+// карточка у самого контрола (заголовок = что это, тело = что делает) ----
+const hintEl = $('hint');
+const hintCard = document.createElement('div');
+hintCard.id = 'hintCard';
+document.body.appendChild(hintCard);
+let hintT = null;
+function hintTitle(h) {
+  const lb = h.querySelector('label');
+  if (lb) return lb.textContent;
+  const ch = h.querySelector('.cardHead .t');
+  if (ch) return ch.textContent;
+  const own = (h.textContent || '').trim();
+  return own && own.length <= 26 ? own : '';
+}
+document.addEventListener('mouseover', ev => {
+  if (!(ev.target instanceof Element)) return;
+  const h = ev.target.closest('[data-hint]');
+  hintEl.textContent = h ? h.dataset.hint : '';
+  clearTimeout(hintT);
+  if (!h) { hintCard.style.display = 'none'; return; }
+  hintT = setTimeout(() => {
+    const r = h.getBoundingClientRect();
+    const tt = hintTitle(h);
+    hintCard.innerHTML = (tt ? `<b>${esc(tt)}</b>` : '') + esc(h.dataset.hint);
+    hintCard.style.display = 'block';
+    const cw = hintCard.offsetWidth, chh = hintCard.offsetHeight;
+    let x = r.right + 12, y = r.top;
+    if (x + cw > W - 8) x = Math.max(8, r.left - cw - 12);   // не влезло справа → слева
+    if (y + chh > H - 8) y = r.top - chh - 8;                // контролы бара → карточка сверху
+    hintCard.style.left = x + 'px';
+    hintCard.style.top = Math.max(8, y) + 'px';
+  }, 350);
+});
+document.addEventListener('mouseleave', () => { clearTimeout(hintT); hintCard.style.display = 'none'; });
+
+// ---- rebuild-модалка (⚙): эргономика graph-lab rebuild-queue без сервера ----
+const regenEl = $('regen');
+function rgUpdate() {
+  const flags = [['rgVecs', '--search-vecs'], ['rgStruct', '--structural-cross'],
+    ['rgNoSem', '--no-semantic-cross'], ['rgNoDet', '--no-detectors']]
+    .filter(([id]) => $(id).checked).map(([, f]) => f);
+  $('rgCmd').textContent = DATA.src
+    ? `memory-atlas --no-open --src ${DATA.src}` + (flags.length ? ' ' + flags.join(' ') : '')
+    : '# граф собран внешним билдером (--data): пересобери его и перезапусти пайп';
+}
+function rgAge() {
+  let s = 'данные: ' + (DATA.generated || '?');
+  const tm = Date.parse(String(DATA.generated || '').replace(' ', 'T'));
+  if (tm) {
+    const hrs = Math.max(0, Math.round((Date.now() - tm) / 3600000));
+    s += ` · ${hrs < 48 ? hrs + 'ч' : Math.round(hrs / 24) + 'д'} назад`;
+  }
+  $('regenAge').textContent = s;
+}
+$('rebuildBtn').addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
+for (const id of ['rgVecs', 'rgStruct', 'rgNoSem', 'rgNoDet']) $(id).addEventListener('change', rgUpdate);
+$('rgCopy').addEventListener('click', () => copyText($('rgCmd').textContent, 'команда'));
+$('rgReload').addEventListener('click', () => location.reload());
+$('rgClose').addEventListener('click', () => regenEl.classList.remove('on'));
+regenEl.addEventListener('click', ev => { if (ev.target === regenEl) regenEl.classList.remove('on'); });
+
+// ---- help overlay ----
+const helpEl = $('help');
+$('helpBtn').addEventListener('click', () => helpEl.classList.toggle('on'));
+$('helpClose').addEventListener('click', () => helpEl.classList.remove('on'));
+helpEl.addEventListener('click', ev => { if (ev.target === helpEl) helpEl.classList.remove('on'); });
+$('helpReset').addEventListener('click', () => {
+  for (const k of Object.keys(localStorage)) if (k.startsWith('atlas:')) localStorage.removeItem(k);
+  location.reload();
+});
+$('helpRestoreHidden').addEventListener('click', () => {
+  hiddenNodes.clear(); $('hiddenCnt').textContent = 0; requestDraw(); toast('скрытые ноды возвращены');
+});
+$('helpExportOverlay').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(overlay, null, 2)], { type: 'application/json' }));
+  a.download = 'overlay.json'; a.click(); URL.revokeObjectURL(a.href);
+});
+$('helpKinds').innerHTML = Object.entries(EDGE_STYLES).map(([k, st]) =>
+  `<tr><td style="color:${st.c}">${k}</td><td>${{
+    shared_ref: 'две зоны ссылаются на один ghost (всегда on)',
+    semantic: 'cosine эмбеддингов ≥ 0.75 (Ollama, build-time)',
+    tag_overlap: 'Jaccard рабочих тегов ≥ 0.5',
+    temporal_proximity: 'co-modification в окне 24h',
+    session_co_occurrence: 'co-touched в git-коммитах',
+    structural_homology: 'chain-3 мотивы (opt-in, research)',
+    user: 'нарисовано юзером (ctrl+click ×2)',
+  }[k] || ''}</td></tr>`).join('');
+
+// ---- gestures (порт gestures.js: MediaPipe CDN, graceful degrade) ----
+let gestState = null;
+function gesturesToggle(on) {
+  if (!on) { if (gestState) { try { gestState.cam.stop(); gestState.video.remove(); } catch (e) {} gestState = null; } return; }
+  const fail = msg => { toast('🎥 ' + msg); toggles.gestures = false; $('gestures').classList.remove('on'); };
+  const load = src => new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+  load('https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js')
+    .then(() => load('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js'))
+    .then(() => {
+      const video = document.createElement('video');
+      video.style.display = 'none'; document.body.appendChild(video);
+      const hands = new window.Hands({ locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/' + f });
+      hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+      let prev = null;
+      hands.onResults(r => {
+        const lm = r.multiHandLandmarks && r.multiHandLandmarks[0];
+        if (!lm) { prev = null; return; }
+        const palm = lm[9];
+        const pinch = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+        if (prev) {
+          const dx = (palm.x - prev.x) * W * 1.6, dy = (palm.y - prev.y) * H * 1.6;
+          if (Math.abs(dx) + Math.abs(dy) > 1.5)
+            d3.select(canvas).call(zoom.translateBy, -dx / transform.k, dy / transform.k);   // зеркало вебки
+          const dz = pinch - prev.pinch;
+          if (Math.abs(dz) > 0.01) d3.select(canvas).call(zoom.scaleBy, 1 + dz * 4);
+        }
+        prev = { x: palm.x, y: palm.y, pinch };
+      });
+      const cam = new window.Camera(video, { onFrame: async () => hands.send({ image: video }), width: 320, height: 240 });
+      cam.start().then(() => { gestState = { cam, video }; toast('🎥 жесты: ладонь = пан, щипок = зум'); })
+        .catch(() => fail('вебкамера недоступна'));
+    })
+    .catch(() => fail('CDN недоступен (offline) — жесты выключены'));
+}
+
+// ---- minimap (orientation-порт: side-map + viewport rect, click = pan) ----
+const mm = $('minimap'), mmCtx = mm.getContext('2d');
+let mmBox = null;
+function drawMinimap() {
+  const vis = nodes.filter(visible);
+  if (!vis.length) return;
+  const x0 = d3.min(vis, n => n.x), x1 = d3.max(vis, n => n.x);
+  const y0 = d3.min(vis, n => n.y), y1 = d3.max(vis, n => n.y);
+  const pad = 8, mw = mm.width, mh = mm.height;
+  const k = Math.min((mw - 2*pad) / Math.max(x1-x0, 1), (mh - 2*pad) / Math.max(y1-y0, 1));
+  const ox = (mw - (x1-x0)*k) / 2 - x0*k, oy = (mh - (y1-y0)*k) / 2 - y0*k;
+  mmBox = { k, ox, oy };
+  mmCtx.clearRect(0, 0, mw, mh);
+  for (const n of vis) {
+    mmCtx.fillStyle = n.ghost ? 'rgba(122,120,111,0.4)' : hexA(zoneColor(n.zone), 0.85);
+    mmCtx.fillRect(n.x*k + ox - 0.75, n.y*k + oy - 0.75, 1.5, 1.5);
+  }
+  // viewport rect: экран → world → minimap
+  const [wx0, wy0] = transform.invert([0, 0]), [wx1, wy1] = transform.invert([W, H]);
+  mmCtx.strokeStyle = 'rgba(244,243,238,0.75)';
+  mmCtx.lineWidth = 1;
+  mmCtx.strokeRect(wx0*k + ox, wy0*k + oy, (wx1-wx0)*k, (wy1-wy0)*k);
+}
+function mmPan(ev) {
+  if (!mmBox) return;
+  const r = mm.getBoundingClientRect();
+  const wx = (ev.clientX - r.left - mmBox.ox) / mmBox.k, wy = (ev.clientY - r.top - mmBox.oy) / mmBox.k;
+  d3.select(canvas).call(zoom.transform,
+    d3.zoomIdentity.translate(W/2, H/2).scale(transform.k).translate(-wx, -wy));
+}
+mm.addEventListener('mousedown', ev => {
+  mmPan(ev);
+  const mv = e => mmPan(e), up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+  window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+});
+
+// ---- magnet step (принцип #3: локально раздвинуть, вернуть при отходе) ----
+// Радиус в SCREEN-space (90px/зум): на отдалении магнит не сгребает пол-кластера,
+// толчок мягкий и медленный — «переливание» соседних лейблов (rotation-reveal) живёт.
+// Пуш/пулл (magnet.js-порт целиком): дальние рассасываются от курсора; ближайшая
+// тоже сперва отталкивается, но после 1.3s dwell плавно ПРИмагничивается к курсору
+// (pull-фаза), уход курсора / смена ноды → мягкий lerp домой.
+let magActive = false;
+let magPrev = null, magDwell = 0;
+const PULL_DELAY = 1300;
+function magnetStep() {
+  magActive = false;
+  let best = null, bd = Infinity;
+  const magR = toggles.magnet ? Math.min(160, Math.max(36, 90 / transform.k)) : 0;
+  const readR = Math.min(40, Math.max(12, 24 / transform.k));
+  if (toggles.magnet && cursorW) {
+    for (const n of nodes) {
+      if (!visible(n)) continue;
+      const d = Math.hypot(n.x - cursorW[0], n.y - cursorW[1]);
+      if (d < readR && d < bd) { bd = d; best = n; }
+    }
+  }
+  if (best !== magPrev) { magPrev = best; magDwell = performance.now(); }
+  const pulling = best && performance.now() - magDwell > PULL_DELAY;
+  for (const n of nodes) {
+    // lerp 0.24 (был 0.1): упругий отклик вместо «киселя» — толчок и возврат ощущаются пружиной
+    let tx = 0, ty = 0, lerp = 0.24;
+    if (toggles.magnet && cursorW && visible(n)) {
+      const dx = n.x - cursorW[0], dy = n.y - cursorW[1];
+      const d = Math.hypot(dx, dy);
+      if (pulling && n === best) {
+        // pull: цель = курсор (кап magR·0.8 — не телепорт), медленнее толчка = читается как «прилипание»
+        const cap = Math.min(d, magR * 0.8);
+        tx = -dx / (d || 1) * cap; ty = -dy / (d || 1) * cap;
+        lerp = 0.09;
+      } else if (d < magR && d > 0.5) {
+        const f = magR * 0.13 * Math.exp(-d / (magR * 0.42));
+        tx = dx / d * f; ty = dy / d * f;
+      }
+    }
+    n._mx = (n._mx || 0) + (tx - (n._mx || 0)) * lerp;
+    n._my = (n._my || 0) + (ty - (n._my || 0)) * lerp;
+    if (Math.abs(n._mx) > 0.05 || Math.abs(n._my) > 0.05) magActive = true;
+  }
+  magNode = toggles.magnet ? best : null;
+}
+
+// ---- layout templates (порт graph-lab layouts + принцип #1: semantic distance) ----
+// Морф идёт через саму симуляцию: link отпущен, сильные X/Y-таргеты + collide —
+// анимация перехода и разлипание бесплатно. force = исходные силы атласа.
+let layoutName = 'force';
+const hasSem = nodes.some(n => n.sx !== undefined);
+if (!hasSem) {
+  const o = [...$('layoutMode').options].find(o => o.value === 'semantic');
+  if (o) o.remove();
+}
+const hasAge = nodes.some(n => !n.ghost && n.age_days !== undefined);
+if (!hasAge) {
+  const o = [...$('layoutMode').options].find(o => o.value === 'timeline');
+  if (o) o.remove();
+}
+function layoutTargets(name) {
+  const t = new Map();
+  const real = nodes.filter(n => !n.ghost);
+  const maxDeg = d3.max(real, n => n.degree) || 1;
+  if (name === 'semantic') {
+    for (const n of real) if (n.sx !== undefined) t.set(n.id, [n.sx * R, n.sy * R]);
+  } else if (name === 'radial') {
+    // зоны = сектора кольца, хабы к центру (radial-порт)
+    let a0 = -Math.PI / 2;
+    for (const z of zoneOrder) {
+      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      if (!ns.length) continue;
+      const span = 2 * Math.PI * ns.length / real.length;
+      ns.forEach((n, i) => {
+        const ang = a0 + span * (i + 0.5) / ns.length;
+        const r = R * (0.22 + 0.72 * (1 - n.degree / maxDeg));
+        t.set(n.id, [Math.cos(ang) * r, Math.sin(ang) * r]);
+      });
+      a0 += span;
+    }
+  } else if (name === 'pack') {
+    // вложенные круги (d3.pack): зона ⊃ louvain-кластер ⊃ нота. Заполняет всё поле
+    // (space-filling), внутридоменная структура видна под-кругами кластеров
+    const groups = d3.groups(real, n => n.zone, n => n.cluster);
+    const root = d3.hierarchy({ children: groups.map(([, cs]) =>
+        ({ children: cs.map(([, ns]) => ({ children: ns.map(n => ({ n })) })) })) })
+      .sum(d => d.n ? 6 + d.n.degree : 0);
+    d3.pack().size([2.3 * R, 2.3 * R])
+      .padding(nd => nd.depth === 0 ? 44 : nd.depth === 1 ? 28 : 7)(root);
+    for (const leaf of root.leaves())
+      if (leaf.data.n) t.set(leaf.data.n.id, [leaf.x - 1.15 * R, leaf.y - 1.15 * R]);
+  } else if (name === 'ring') {
+    // синергия зон: зоны = дуги кольца (длина ∝ нотам); порядок дуг — жадная цепочка,
+    // максимально связанные пары зон рядом; внутри дуги ноды, тянущиеся к зоне-соседу,
+    // прижаты к общей границе (межзонная ориентация), хабы к внутреннему краю
+    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    const cnt = new Map(zs.map(z => [z, real.filter(n => n.zone === z).length]));
+    const syn = new Map(), pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+    for (const e of edges) {   // синергия по ВСЕМ рёбрам (вкл детекторы): смысловая связность
+      if (e.user) continue;
+      const a = e.source.zone, b = e.target.zone;
+      if (a !== b) syn.set(pk(a, b), (syn.get(pk(a, b)) || 0) + 1);
+    }
+    const S = (a, b) => syn.get(pk(a, b)) || 0;
+    let chain = zs.slice(0, 2);
+    if (zs.length > 2) {
+      let bs = -1;
+      for (let i = 0; i < zs.length; i++) for (let j = i + 1; j < zs.length; j++)
+        if (S(zs[i], zs[j]) > bs) { bs = S(zs[i], zs[j]); chain = [zs[i], zs[j]]; }
+      const left = zs.filter(z => !chain.includes(z));
+      while (left.length) {
+        let bz = left[0], side = 0; bs = -1;
+        for (const z of left) {
+          const sh = S(z, chain[0]), st = S(z, chain[chain.length - 1]);
+          if (Math.max(sh, st) > bs) { bs = Math.max(sh, st); bz = z; side = sh >= st ? 0 : 1; }
+        }
+        side ? chain.push(bz) : chain.unshift(bz);
+        left.splice(left.indexOf(bz), 1);
+      }
+    }
+    const GAP = 0.07, RING = R * 0.98;
+    let ang = -Math.PI / 2;
+    chain.forEach((z, zi) => {
+      const span = (2 * Math.PI - GAP * chain.length) * cnt.get(z) / real.length;
+      const prev = chain[(zi - 1 + chain.length) % chain.length];
+      const next = chain[(zi + 1) % chain.length];
+      const pull = n => {   // нетто-тяга ноды к соседям по кольцу: prev = -1, next = +1
+        let p = 0;
+        for (const id of adj.get(n.id) || []) {
+          const m = byId.get(id);
+          if (m && m.zone === prev) p--; else if (m && m.zone === next) p++;
+        }
+        return p;
+      };
+      const ns = real.filter(n => n.zone === z)
+        .sort((a, b) => pull(a) - pull(b) || b.degree - a.degree);
+      ns.forEach((n, i) => {
+        const aa = ang + span * (i + 0.5) / ns.length;
+        const r = RING - 90 * (n.degree / maxDeg) + (i % 3 - 1) * 34;
+        t.set(n.id, [Math.cos(aa) * r, Math.sin(aa) * r]);
+      });
+      ang += span + GAP;
+    });
+  } else if (name === 'petals') {
+    // лепестки: зона = phyllotaxis-спираль (подсолнух) вокруг своего якоря — хабы в
+    // сердцевине, периферия по краю; домен читается целиком, межзонного шума нет
+    const GA = Math.PI * (3 - Math.sqrt(5));
+    for (const z of zoneOrder) {
+      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      if (!ns.length) continue;
+      const a = ZONES[z] || [0, 0];
+      ns.forEach((n, i) => {
+        const rr2 = 16 * Math.sqrt(i + 0.6), aa = i * GA;
+        t.set(n.id, [a[0] * R * 1.12 + Math.cos(aa) * rr2, a[1] * R * 1.12 + Math.sin(aa) * rr2]);
+      });
+    }
+  } else if (name === 'grid') {
+    // grid по зонам: каждый домен = свой блок-«полка» с зазором, внутри сорт по degree;
+    // блоки текут лентой и заполняют прямоугольник — сканируется как таблица
+    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    const CELL = 56, GAPB = 130, maxW = 2.4 * R;
+    let bx = 0, by = 0, rowH = 0;
+    const blocks = [];
+    for (const z of zs) {
+      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      const cols = Math.ceil(Math.sqrt(ns.length * 1.7));
+      const w = cols * CELL, h = Math.ceil(ns.length / cols) * CELL;
+      if (bx + w > maxW && bx > 0) { bx = 0; by += rowH + GAPB; rowH = 0; }
+      blocks.push({ ns, cols, x: bx, y: by });
+      bx += w + GAPB; rowH = Math.max(rowH, h);
+    }
+    const totW = Math.max(...blocks.map(b => b.x + b.cols * CELL)), totH = by + rowH;
+    for (const b of blocks)
+      b.ns.forEach((n, i) => t.set(n.id, [
+        b.x + (i % b.cols) * CELL - totW / 2,
+        b.y + Math.floor(i / b.cols) * CELL - totH / 2]));
+  } else if (name === 'timeline') {
+    // время: x = РАНГ давности (не сырые дни: лог-шкала комкала свежие ноты в правый край),
+    // свежее СПРАВА, вся ширина занята равномерно; y = дорожка зоны — «что я трогал когда»
+    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    const orderT = real.slice().sort((a, b) =>
+      (a.age_days || 0) - (b.age_days || 0) || (a.id < b.id ? -1 : 1));
+    const xIdx = new Map(orderT.map((n, i) => [n.id, i]));
+    const X = i => R * 1.05 - (i / Math.max(1, orderT.length - 1)) * 2.1 * R;
+    const laneH = Math.min(170, 2 * R / Math.max(1, zs.length));
+    zs.forEach((z, zi) => {
+      const lane = (zi - (zs.length - 1) / 2) * laneH;
+      real.filter(n => n.zone === z).forEach((n, i) =>
+        t.set(n.id, [X(xIdx.get(n.id)), lane + ((i * 37 % 100) - 50) / 100 * laneH * 0.6]));
+    });
+  } else if (name === 'zones') {
+    // stacked-порт: колонка на зону, внутри — по degree
+    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    zs.forEach((z, zi) => {
+      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      const cols = Math.max(1, Math.ceil(ns.length / 24));
+      ns.forEach((n, i) => t.set(n.id, [
+        (zi - (zs.length - 1) / 2) * 360 + (i % cols - (cols - 1) / 2) * 46,
+        (Math.floor(i / cols) - 12) * 40]));
+    });
+  }
+  // ghosts: к центроиду реальных соседей (смысловое место, не случайное)
+  for (const n of nodes) {
+    if (!n.ghost) continue;
+    const nb = (adj.get(n.id) || []).map(id => t.get(id)).filter(Boolean);
+    if (nb.length) t.set(n.id, [d3.mean(nb, p => p[0]) + 22, d3.mean(nb, p => p[1]) + 22]);
+  }
+  return t;
+}
+function applyLayout(name, instant) {
+  layoutName = name;
+  $('layoutMode').value = name;
+  saveCfg();
+  if (name === 'force') {
+    sim.force('link').distance(e => sameZone(e) ? 46 : 110).strength(e => sameZone(e) ? 0.22 : 0.035);
+    sim.force('charge', makeCharge());
+    sim.force('collide', d3.forceCollide(n => radius(n) + 6.5).iterations(2));
+    sim.force('ax', d3.forceX(n => n.ax).strength(0.26));
+    sim.force('ay', d3.forceY(n => n.ay).strength(0.26));
+  } else {
+    const t = layoutTargets(name);
+    sim.force('link').strength(0);
+    sim.force('charge', d3.forceManyBody().strength(-8).distanceMax(110));
+    // шаблонные раскладки пакуются плотно по построению — широкий collide раздувал
+    // pack-круги и дорожки timeline; узкий держит форму, разлипание остаётся
+    sim.force('collide', d3.forceCollide(n => radius(n) + 2.5));
+    sim.force('ax', d3.forceX(n => { const p = t.get(n.id); return p ? p[0] : n.x; }).strength(0.5));
+    sim.force('ay', d3.forceY(n => { const p = t.get(n.id); return p ? p[1] : n.y; }).strength(0.5));
+  }
+  if (instant) { sim.stop().alpha(1).tick(180); requestDraw(); }
+  else {
+    sim.alpha(0.65).restart();
+    setTimeout(() => { if (layoutName === name) fitView(); }, 780);
+  }
+}
+$('layoutMode').addEventListener('change', () => applyLayout($('layoutMode').value));
+
+// ---- task-пресеты: «представление под задачу» одним выбором (эргономика graph-lab
+// admin, перенесённая в клиент: не сервер перегенерит — вид пересобирается на месте) ----
+const PRESETS = {
+  overview: { layout: 'force',    color: 'zone',    size: 'degree', clusters: false, ghosts: true,
+              toast: 'обзор: зоны силами, ghost-пунктир виден' },
+  themes:   { layout: 'pack',     color: 'cluster', size: 'degree', clusters: false, ghosts: false,
+              toast: 'тематики: круг зоны ⊃ круги louvain-кластеров' },
+  synergy:  { layout: 'ring',     color: 'zone',    size: 'degree', clusters: false, ghosts: false,
+              toast: 'синергия: связанные зоны — соседние дуги; пограничные ноды у общей границы' },
+  fresh:    { layout: 'timeline', color: 'heat',    size: 'bytes',  clusters: false, ghosts: false,
+              toast: 'свежесть: справа = свежее, ярче = горячее' },
+  hubs:     { layout: 'radial',   color: 'zone',    size: 'degree', clusters: false, ghosts: false,
+              toast: 'хабы: чем связнее нота, тем ближе к центру' },
+  meaning:  { layout: 'semantic', color: 'cluster', size: 'degree', clusters: false, ghosts: false,
+              kinds: ['semantic'], toast: 'смысл: позиция = cosine-близость, фиолетовые рёбра ≥0.75' },
+  debts:    { layout: 'force',    color: 'type',    size: 'degree', clusters: false, ghosts: true,
+              labels: 'all', toast: 'долги: пунктирные ghost = на них ссылаются, ноты нет' },
+};
+function applyPreset(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  if (p.layout === 'semantic' && !hasSem) { toast('semantic-раскладки нет: пересобери с эмбеддингами (⚙)'); return; }
+  if (p.layout === 'timeline' && !hasAge) { toast('нет данных возраста для timeline'); return; }
+  $('colorMode').value = p.color;
+  $('sizeMode').value = p.size;
+  if (p.labels) $('labelMode').value = p.labels;
+  toggles.clusters = p.clusters; $('clusters').classList.toggle('on', p.clusters);
+  toggles.ghosts = p.ghosts; $('ghosts').classList.toggle('on', p.ghosts);
+  if (p.kinds) for (const k of p.kinds) hiddenKinds.delete(k);   // слой рёбер, нужный пресету
+  isolate.clear();
+  renderLegend(); renderKindChips();
+  applyLayout(p.layout);   // saveCfg внутри
+  toast(p.toast);
+}
+$('taskPreset').addEventListener('change', () => { applyPreset($('taskPreset').value); $('taskPreset').value = ''; });
+
+// ---- particles (порт EDGE_STYLES.particles; default off — GPU, контракт B-26) ----
+let pT = 0, lastPT = 0;
+
+// ---- draw ----
+// paintFrame(g, opts): один кадр графа в контекст g.
+//   opts.only   — Set id: рисовать ТОЛЬКО эти ноды/внутр-рёбра резко (ego-проход)
+//   opts.muted  — приглушённый полный граф без лейблов (идёт в offscreen под blur)
+//   opts.tiles  — ego-ноды как тайл-карточки с заголовком (вместо кружка)
+//   opts.noClear/noBg — не чистить/не заливать фон (композит поверх blur)
+var drawQueued = false;
+function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(draw); } }
+function draw() {
+  drawQueued = false;
+  const now = performance.now();
+  if (toggles.particles) pT += Math.min(60, now - lastPT) / 1000;
+  lastPT = now;
+  magnetStep();
+  const fm = focusMode();
+  if (selected && fm !== 'dim') drawFocus(fm);
+  else paintFrame(ctx, {});
+  drawMinimap();
+  // анимационные режимы держат rAF-петлю живой; статика — одиночные кадры
+  if (toggles.particles || magActive || (toggles.magnet && cursorW)) requestDraw();
+}
+// A/B focus: фон реально блюрится (offscreen blit), ego-подграф резко поверх
+function drawFocus(fm) {
+  const ego = new Set([selected.id, ...adj.get(selected.id)]);
+  sizeBg();
+  paintFrame(bgCtx, { muted: true });               // весь граф приглушённо → offscreen
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.filter = `blur(${BLUR * dpr}px)`;
+  ctx.drawImage(bgCanvas, 0, 0);                     // один блит с фильтром = дёшево
+  ctx.filter = 'none';
+  ctx.restore();
+  paintFrame(ctx, { only: ego, tiles: fm === 'tiles', noClear: true, noBg: true });
+}
+function paintFrame(g, opts) {
+  const only = opts.only || null, muted = !!opts.muted, tiles = !!opts.tiles;
+  if (g === ctx) { labelHits = []; tileHits = []; }   // хит-ректы живут один кадр
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  if (!opts.noClear) g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+  g.scale(dpr, dpr);
+  if (!opts.noBg) {
+    // фон + мягкая виньетка (глубина)
+    g.fillStyle = PAGE;
+    g.fillRect(0, 0, W, H);
+    const vg = g.createRadialGradient(W/2, H/2, Math.min(W,H)*0.2, W/2, H/2, Math.max(W,H)*0.75);
+    vg.addColorStop(0, 'rgba(255,255,255,0.016)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.28)');
+    g.fillStyle = vg;
+    g.fillRect(0, 0, W, H);
+  }
+  g.translate(transform.x, transform.y);
+  g.scale(transform.k, transform.k);
+
+  const neighbors = selected ? new Set([selected.id, ...adj.get(selected.id)]) : null;
+  const inIso = n => !isolate.size || isolate.has(groupKey(n));
+  const dimmed = n => (query.length && !matches(n)) || (neighbors && !neighbors.has(n.id)) || !inIso(n) || !hasTag(n) || !inKeep(n);
+  const pinDimmed = n => pinSet.size && !pinHl.has(n.id);   // pin=context: остальное в фон 0.22
+  const searchHit = n => query.length && matches(n);
+
+  // hulls per zone — тонированы цветом зоны (пространственная привязка). В ego-проходе не нужны.
+  if (showHulls() && !only) {
+    const zoneLblBoxes = [];   // деконфликт зонных подписей: налезание → подпись уводится выше
+    const ringMode = layoutName === 'ring';   // дуга кольца: hull-хорда накрывает центр — не заливаем
+    for (const z of zoneOrder) {
+      const pts = nodes.filter(n => n.zone === z && visible(n)).map(n => [n.x, n.y]);
+      if (pts.length < 3) continue;
+      const hull = d3.polygonHull(pts);
+      if (!hull) continue;
+      const [cx, cy] = d3.polygonCentroid(hull);
+      const zc = zoneColor(z);
+      if (!ringMode) {
+        g.beginPath();
+        for (const [i, [px, py]] of hull.entries()) {
+          const dx = px-cx, dy = py-cy, len = Math.hypot(dx, dy) || 1;
+          const ex = px + dx/len*26, ey = py + dy/len*26;
+          i ? g.lineTo(ex, ey) : g.moveTo(ex, ey);
+        }
+        g.closePath();
+        g.fillStyle = hexA(zc, 0.035);
+        g.strokeStyle = hexA(zc, 0.22);
+        g.lineWidth = 1/transform.k;
+        g.fill(); g.stroke();
+      }
+      if (!muted) {
+        const zl = z.toUpperCase();
+        const zfs = Math.max(12, 14/transform.k)*TS;
+        g.font = `500 ${zfs}px ${'"SF Mono", ui-monospace, Menlo, monospace'}`;
+        g.textAlign = 'center';
+        // якорь = верх hull + константа (area-эвристика на широких плоских lane-hull
+        // улетала за экран); label всегда чуть над контуром своей зоны
+        let lx = cx, ly = d3.min(hull, p => p[1]) - 26 - 22/transform.k;
+        if (ringMode) {   // подпись по среднему углу дуги, снаружи кольца
+          const ang = Math.atan2(cy, cx);
+          const rmax = d3.max(pts, p => Math.hypot(p[0], p[1]));
+          lx = Math.cos(ang) * (rmax + 80);
+          ly = Math.sin(ang) * (rmax + 80);
+        }
+        const lw2 = g.measureText(zl).width, lh = zfs * 1.2;
+        // соседние зонные подписи не штабелируются друг на друге (LIGHT-кластер)
+        while (zoneLblBoxes.some(b => Math.abs(ly - b.y) < lh && Math.abs(lx - b.x) < (lw2 + b.w)/2 + 14/transform.k))
+          ly -= lh + 6/transform.k;
+        zoneLblBoxes.push({x: lx, y: ly, w: lw2});
+        g.lineWidth = 4/transform.k; g.lineJoin = 'round';
+        g.strokeStyle = 'rgba(12,12,11,0.8)';
+        g.strokeText(zl, lx, ly);   // halo: подпись зоны читается поверх рёбер/нод
+        g.fillStyle = hexA(zc, 0.75);
+        g.fillText(zl, lx, ly);
+      }
+    }
+  }
+
+  // cluster-hulls: мягкие блюр-блобы вокруг Louvain-кластеров (тематики из топологии).
+  // Отдельный слой поверх зон-hulls; ctx.filter blur = «доп блюр».
+  if (showClusters() && !only && !muted) {
+    const byC = new Map();
+    for (const n of nodes) { if (n.ghost || !visible(n)) continue; const c = n.cluster < 8 ? n.cluster : 'other';
+      (byC.get(c) || byC.set(c, []).get(c)).push(n); }
+    g.save();
+    g.filter = `blur(${7/Math.sqrt(transform.k)}px)`;   // мягкий край, чуть держит масштаб
+    for (const [c, ns] of byC) {
+      if (ns.length < 3) continue;
+      const hull = d3.polygonHull(ns.map(n => [n.x, n.y]));
+      if (!hull) continue;
+      const [cx, cy] = d3.polygonCentroid(hull);
+      const col = c === 'other' ? OTHER : CAT[c];
+      g.beginPath();
+      for (const [i, [px, py]] of hull.entries()) {
+        const dx = px-cx, dy = py-cy, len = Math.hypot(dx, dy) || 1;
+        const ex = px + dx/len*34, ey = py + dy/len*34;
+        i ? g.lineTo(ex, ey) : g.moveTo(ex, ey);
+      }
+      g.closePath();
+      g.fillStyle = hexA(col, 0.11);
+      g.fill();
+    }
+    g.restore();
+    g.filter = 'none';
+  }
+
+  // edges: per-kind стили (EDGE_STYLES), negatives скрыты, edgesOn=off → только контекстные
+  const baseLw = Math.max(0.4, 1/transform.k);
+  const ea = eaMul();
+  const partEdges = [];
+  const capA = a => Math.max(0, Math.min(1, a * ea));
+  // overview-зум глушит межзонный туман: на fit-масштабе сотни cross-zone wiki-линий
+  // складывались в серый клубок по центру; при k≥0.55 возвращаются к номиналу
+  const zf = Math.max(0.3, Math.min(1, transform.k / 0.55));
+  // авто-читаемость (встроена в вид, не ручка): толпа нод в кадре → рёбра сами тише
+  // (эффект «edge-α ≈ 0.2 при нагромождении»), разреженный кадр → полный номинал.
+  // Плотность = видимые ноды на «плитку» ~140×140px вьюпорта; hot/selected не глушим.
+  let onScr = 0;
+  for (const n of nodes) {
+    if (!visible(n)) continue;
+    const sx = n.x * transform.k + transform.x, sy = n.y * transform.k + transform.y;
+    if (sx >= -20 && sx <= W + 20 && sy >= -20 && sy <= H + 20) onScr++;
+  }
+  const dens = onScr / ((W * H) / 20000);
+  const autoF = only ? 1 : Math.max(0.25, Math.min(1, 1.5 / Math.max(1, dens)));
+  const iA = Math.sqrt(autoF) * (0.6 + 0.4 * zf);   // внутризонные гаснут мягче: текстура зоны остаётся
+  for (const e of edges) {
+    const s = e.source, t = e.target;
+    if (!visible(s) || !visible(t)) continue;
+    if (hiddenKinds.has(e.kind)) continue;
+    if (edgeSuppressed(e)) continue;                             // negative assertion
+    if (keepSet && !(inKeep(s) && inKeep(t))) continue;          // FILTER: оба endpoint в keep
+    const hotCtx = (neighbors && (s === selected || t === selected)) ||
+      (pinSet.size && (pinSet.has(s.id) || pinSet.has(t.id))) ||
+      s === hovered || t === hovered;
+    if (!toggles.edgesOn && !hotCtx && !e.user) continue;        // thought-cloud (принцип #3)
+    if (only && !(only.has(s.id) && only.has(t.id))) continue;   // ego-проход: только внутр-рёбра
+    const st = EDGE_STYLES[e.kind];
+    g.lineWidth = baseLw * (st && st.w || 1) * (e.w ? Math.min(2.5, 0.6 + Math.log2(1 + e.w) * 0.5) : 1);
+    if (muted) {
+      g.strokeStyle = 'rgba(255,255,255,0.05)';                  // уйдёт под blur
+    } else if (only) {
+      const hot = s === selected || t === selected;
+      g.strokeStyle = st ? hexA(st.c, hot ? Math.min(1, st.a + 0.25) : st.a)
+        : hot ? 'rgba(57,135,229,0.6)' : 'rgba(255,255,255,0.16)';
+    } else {
+      const hot = neighbors && (s === selected || t === selected);
+      const dim = (query.length && !(matches(s) && matches(t))) || (neighbors && !hot) || !(inIso(s) && inIso(t)) || !(hasTag(s) && hasTag(t)) || (keepSet && !(inKeep(s) && inKeep(t)));
+      if (st) {
+        g.strokeStyle = hexA(st.c, capA(dim ? st.a * 0.15 : hot ? Math.min(1, st.a + 0.3) : st.a * autoF));
+      } else {
+        // cross-zone рёбра тише (и гаснут на overview: zf × autoF): туман в центре = они
+        g.strokeStyle = hot ? `rgba(57,135,229,${capA(0.55)})` : dim ? `rgba(255,255,255,${capA(0.02)})`
+          : s.zone !== t.zone ? `rgba(255,255,255,${capA(0.035*zf*autoF)})`
+          : `rgba(255,255,255,${capA(0.09*iA)})`;
+      }
+    }
+    if (st && st.dash) g.setLineDash(st.dash.map(d => d / Math.sqrt(transform.k)));
+    g.beginPath();
+    g.moveTo(NX(s), NY(s));
+    if (st && st.curve) {
+      // детектор-рёбра гнутся: отличимы от wikilink-прямых без чтения легенды
+      const mx = (NX(s) + NX(t)) / 2, my = (NY(s) + NY(t)) / 2;
+      const dx = NX(t) - NX(s), dy = NY(t) - NY(s);
+      g.quadraticCurveTo(mx - dy * st.curve, my + dx * st.curve, NX(t), NY(t));
+    } else g.lineTo(NX(t), NY(t));
+    g.stroke();
+    if (st && st.dash) g.setLineDash([]);
+    if (!muted && toggles.particles && st && st.particles && !(only && !(only.has(s.id) && only.has(t.id))))
+      partEdges.push(e);
+  }
+  // flowing-частицы по семантическим/session/user рёбрам (guardrail 600)
+  if (partEdges.length && partEdges.length < 600 && !muted) {
+    for (const [i, e] of partEdges.entries()) {
+      const st = EDGE_STYLES[e.kind];
+      const ph = (pT * 0.35 + i * 0.137) % 1;
+      const x = NX(e.source) + (NX(e.target) - NX(e.source)) * ph;
+      const y = NY(e.source) + (NY(e.target) - NY(e.source)) * ph;
+      g.beginPath();
+      g.arc(x, y, 1.6 / Math.sqrt(transform.k), 0, 2 * Math.PI);
+      g.fillStyle = hexA(st.c, 0.85);
+      g.fill();
+    }
+  }
+
+  // nodes
+  for (const n of nodes) {
+    if (!visible(n)) continue;
+    if (only && !only.has(n.id)) continue;
+    const r = radius(n), nx = NX(n), ny = NY(n);
+    if (muted) {                                                 // фон-проход: плоская марка, всё под blur
+      g.globalAlpha = n.ghost ? 0.3 : 0.55;
+      g.beginPath(); g.arc(nx, ny, r, 0, 2*Math.PI);
+      g.fillStyle = nodeColor(n); g.fill();
+      g.globalAlpha = 1;
+      continue;
+    }
+    // тайл-LOD: близкий зум (k≥TILE_K) или focus=тайлы — прямоугольная карточка с подложкой
+    // вместо кружка; кружки остаются на далёком масштабе, где текст всё равно не читается
+    if (!n.ghost && (tiles || (!muted && transform.k >= TILE_K))) {
+      g.globalAlpha = only ? 1 : dimmed(n) ? 0.12 : (pinDimmed(n) && !(n === selected || n === hovered)) ? 0.35 : 1;
+      drawTile(g, n);
+      g.globalAlpha = 1;
+      continue;
+    }
+    const isFocus = n === selected || n === hovered;
+    // pin=context delivery: вне highlighted-set — alpha 0.22 (не 0.10 dim: фон читается)
+    g.globalAlpha = only ? 1 : dimmed(n) ? 0.10 : (pinDimmed(n) && !isFocus) ? 0.22 : n.ghost ? 0.55 : 1;
+    if (isFocus) { g.shadowColor = nodeColor(n); g.shadowBlur = 14; }
+    g.beginPath();
+    g.arc(nx, ny, r, 0, 2*Math.PI);
+    if (n.ghost) {
+      if (r * transform.k < 3.5) {
+        // при отдалении dash-окружность меньше двух сегментов = мусорные глифы; рисуем точку
+        g.fillStyle = nodeColor(n);
+        g.fill();
+      } else {
+        g.setLineDash([3/transform.k, 2.5/transform.k]); // dash в screen-юнитах, не world
+        g.strokeStyle = nodeColor(n);
+        g.lineWidth = 1.2/Math.sqrt(transform.k);
+        g.stroke();
+        g.setLineDash([]);
+      }
+    } else {
+      g.fillStyle = nodeColor(n);
+      g.fill();
+      // 2px surface ring — разделитель перекрывающихся марок; в semantic-раскладке кольцо
+      // берёт цвет ЗОНЫ (hulls там выключены — контраст зон встроен в саму марку)
+      const zring = layoutName === 'semantic' && mode() !== 'zone';
+      g.strokeStyle = zring ? hexA(zoneColor(n.zone), 0.95) : PAGE;
+      g.lineWidth = (zring ? 2 : 1.5)/transform.k;
+      g.stroke();
+    }
+    g.shadowBlur = 0;
+    if (searchHit(n) && !n.ghost) {
+      g.beginPath();
+      g.arc(nx, ny, r + 2.5/transform.k, 0, 2*Math.PI);
+      g.strokeStyle = 'rgba(57,135,229,0.85)';
+      g.lineWidth = 1.4/transform.k;
+      g.stroke();
+    }
+    if (pinSet.has(n.id)) {
+      // pinned-маркер: виден издалека даже вне highlighted set (v1.1 pin-контракта)
+      g.globalAlpha = 1;
+      g.beginPath();
+      g.arc(nx, ny, r + 5/transform.k, 0, 2*Math.PI);
+      g.setLineDash([4/transform.k, 3/transform.k]);
+      g.strokeStyle = 'rgba(57,135,229,0.9)';
+      g.lineWidth = 1.6/transform.k;
+      g.stroke();
+      g.setLineDash([]);
+    }
+    if (isFocus) {
+      g.beginPath();
+      g.arc(nx, ny, r + 3.5/transform.k, 0, 2*Math.PI);
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = 1.5/transform.k;
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+
+  // labels: режимы hubs/hops/near/all (порт labelMode), collision-cull (toggle),
+  // softFade = culled в ghost-alpha 0.12 вместо скрытия (принцип #2).
+  // Рисуются в SCREEN-space (world-transform снят, позиции device-px snap): текст
+  // не проходит через масштаб CTM → резкий на любом зуме и не «мылится» при magnet-флоате.
+  // muted/tiles несут текст иначе → пропуск.
+  if (showLabels() && !muted && !tiles) {
+    g.save();
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const rec = g === ctx;                          // хит-ректы пишем только с живого канваса
+    const K = transform.k;
+    const snap = v => Math.round(v * dpr) / dpr;    // привязка к device-px: без полупиксельного мыла
+    g.textAlign = 'center';
+    const lm = labelModeV();
+    const tileL = K >= TILE_K;   // тайлы несут текст сами — их лейблы пропускаем
+    const NEAR_D = 320;   // world units от курсора для режима near
+    const thresh = only ? 0 : K > 1.6 ? 0 : K > 0.9 ? degThresh.mid : degThresh.low;
+    const always = n => n === selected || n === hovered || n === magNode || pinSet.has(n.id) || searchHit(n);
+    // плашка-подложка + крупнее: контекст выделения/hover/pin — «обзор масштабом», зум не трогаем
+    const plateFor = n => n === selected || n === hovered || n === magNode || pinSet.has(n.id) ||
+      (neighbors && neighbors.has(n.id));
+    const byMode = n => {
+      if (lm === 'all') return true;
+      if (lm === 'hops') return selected ? hopDist.has(n.id) : n.degree >= thresh;
+      if (lm === 'near') return cursorW && Math.hypot(n.x - cursorW[0], n.y - cursorW[1]) < NEAR_D;
+      return n.degree >= thresh;   // hubs
+    };
+    const boxes = [];
+    const prio = n => (n === selected ? 4 : 0) + (pinSet.has(n.id) ? 3 : 0) + (n === hovered || n === magNode ? 2 : 0);
+    const cand = nodes.filter(n => visible(n) && !(tileL && !n.ghost) && (!only || only.has(n.id)) && !dimmed(n) &&
+      (byMode(n) || always(n)))
+      .sort((a, b) => prio(b) - prio(a) || b.degree - a.degree);
+    const pad = 6; // screen px: подушка между лейблами — касание = слипание при чтении
+    for (const n of cand) {
+      const sx = snap(NX(n) * K + transform.x), sy = snap(NY(n) * K + transform.y);
+      const rs = radius(n) * K;                     // радиус в screen px
+      const plate = plateFor(n);
+      const fs = (plate ? 13.5 : 11) * TS;
+      g.font = `${plate ? '600 ' : ''}${fs}px system-ui`;
+      const w = g.measureText(n.label).width, h = fs * 1.1;
+      const yBase = sy - rs - 4;                    // baseline текста над нодой
+      const x = sx - w/2, y = yBase - h;
+      let culled = false;
+      if (toggles.collide && boxes.some(b => x-pad < b.x+b.w && x+w+pad > b.x && y-pad < b.y+b.h && y+h+pad > b.y)) {
+        if (!toggles.softFade || boxes.length > 300) continue;
+        culled = true;   // softFade: ghost-лейбл 0.12 на месте — spatial memory
+      }
+      if (!culled) {
+        boxes.push({x, y, w, h});
+        if (rec) labelHits.push({x: x - 3, y: y - 3, w: w + 6, h: h + 8, n});  // +подушка клика
+      }
+      // hop-tier тона: соседи selected тускнеют с глубиной (порт hop-rings)
+      const hopA = (lm === 'hops' && selected && hopDist.has(n.id)) ? Math.max(0.55, 1 - hopDist.get(n.id) * 0.15) : 1;
+      g.globalAlpha = culled ? 0.12 : hopA;
+      if (plate && !culled) {
+        // подложка: лейбл читается поверх любого фарша; цветной кант = принадлежность
+        rr(g, x - 5, y - 2, w + 10, h + 5, 4);
+        g.fillStyle = 'rgba(20,20,19,0.92)'; g.fill();
+        g.strokeStyle = hexA(nodeColor(n), 0.5); g.lineWidth = 1; g.stroke();
+      } else {
+        // halo фоном страницы — текст читается поверх рёбер и чужих марок
+        g.lineWidth = 3;
+        g.strokeStyle = 'rgba(12,12,11,0.85)';
+        g.lineJoin = 'round';
+        g.strokeText(n.label, sx, yBase);
+      }
+      g.fillStyle = n === selected ? '#ffffff' : plate ? '#e2e1d6' : '#c3c2b7';
+      g.fillText(n.label, sx, yBase);
+      // LOD-превью: magnet-нода читается прямо в облаке (принцип #3), pinned — 1 строка
+      if (!culled && n.desc && (n === magNode || (pinSet.has(n.id) && K > 0.7))) {
+        const lines = n === magNode ? 3 : 1;
+        g.font = `${9.5*TS}px system-ui`;
+        const lw = 46;
+        for (let li = 0; li < lines; li++) {
+          const seg = n.desc.slice(li * lw, (li + 1) * lw);
+          if (!seg) break;
+          const ly = sy + rs + (11 + li * 11) * TS;
+          g.strokeText(seg, sx, ly);
+          g.fillStyle = '#8b8983';
+          g.fillText(seg, sx, ly);
+        }
+      }
+      g.globalAlpha = 1;
+    }
+    g.restore();
+  }
+  g.restore();
+}
+// порог тайл-LOD: с этого зума кружки становятся карточками (screen-конста шрифта = читается)
+const TILE_K = 2.2;
+const DESC_K = 4.5;   // ещё ближе — в карточке появляется превью desc
+function rr(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r);
+  g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath();
+}
+// тайл-карточка ноды: скруглённый прямоугольник-подложка + заголовок; на близком зуме + desc.
+// Рисуется в SCREEN-space (см. лейблы): текст резкий, рект целиком кликабелен (tileHits).
+function drawTile(g, n) {
+  const label = n.label;
+  const K = transform.k;
+  g.save();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const nx = Math.round(NX(n) * K + transform.x), ny = Math.round(NY(n) * K + transform.y);
+  g.font = `600 ${13*TS}px system-ui`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const withDesc = K >= DESC_K && n.desc;
+  const dLines = [];
+  if (withDesc) {
+    const lw = 42;
+    for (let i = 0; i < 2; i++) { const seg = n.desc.slice(i*lw, (i+1)*lw); if (seg) dLines.push(seg); }
+  }
+  const tw = Math.min(g.measureText(label).width, 280*TS);
+  const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
+  const w = Math.max(tw, withDesc ? 200*TS : 0) + 2*padX;
+  const h = th + dLines.length*dh + 2*padY;
+  const x = nx - w/2, y = ny - h/2;
+  if (g === ctx) tileHits.push({x, y, w, h, n});   // карточка кликабельна целиком
+  rr(g, x, y, w, h, 5);
+  g.fillStyle = 'rgba(20,20,19,0.94)'; g.fill();
+  g.strokeStyle = nodeColor(n); g.lineWidth = (n === selected ? 2.2 : 1.4); g.stroke();
+  // цветовой бок — зона/кластер читается и на прямоугольнике
+  g.fillStyle = nodeColor(n);
+  g.fillRect(x, y, 3, h);
+  g.fillStyle = n === selected ? '#ffffff' : '#e2e1d6';
+  const ty = y + padY + th/2;
+  g.fillText(label, nx, ty);
+  if (dLines.length) {
+    g.font = `${9.5*TS}px system-ui`;
+    g.fillStyle = '#8b8983';
+    dLines.forEach((seg, i) => g.fillText(seg, nx, ty + th/2 + (i + 0.5)*dh));
+  }
+  g.textBaseline = 'alphabetic';
+  g.restore();
+}
+// авто-фрейм ego-подграфа при выделении (blur/tiles): выделенное в центр, забирает место
+function egoNodes(n) {
+  const arr = [n];
+  for (const id of (adj.get(n.id) || [])) { const m = byId.get(id); if (m && visible(m)) arr.push(m); }
+  return arr;
+}
+function frameEgo(n) {
+  const es = egoNodes(n), pad = 110;
+  const x0 = Math.min(...es.map(m => m.x)) - pad, x1 = Math.max(...es.map(m => m.x)) + pad;
+  const y0 = Math.min(...es.map(m => m.y)) - pad, y1 = Math.max(...es.map(m => m.y)) + pad;
+  const k = Math.min(3.2, 0.9 / Math.max((x1-x0)/W, (y1-y0)/H, 1e-6));
+  const t = d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2);
+  d3.select(canvas).transition().duration(450).call(zoom.transform, t);
+}
+
+// пороги лейблов из распределения (fixed 10/20 слепнет на малых графах)
+const degThresh = (() => {
+  const ds = nodes.map(n => n.degree).sort((a,b) => b-a);
+  const at = i => ds[Math.min(i, ds.length-1)] ?? 0;
+  return { mid: at(80), low: at(25) };
+})();
+
+function hexA(hex, a) {
+  const v = parseInt(hex.slice(1), 16);
+  return `rgba(${v>>16&255},${v>>8&255},${v&255},${a})`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ---- stats ----
+const nGhost = nodes.filter(n => n.ghost).length;
+const nClusters = new Set(nodes.map(n => n.cluster)).size;
+const nCross = edges.filter(e => e.cross && !e.user).length;
+document.getElementById('counts').textContent = `${nodes.length-nGhost}·${edges.length}`;
+document.getElementById('stats').textContent =
+  (DATA.version ? `v${DATA.version} · ` : '') +
+  `${nodes.length-nGhost} нот + ${nGhost} ghost · ${edges.length} рёбер` +
+  (nCross ? ` (cross ${nCross}${DATA.detectors && DATA.detectors.length ? ' · ' + DATA.detectors.length + ' детекторов' : ''})` : '') +
+  ` · ${nClusters} кластеров · ${DATA.generated || ''}${DATA.src ? ' · '+DATA.src : ''}` +
+  (overlayStale ? ` · overlay stale ${overlayStale}` : '');
+
+// deep-link: ?color & size & q & node=id
+const params = new URLSearchParams(location.search);
+for (const [p, id] of [['color','colorMode'], ['size','sizeMode']]) {
+  const v = params.get(p), sel = document.getElementById(id);
+  if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
+}
+if (params.get('q')) {
+  searchEl.value = params.get('q');
+  query = params.get('q').toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+// ==== browse module: ДО-ребренд memory-map, ВЕРБАТИМ логика на DATA.browse ====
+// терминальный атлас рядом с новым графом; fuse-провода graph⟷browse по id.
+(function browseModule() {
+  const D = DATA.browse;
+  if (!D) {   // --data билдеры без browse-блока (напр. bastra) → скрыть вкладку, только граф
+    const vt = document.querySelector('#viewtabs .vt[data-v="browse"]');
+    if (vt) vt.style.display = 'none';
+    return;
+  }
+  const TC = {feedback:'#cba6f7',project:'#89b4fa',reference:'#94e2d5',user:'#fab387',
+    glados:'#b4befe',index:'#f5c2e7',other:'#6c7086',missing:'#f38ba8'};
+  const bBy = {}; D.nodes.forEach(n => bBy[n.id] = n);
+  const besc = s => (s || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+  document.getElementById('bgen').textContent =
+    'snapshot ' + new Date(D.generated * 1000).toISOString().slice(0, 16).replace('T', ' ');
+
+  // ---- stats strip (кликабельные тайлы → фильтр) ----
+  const S = D.stats;
+  const statDefs = [['tot','total',S.total,'all'],['lt','light idx',S.light,'light'],['hv','heavy idx',S.heavy,'heavy'],
+    ['or','orphan',S.orphan,'orphan'],['dg','dangling',S.dangling,'dangling'],['cf','sync-conflict',S.conflict,'conflict'],
+    ['eg','wikilinks',S.edges,null]];
+  const statsEl = document.getElementById('bstats');
+  statDefs.forEach(([c,l,n,f]) => { const d = document.createElement('div'); d.className = 'stat ' + c;
+    d.innerHTML = '<div class="n">' + n + '</div><div class="l">' + l + '</div>';
+    if (f) d.onclick = () => selCat(f); statsEl.appendChild(d); });
+  function syncStatSel() { statsEl.querySelectorAll('.stat').forEach((d, i) =>
+    d.classList.toggle('sel', statDefs[i][3] !== null && statDefs[i][3] === curCat)); }
+
+  // ---- categories ----
+  const cats = [['all','всё',S.total,'#cdd6f4'],['light','light index',S.light,'#a6e3a1'],
+    ['heavy','heavy index',S.heavy,'#89b4fa'],['orphan','orphan',S.orphan,'#f9e2af'],
+    ['dangling','dangling',S.dangling,'#f38ba8'],['conflict','sync-conflict',S.conflict,'#f5c2e7']];
+  Object.entries(D.types).sort((a, b) => b[1] - a[1]).forEach(([t, c]) => cats.push(['type:' + t, t, c, TC[t] || '#6c7086']));
+  let curCat = 'all', curQ = '', curId = null;
+  const catsEl = document.getElementById('cats');
+  function renderCats() { catsEl.innerHTML = ''; cats.forEach(([k, l, c, col]) => {
+    const d = document.createElement('div'); d.className = 'cat' + (k === curCat ? ' sel' : ''); d.style.setProperty('--cur', col);
+    d.innerHTML = '<span class="dot" style="background:' + col + '"></span>' + l + '<span class="cnt">' + c + '</span>';
+    d.onclick = () => selCat(k); catsEl.appendChild(d); }); }
+  function selCat(k) { curCat = k; renderCats(); renderList(); syncStatSel(); }
+
+  function match(n) {
+    if (n.type === 'missing') return curCat === 'dangling';
+    if (curCat === 'light' && !n.light) return false;
+    if (curCat === 'heavy' && !n.heavy) return false;
+    if (curCat === 'orphan' && !n.orphan) return false;
+    if (curCat === 'conflict' && !n.conflict) return false;
+    if (curCat === 'dangling') return false;
+    if (curCat.startsWith('type:') && n.type !== curCat.slice(5)) return false;
+    if (curQ) { const h = (n.name + ' ' + n.file + ' ' + (n.desc || '')).toLowerCase(); if (!h.includes(curQ)) return false; }
+    return true;
+  }
+  const listEl = document.getElementById('list');
+  function renderList() {
+    let ns = D.nodes.filter(match);
+    if (curCat === 'dangling') ns = D.nodes.filter(n => n.type === 'missing' && (!curQ || n.name.toLowerCase().includes(curQ)));
+    ns.sort((a, b) => (b.deg || 0) - (a.deg || 0) || a.name.localeCompare(b.name));
+    listEl.innerHTML = '';
+    if (!ns.length) { listEl.innerHTML = '<div class="empty">пусто</div>'; return; }
+    ns.forEach(n => { const d = document.createElement('div'); d.className = 'row' + (n.id === curId ? ' sel' : '');
+      d.style.setProperty('--cur', TC[n.type] || '#cba6f7');
+      let badge = '';
+      if (n.type === 'missing') badge = '<span class="bd dangling">dangling</span>';
+      else if (n.conflict) badge = '<span class="bd conflict">conflict</span>';
+      else if (n.orphan) badge = '<span class="bd orphan">orphan</span>';
+      else if (n.light) badge = '<span class="bd light">L</span>';
+      else if (n.heavy) badge = '<span class="bd heavy">H</span>';
+      if (n.age_days > 45 && n.type !== 'missing') badge += ' <span class="bd old">' + n.age_days + 'd</span>';
+      d.innerHTML = '<span class="nm">' + besc(n.name) + '</span>' + badge;
+      d.onclick = () => openNode(n.id); listEl.appendChild(d); });
+  }
+  document.getElementById('bq').addEventListener('input', e => { curQ = e.target.value.trim().toLowerCase(); renderList(); });
+
+  // ---- preview ----
+  const prev = document.getElementById('prev');
+  function openNode(id) { curId = id; const n = bBy[id]; renderList();
+    if (!n) return;
+    if (n.type === 'missing') {
+      const refs = D.edges.filter(e => e.t === id).map(e => e.s);
+      prev.innerHTML = '<div class="ph"><div class="fn">' + besc(n.name) + '</div>' +
+        '<div class="meta"><span class="bd dangling">dangling target</span> файла нет; ссылаются:</div></div>' +
+        '<div class="md"><ul>' + refs.map(r => '<li><span class="wl" data-goto="' + r + '">' + besc((bBy[r] || {}).name || r) + '</span></li>').join('') + '</ul></div>';
+      wirePrev(); return; }
+    const body = D.bodies[id] || '';
+    const out = D.edges.filter(e => e.s === id).length;
+    const ins = D.edges.filter(e => e.t === id).length;
+    prev.innerHTML = '<div class="ph"><div class="fn">' + besc(n.file) + '</div>' +
+      '<div class="meta"><span>type: ' + n.type + '</span><span>' + (n.light ? 'light ' : '') + (n.heavy ? 'heavy ' : '') + (n.orphan ? 'orphan ' : '') + '</span>' +
+      '<span>' + (n.size / 1024).toFixed(1) + 'KB</span><span>' + n.age_days + 'd ago</span>' +
+      '<span>→' + out + ' ←' + ins + '</span>' +
+      '<span class="gp" data-graph="' + id + '">◌ в граф</span></div></div>' +
+      '<div class="md">' + mdRender(body) + '</div>';
+    wirePrev();
+  }
+  function wirePrev() {
+    prev.querySelectorAll('.wl[data-goto]').forEach(a => a.addEventListener('click', () => openNode(a.dataset.goto)));
+    const g = prev.querySelector('.gp');   // fuse: browse → graph
+    if (g) g.addEventListener('click', () => { showTab('graph'); focusNode(g.dataset.graph); });
+  }
+
+  // ---- minimal markdown (memory-map verbatim; wl-клики делегированы, без inline onclick) ----
+  function inline(s) {
+    s = besc(s);
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\[\[([a-z0-9_-]+)\]\]/g, (m, t) => { const k = t.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const hit = D.nodes.find(n => n.id.toLowerCase().replace(/[^a-z0-9]/g, '') === k || (n.name || '').toLowerCase().replace(/[^a-z0-9]/g, '') === k);
+      return hit ? '<span class="wl" data-goto="' + hit.id + '">' + t + '</span>' : '<span class="wl dead">' + t + '</span>'; });
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    return s;
+  }
+  function mdRender(md) {
+    const lines = String(md).split('\n'); let h = '', i = 0;
+    while (i < lines.length) {
+      const l = lines[i];
+      if (/^```/.test(l)) { const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) { buf.push(besc(lines[i])); i++; } i++; h += '<pre><code>' + buf.join('\n') + '</code></pre>'; continue; }
+      if (/^\|.*\|/.test(l)) { const buf = []; while (i < lines.length && /^\|/.test(lines[i])) { buf.push(lines[i]); i++; } h += renderTable(buf); continue; }
+      let m;
+      if (m = l.match(/^(#{1,3})\s+(.*)/)) { h += '<h' + m[1].length + '>' + inline(m[2]) + '</h' + m[1].length + '>'; i++; continue; }
+      if (/^\s*[-*]\s+/.test(l)) { const buf = []; while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { buf.push('<li>' + inline(lines[i].replace(/^\s*[-*]\s+/, '')) + '</li>'); i++; } h += '<ul>' + buf.join('') + '</ul>'; continue; }
+      if (/^\s*\d+\.\s+/.test(l)) { const buf = []; while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { buf.push('<li>' + inline(lines[i].replace(/^\s*\d+\.\s+/, '')) + '</li>'); i++; } h += '<ol>' + buf.join('') + '</ol>'; continue; }
+      if (l.trim() === '') { i++; continue; }
+      const buf = [l]; i++;
+      while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,3}\s|```|\s*[-*]\s|\s*\d+\.\s|\|)/.test(lines[i])) { buf.push(lines[i]); i++; }
+      h += '<p>' + inline(buf.join(' ')) + '</p>';
+    }
+    return h;
+  }
+  function renderTable(rows) {
+    rows = rows.filter(r => !/^\|[\s:|-]+\|?\s*$/.test(r));
+    let h = '<table>';
+    rows.forEach((r, ri) => { const cells = r.split('|').slice(1, -1);
+      h += '<tr>' + cells.map(c => ri === 0 ? '<th>' + inline(c.trim()) + '</th>' : '<td>' + inline(c.trim()) + '</td>').join('') + '</tr>'; });
+    return h + '</table>';
+  }
+
+  // ---- view switch (atlas viewtabs; browse ⊕ graph переключаемо) ----
+  let built = false;
+  window.showTab = function (v) {
+    const b = v === 'browse';
+    document.querySelectorAll('#viewtabs .vt').forEach(t => t.classList.toggle('on', t.dataset.v === v));
+    document.getElementById('browse').classList.toggle('on', b);
+    document.getElementById('hud').style.display = b ? 'none' : '';
+    document.getElementById('bar').style.display = b ? 'none' : '';
+    canvas.style.display = b ? 'none' : '';
+    if (b) { selectNode(null); tooltip.style.display = 'none'; sim.stop();
+      if (!built) { renderCats(); renderList(); built = true; } }
+    else { sim.alpha(0.03).restart(); requestDraw(); }
+  };
+  document.querySelectorAll('#viewtabs .vt').forEach(t => t.addEventListener('click', () => showTab(t.dataset.v)));
+
+  // fuse: graph-панель зовёт это (кнопка «▤ читать полностью»)
+  window.openInBrowse = function (id) { showTab('browse'); openNode(id); };
+})();
+
+// ---- boot ----
+renderLegend();
+renderTags();
+renderZoneChips();
+renderKindChips();
+rebuildPinHl();
+renderPins();
+renderViews();
+if (CFG.TS && CFG.TS !== 1) { TS = CFG.TS; }   // TS=1 = нетронутый старый дефолт → апгрейд до 1.25
+applyUIZoom();
+rebuildKeep();
+const bootLayout = params.get('layout') || CFG.layout;   // deep-link ?layout= бьёт сохранённый
+// guard = наличие option: semantic/timeline сами выпадают из select, если данных нет
+if (bootLayout && bootLayout !== 'force' && [...$('layoutMode').options].some(o => o.value === bootLayout)) {
+  applyLayout(bootLayout, true);   // синхронный прогрев в сохранённую раскладку
+  d3.select(canvas).call(zoom.transform, fitTransform());
+}
+homeTransform = fitTransform();
+if (params.get('node') && byId.has(params.get('node'))) focusNode(params.get('node'));
+// deep-link ?zoom=K: встать на масштаб K вокруг выделенной ноды (или центроида) — repro видов
+const zk = +params.get('zoom') || 0;
+if (zk > 0) {
+  const cx = selected ? selected.x : d3.mean(nodes.filter(visible), n => n.x) || 0;
+  const cy = selected ? selected.y : d3.mean(nodes.filter(visible), n => n.y) || 0;
+  d3.select(canvas).call(zoom.transform, d3.zoomIdentity.translate(W/2, H/2).scale(zk).translate(-cx, -cy));
+}
+requestDraw();
+document.body.dataset.ready = '1';   // smoke-test marker: скрипт дошёл до конца без исключений
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+*.pyc
+__pycache__/
+*.pre-focus
+.DS_Store
