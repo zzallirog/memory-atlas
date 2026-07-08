@@ -12,7 +12,7 @@ memory-atlas                 # scan default memory dir → open ~/.mac-claw/atla
 memory-atlas --no-open       # rebuild without launching a browser
 memory-atlas --src DIR --out FILE
 memory-atlas --data graph.json|-   # render an arbitrary graph (see DATA CONTRACT in generator docstring)
-memory-atlas --self-test     # 25 unittest cases
+memory-atlas --self-test     # 27 unittest cases
 memory-atlas --version
 ```
 

@@ -160,6 +160,9 @@ def build_graph(src):
         # индексах); zone их схлопывает, поэтому флаги эмитим отдельно.
         in_light = stem in light_idx
         in_heavy = stem in work_idx
+        # FEEDBACK_INDEX — recall-поверхность: её членство гасит orphan так же,
+        # как light/work (иначе 81 fb-нота — ложный orphan, близнец бага «81 unindexed»)
+        in_fb = stem in fb_idx
         node = {
             "id": stem,
             "label": fm["name"] or stem,
@@ -173,7 +176,7 @@ def build_graph(src):
             "ghost": False,
             "light": in_light,
             "heavy": in_heavy,
-            "orphan": not in_light and not in_heavy and not top,
+            "orphan": not in_light and not in_heavy and not in_fb and not top,
             "conflict": "sync-conflict" in base,
             # рабочие теги: part_of (ведомый) + tier + ручные tags; session для fire-хука
             "part_of": fm["part_of"],
@@ -189,6 +192,9 @@ def build_graph(src):
 
     edges, seen = [], set()
     ghosts = {}
+    # ссылки на индекс-файлы ([[MEMORY-work]], [x](MEMORY.md)) — не ghost-долг:
+    # индексы исключены из нод намеренно, «стоит написать» к ним не относится
+    index_stems = {norm(f) for f in INDEX_FILES}
 
     def add_edge(a, b, kind):
         if a == b:
@@ -210,6 +216,8 @@ def build_graph(src):
             if tkey in lookup:
                 add_edge(stem, lookup[tkey], kind)
             else:
+                if tkey in index_stems:
+                    continue
                 if tkey not in ghosts:
                     ghosts[tkey] = {
                         "id": tkey, "label": tkey, "desc": "",
@@ -845,6 +853,25 @@ def run_self_test():
             self.assertTrue(by["b"]["heavy"] and not by["b"]["light"])
             self.assertTrue(by["c"]["orphan"])
             self.assertFalse(by["g"]["orphan"])
+
+        def test_orphan_respects_feedback_index(self):
+            # fb-индексированная нота = indexed (recall-поверхность), НЕ orphan
+            self.w("FEEDBACK_INDEX.md", "- [fb](fb-note.md)")
+            self.w("fb-note.md", "x")
+            self.w("stray.md", "x")
+            by, _ = self.graph()
+            self.assertEqual(by["fb_note"]["zone"], "feedback")
+            self.assertFalse(by["fb_note"]["orphan"])
+            self.assertTrue(by["stray"]["orphan"])
+
+        def test_index_refs_no_ghost(self):
+            # [[MEMORY-work]] / [x](MEMORY.md) — не ghost-долг и не ребро
+            self.w("a.md", "see [[MEMORY-work]] and [idx](MEMORY.md) and [[real-ghost]]")
+            by, edges = self.graph()
+            self.assertNotIn("memory_work", by)
+            self.assertNotIn("memory", by)
+            self.assertTrue(by["real_ghost"]["ghost"])
+            self.assertEqual(len(edges), 1)
 
         def test_http_mdlink_excluded(self):
             self.w("a.md", "[ext](https://x.com/y.md) [[real]]")
