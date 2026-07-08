@@ -573,6 +573,8 @@
   #settings label.opt input { margin-top:2px; accent-color:var(--accent); }
   #settings select { background:rgba(0,0,0,0.35); color:var(--ink-2); border:1px solid var(--grid);
     border-radius:6px; padding:3px 5px; font:11px var(--mono); }
+#langBtn { transition: opacity .9s; }
+#langBtn.dim { opacity: .22; }
 </style>
 <script>/*__D3__*/</script>
 </head>
@@ -838,12 +840,14 @@
   <div class="bgrp" title="настройки · справка">
     <button id="settingsBtn" data-hint="настройки: профиль export/import, ссылка на вид, поведение, пересборка данных, редактор" title="настройки">⛭</button>
     <button id="helpBtn" data-hint="справка по всем клавишам и типам рёбер (?)" title="справка (?)">?</button>
+    <button id="langBtn" data-hint="язык интерфейса: RU ↔ EN — страница перезагрузится, настройки останутся" title="RU ↔ EN">EN</button>
   </div>
   <div id="tsz" data-hint="масштаб текста на графе И панелей UI (сохраняется)"><span class="lbl">текст</span><button id="tszMinus" title="мельче">A−</button><button id="tszPlus" title="крупнее">A+</button></div>
   <div id="hint"></div>
   <div id="keys"><b>/</b> search · <b>c</b> в кадр · <b>t</b> тег · <b>f</b> fit · <b>rmb</b> pin · <b>?</b> help</div>
 </div>
 
+<script type="application/json" id="i18nEN">{"что сейчас режет вид: теги-линза / поиск / изоляция / зоны / top-N; ✕ снимает по месту, 💾 = сохранить линзу как вид": "what currently cuts the view: tag-lens / search / isolation / zones / top-N; ✕ clears in place, 💾 = save lens as a view", "фильтр": "filter", "поиск имя/описание…": "search name/description…", "← выбери файл": "← pick a file", "фильтр: термы через пробел = OR; дропдаун: ↑↓ + enter = перелёт к ноде": "filter: space-separated terms = OR; dropdown: ↑↓ + enter = fly to node", "вид": "view", "цвет нод: cluster = тематики из топологии (louvain) · zone = зона памяти · type = тип ноты · heat = свежесть": "node color: cluster = topics from topology (louvain) · zone = memory zone · type = note type · heat = recency", "размер ноды: degree = число wikilinks · file size = байты файла": "node size: degree = wikilink count · file size = file bytes", "раскладка ([ ] = цикл): force = зоны силами · semantic = близость по смыслу · pack = вложенные круги зона⊃кластер, всё поле · ring = кольцо синергии зон · petals = спираль-подсолнух на зону · radial = хабы в центр · grid = полки по зонам · zones = колонки · timeline = свежесть по X": "layout ([ ] = cycle): force = zones by forces · semantic = proximity by meaning · pack = nested circles zone⊃cluster, full canvas · ring = zone-synergy ring · petals = sunflower spiral per zone · radial = hubs to center · grid = shelves by zone · zones = columns · timeline = recency along X", "раскладка ([ ] = cycle)": "layout ([ ] = cycle)", "force · зоны": "force · zones", "pack · круги зон": "pack · zone circles", "ring · синергия зон": "ring · zone synergy", "petals · лепестки": "petals · spiral", "radial · хабы в центр": "radial · hubs to center", "grid · полки": "grid · shelves", "timeline · свежесть": "timeline · recency", "представление под задачу одним выбором: ставит раскладку+цвет+слои разом; дальше всё крутится вручную как обычно": "task-shaped view in one pick: sets layout+color+layers at once; everything stays hand-tunable after", "задача": "task", "обзор · где что лежит": "overview · where things live", "тематики · кластеры": "topics · clusters", "синергия зон": "zone synergy", "свежесть · что живо": "recency · what's alive", "хабы · опорные ноты": "hubs · anchor notes", "смысловая карта": "meaning map", "долги · ghost-ноты": "debts · ghost notes", "фокус · камера": "focus · camera", "что делает клик по ноде: dim = приглушить остальное · ego blur = фон в блюр, нода+соседи резко · тайлы = ego карточками": "what clicking a node does: dim = mute the rest · ego blur = background blurred, node+neighbors sharp · tiles = ego as cards", "что делает выделение ноды": "what selecting a node does", "dim · приглушить": "dim · mute rest", "ego · blur фона": "ego · blur background", "ego · тайлы": "ego · tiles", "камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner": "camera on select: stay = do NOT touch at all (fly only via c / ⌖ / enter in search) · adaptive = fly over if off-screen · fit / corner", "framing при select; stay = зум ручной, камера не трогается": "framing on select; stay = manual zoom, camera untouched", "stay · ручной": "stay · manual", "перелёты камеры не меняют масштаб, только пан": "camera flights keep zoom, pan only", "подписи": "labels", "кто подписан: hubs = топ-degree · hops = N шагов от выделенной · near = вокруг курсора · all (клавиша l = цикл)": "which nodes get labels: hubs = top-degree · hops = N steps from selected · near = around cursor · all (key l = cycle)", "какие ноды получают лейбл (l = cycle)": "which nodes get a label (l = cycle)", "hops (от selected)": "hops (from selected)", "near (у курсора)": "near (at cursor)", "BFS-глубина для hops": "BFS depth for hops", "плотность подписей — ось, НЕЗАВИСИМАЯ от зума: бюджет имён на экран (приоритет selected > pin > hover > degree); 0 = только выделенное/пины; зум добавляет бюджет сам, ползунок — множитель": "label density — an axis INDEPENDENT of zoom: name budget per screen (priority selected > pin > hover > degree); 0 = only selected/pins; zoom adds budget by itself, the slider is a multiplier", "подписи нод на графе": "node labels on the graph", "прятать налезающие друг на друга лейблы": "hide overlapping labels", "на месте спрятанного лейбла — крошечная метка-тире (видно, что имя есть; текст не мажется)": "a hidden label leaves a tiny dash mark (the name exists, text doesn't smear)", "плотность": "density", "оставить яркими только top-N нод по degree, остальные притушить (не удалять)": "keep only top-N nodes by degree bright, dim the rest (not removed)", "множитель прозрачности всех рёбер": "opacity multiplier for all edges", "множитель размера нод": "node size multiplier", "слои": "layers", "контуры зон памяти на подложке": "memory-zone outlines on the underlay", "мягкие блобы вокруг louvain-кластеров (тематики из топологии)": "soft blobs around louvain clusters (topics from topology)", "пунктирные ноды = [[ссылка]] без файла — «стоит написать»": "dashed nodes = a [[link]] with no file — “worth writing”", "все рёбра; off = только у выделенной/пинов/hover (клавиша 9)": "all edges; off = only for selected/pins/hover (key 9)", "моушн": "motion", "бегущие частицы вдоль semantic/session/user рёбер (клавиша 0)": "particles running along semantic/session/user edges (key 0)", "курсор-магнит: раздвигает облако; ближняя нода после ~1.3с липнет к курсору": "cursor magnet: pushes the cloud apart; after ~1.3s the nearest node sticks to the cursor", "жесты вебкамерой: ладонь = пан, щипок = зум (нужен CDN)": "webcam gestures: palm = pan, pinch = zoom (needs CDN)", "клик по чипу = скрыть/показать зону целиком (клавиши 1-8)": "click a chip = hide/show the whole zone (keys 1-8)", "зоны · 1-8 hide": "zones · 1-8 hide", "слои рёбер по типу детектора: клик = вкл/выкл слой; что значит каждый тип — в ? справке": "edge layers by detector type: click = toggle layer; what each type means — in ? help", "рёбра по типу": "edges by type", "клик по тегу = ЛИНЗА: остаются только ноды с тегом, остальное растворяется в блюр-пустоту (в focus=dim — приглушается). Свои теги: «+ тег» в панели ноды (клавиша t) или 🏷 из пинов; ∪/∩ = режим нескольких тегов": "click a tag = LENS: only tagged nodes remain, the rest dissolves into blur-void (with focus=dim — dimmed). Own tags: “+ tag” in the node panel (key t) or 🏷 from pins; ∪/∩ = multi-tag mode", "несколько тегов: ∪ = любой из них, ∩ = все сразу": "multiple tags: ∪ = any of them, ∩ = all at once", "теги · линза": "tags · lens", "сброс": "reset", "легенда цвета; клик по строке = изолировать группу (второй клик = вернуть)": "color legend; click a row = isolate the group (second click = restore)", "rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; 🏷 = собрать пачку пинов в свой тег": "rmb = pin: node+neighbors stay bright; ctrl+rmb = stack up to 6; 🏷 = gather the pinned batch into an own tag", "повесить один тег на все запиненные ноды": "put one tag on all pinned nodes", "🏷 в тег": "🏷 to tag", "сохранить текущую камеру + фильтры (включая тег-линзу) под именем; клик по строке = вернуть вид": "save current camera + filters (incl. tag lens) under a name; click a row = restore the view", "имя вида…": "view name…", "atlas — справка": "atlas — help", "клавиши": "keys", "поиск (дропдаун: ↑↓ enter esc; enter = снять фильтр + перелёт)": "search (dropdown: ↑↓ enter esc; enter = clear filter + fly)", "скрыть/показать зону": "hide/show zone", "цикл label-режима hubs → hops → near → all": "cycle label mode hubs → hops → near → all", "цикл раскладки force → semantic → pack → ring → petals → radial → grid → zones → timeline; морф анимирован. «Задача» в HUD ставит раскладку+цвет+слои пресетом": "cycle layout force → semantic → pack → ring → petals → radial → grid → zones → timeline; the morph is animated. “Task” in the HUD sets layout+color+layers as a preset", "fit по графу / home (стартовый вид)": "fit to graph / home (start view)", "подтянуть выделенную ноду + соседей в кадр — ЕДИНСТВЕННЫЙ автоперелёт при cam=stay": "pull the selected node + neighbors into frame — the ONLY auto-flight when cam=stay", "тег на выделенную ноду (фокус в «+ тег», enter вешает, можно цепочкой)": "tag the selected node (focuses “+ tag”, enter applies, chainable)", "пан · зум (shift = boost)": "pan · zoom (shift = boost)", "назад по истории выделений": "back through selection history", "скрыть панели, контекст остаётся (второй v — вернуть)": "hide panels, context stays (second v — restore)", "каскад: поиск → selected → pins → изоляция/теги": "cascade: search → selected → pins → isolation/tags", "select / pin (context delivery) / multi-pin стек": "select / pin (context delivery) / multi-pin stack", "нарисовать user-ребро между двумя нодами (overlay)": "draw a user edge between two nodes (overlay)", "cross-zone рёбра (детекторы graph-lab; зоны = canvases)": "cross-zone edges (graph-lab detectors; zones = canvases)", "панель ноды": "node panel", "копировать в буфер": "copy to clipboard", "открыть в редакторе (scheme ниже; fallback = copy path)": "open in editor (scheme below; fallback = copy path)", "▾ у зоны": "▾ at zone", "override зоны ноды (localStorage; ★ = переопределена)": "override the node's zone (localStorage; ★ = overridden)", "✕ у линка": "✕ at link", "negative assertion — спрятать авто-ребро (overlay)": "negative assertion — hide an auto edge (overlay)", "+ тег / ✕ на теге": "+ tag / ✕ on tag", "свои теги на ноде (localStorage); 🏷 в pins-карте = один тег на пачку пинов; клик по тегу = ЛИНЗА: остаются только помеченные ноды (+ пины), остальное в блюр-пустоту — это задумано; виды и ?state= несут линзу": "own tags on a node (localStorage); 🏷 in the pins card = one tag on the pinned batch; click a tag = LENS: only tagged nodes remain (+ pins), the rest into blur-void — by design; views and ?state= carry the lens", "⌖ в кадр": "⌖ frame", "явный перелёт к ноде+соседям (= клавиша c)": "explicit flight to node+neighbors (= key c)", "масштаб": "scale", "ноды становятся карточками с подложкой (заголовок читается); ещё ближе — с превью описания": "nodes become cards with a backing (title readable); closer still — with a description preview", "масштаб текста графа и панелей UI": "text scale of the graph and UI panels", "настройки": "settings", "профиль · редактор · пересборка · ссылка на вид — в": "profile · editor · rebuild · view link — in", "(кнопка в баре)": "(button in the bar)", "показать скрытые ноды (": "show hidden nodes (", "экспорт overlay.json": "export overlay.json", "сбросить конфиг + localStorage этого корпуса": "reset config + localStorage of this corpus", "закрыть (esc)": "close (esc)", "⛭ настройки": "⛭ settings", "профиль": "profile", "мержит": "merges", "с текущим, не затирает; незнакомые ключи переносятся как есть.": "into the current one, no clobber; unknown keys carry over as-is.", "↧ экспорт профиля": "↧ export profile", "↥ импорт профиля…": "↥ import profile…", "?state= — раскладка/цвет/слои/нода/зум; кросс-хост: камера якорится на ноду, не на координаты": "?state= — layout/color/layers/node/zoom; cross-host: the camera anchors to a node, not coordinates", "⧉ ссылка на текущий вид": "⧉ link to current view", "поведение": "behavior", "восстанавливать": "restore", "при старте (иначе motion-режимы включаются только руками в сессии)": "on start (otherwise motion modes only turn on by hand per session)", "данные": "data", "⚙ пересборка данных…": "⚙ rebuild data…", "редактор (↗ open в панели ноды)": "editor (↗ open in the node panel)", "опасное": "danger", "сбросить конфиг + localStorage ЭТОГО корпуса": "reset config + localStorage of THIS corpus", "⚙ пересборка данных": "⚙ rebuild data", "— семантический поиск в дропдауне (эмбеддинги внутрь файла, +≈1.3MB)": "— semantic search in the dropdown (embeddings into the file, +≈1.3MB)", "— детектор структурных близнецов (медленнее)": "— structural-twin detector (slower)", "— без Ollama-эмбеддингов (если Ollama лежит)": "— without Ollama embeddings (if Ollama is down)", "— только wikilink-граф, самый быстрый прогон": "— wikilink graph only, fastest run", "⧉ копировать команду": "⧉ copy command", "⟳ перезагрузить (после прогона)": "⟳ reload (after the run)", "камера": "camera", "вписать КОНТЕКСТ в кадр (поиск / фильтр / пины / ego выделенной; без контекста — весь граф) — клавиша f; весь мир всегда = ⌂ / h": "fit CONTEXT into frame (search / filter / pins / ego of selected; no context — the whole graph) — key f; the whole world always = ⌂ / h", "вернуться к стартовому виду (клавиша h)": "return to the start view (key h)", "стартовый вид (h)": "start view (h)", "перезагрузить страницу (свежий файл атласа после пересборки; сама пересборка — в ⛭)": "reload the page (fresh atlas file after a rebuild; the rebuild itself — in ⛭)", "перезагрузить": "reload", "скачать видимый срез графа как JSON; shift+клик = полный корпус": "download the visible slice as JSON; shift+click = full corpus", "экспорт видимого среза JSON; shift = полный корпус": "export visible slice JSON; shift = full corpus", "настройки · справка": "settings · help", "настройки: профиль export/import, ссылка на вид, поведение, пересборка данных, редактор": "settings: profile export/import, view link, behavior, data rebuild, editor", "справка по всем клавишам и типам рёбер (?)": "help for all keys and edge types (?)", "справка (?)": "help (?)", "масштаб текста на графе И панелей UI (сохраняется)": "text scale on the graph AND UI panels (persists)", "мельче": "smaller", "крупнее": "larger", "текст": "text", "в кадр ·": "frame ·", "тег ·": "tag ·", "язык интерфейса: RU ↔ EN — страница перезагрузится, настройки останутся": "UI language: RU ↔ EN — the page reloads, settings survive", "в semantic hulls не рисуются (зоны перемешаны) — контраст зон несут кольца нод": "hulls don't draw in semantic (zones are mixed) — zone contrast is carried by node rings", "повесить этот тег на ноду": "put this tag on the node", "тег": "tag", "нод": "nodes", "снят": "removed", "нод контекста (весь граф = ⌂/h)": "context nodes (the whole graph = ⌂/h)", " <span class=\"tg-mark\">ghost — ноты нет<\/span>": " <span class=\"tg-mark\">ghost — no note<\/span>", " · нарисовано руками": " · drawn by hand", "overlay: кликни вторую ноду для user-ребра": "overlay: click a second node for a user edge", "удалить user-ребро": "delete user edge", "вернуть ребро": "restore edge", "negative: спрятать авто-ребро": "negative: hide the auto edge", "override зоны (порт layers.overrides)": "zone override (layers.overrides port)", "<span class=\"chip ghostchip\">ghost — нота не написана<\/span>": "<span class=\"chip ghostchip\">ghost — note not written<\/span>", "копировать id": "copy id", "открыть в редакторе (пресет в ?)": "open in editor (preset in ?)", "скрыть до перезагрузки": "hide until reload", "подтянуть ноду+соседей в кадр (c)": "pull node+neighbors into frame (c)", "теги · клик = линза": "tags · click = lens", "снять свой тег": "remove own tag", "+ тег (t)": "+ tag (t)", "enter = повесить тег; клавиша t фокусирует сюда": "enter = apply the tag; key t focuses here", "изменена": "modified", "д назад": "d ago", " назад": " ago", "▤ читать полностью": "▤ read in full", "скрыта до перезагрузки (вернуть — в ?)": "hidden until reload (restore — in ?)", "∩ все": "∩ all", "снять тег из линзы": "remove tag from lens", "снять поиск": "clear search", "снять изоляцию": "clear isolation", "зоны": "zones", "показать все зоны": "show all zones", "вернуть все ноды": "restore all nodes", "нот": "notes", "сохранить линзу как вид": "save lens as view", "💾 в вид": "💾 to view", "линза": "lens", "скопировано": "copied", "copy не удался": "copy failed", "нет пинов: rmb = пин, ctrl+rmb = стек": "no pins: rmb = pin, ctrl+rmb = stack", "тег для": "tag for", "запиненных нод:": "pinned nodes:", "ребро уже есть": "edge already exists", "user-ребро:": "user edge:", "user-ребро удалено": "user edge removed", "negative: ребро спрятано": "negative: edge hidden", "вид сохранён до раскладок — камера может не совпасть": "view saved before layouts — the camera may not match", "вид: ": "view: ", "вид сохранён: ": "view saved: ", "экспорт: ": "export: ", "# граф собран внешним билдером (--data): пересобери его и перезапусти пайп": "# graph built by an external builder (--data): rebuild it and rerun the pipe", "данные: ": "data: ", "ч": "h", "д": "d", "команда": "command", "скрытые ноды возвращены": "hidden nodes restored", "две зоны ссылаются на один ghost (всегда on)": "two zones reference one ghost (always on)", "cosine эмбеддингов ≥ 0.75 (Ollama, build-time)": "embedding cosine ≥ 0.75 (Ollama, build-time)", "Jaccard рабочих тегов ≥ 0.5": "working-tag Jaccard ≥ 0.5", "co-modification в окне 24h": "co-modification within a 24h window", "co-touched в git-коммитах": "co-touched in git commits", "chain-3 мотивы (opt-in, research)": "chain-3 motifs (opt-in, research)", "нарисовано юзером (ctrl+click ×2)": "drawn by the user (ctrl+click ×2)", "🎥 жесты: ладонь = пан, щипок = зум": "🎥 gestures: palm = pan, pinch = zoom", "вебкамера недоступна": "webcam unavailable", "CDN недоступен (offline) — жесты выключены": "CDN unavailable (offline) — gestures off", "обзор: зоны силами, ghost-пунктир виден": "overview: zones by forces, ghost dashes visible", "тематики: круг зоны ⊃ круги louvain-кластеров": "topics: zone circle ⊃ louvain cluster circles", "синергия: связанные зоны — соседние дуги; пограничные ноды у общей границы": "synergy: linked zones are adjacent arcs; border nodes at the shared boundary", "свежесть: справа = свежее, ярче = горячее": "recency: right = fresher, brighter = hotter", "хабы: чем связнее нота, тем ближе к центру": "hubs: the more connected a note, the closer to center", "смысл: позиция = cosine-близость, фиолетовые рёбра ≥0.75": "meaning: position = cosine proximity, violet edges ≥0.75", "долги: пунктирные ghost = на них ссылаются, ноты нет": "debts: dashed ghosts = referenced, but no note", "semantic-раскладки нет: пересобери с эмбеддингами (⚙)": "no semantic layout: rebuild with embeddings (⚙)", "нет данных возраста для timeline": "no age data for timeline", " · слой включён на сессию (насовсем = чип)": " · layer on for this session (permanent = chip)", "рёбер": "edges", " детекторов": " detectors", "кластеров": "clusters", "всё": "all", "<div class=\"empty\">пусто<\/div>": "<div class=\"empty\">empty<\/div>", "файла нет; ссылаются:": "no file; referenced by:", "◌ в граф": "◌ to graph", "<1д": "<1d", "мес": "mo", "ноты": "notes", "wiki-рёбра": "wiki edges", "cross-рёбра": "cross edges", "медиана возраста": "median age", "сегодня": "today", "неделя": "week", "месяц": "month", "квартал": "quarter", "старше": "older", "реф.": "refs", "клик по полосе = в граф с изоляцией зоны": "click a bar = to the graph with the zone isolated", "когда ноты менялись; клик = timeline-пресет свежести": "when notes changed; click = recency timeline preset", "на них ссылаются, файла нет — «стоит написать»; клик = к ноде в графе": "referenced but the file is missing — “worth writing”; click = to the node in the graph", "самые связные ноты; клик = к ноде в графе": "the most connected notes; click = to the node in the graph", "вне всех recall-индексов; клик = читать": "outside all recall indexes; click = read", "sync-конфликты файлов; клик = читать": "file sync-conflicts; click = read", "слои рёбер по детекторам; клик = вкл/выкл, синхронно с чипами HUD": "edge layers by detector; click = toggle, synced with the HUD chips", "<div class=\"empty2\">пусто<\/div>": "<div class=\"empty2\">empty<\/div>", "<div class=\"empty2\">чисто<\/div>": "<div class=\"empty2\">clean<\/div>", "свежесть": "recency", "хабы": "hubs", "конфликты": "conflicts", "ghost-долги · топ по ссылкам": "ghost debts · top by refs", "здоровье данных": "data health", "собрано:": "built:", "stem-коллизии:": "stem collisions:", "скрыто руками:": "hidden by hand:", "нет": "none", "⚙ пересборка…": "⚙ rebuild…", "рёбра": "edges", "профиль экспортирован": "profile exported", "битый JSON профиля": "broken profile JSON", "это не atlas-profile JSON": "not an atlas-profile JSON", "пины→": "pins→", "виды +": "views +", "теги +": "tags +", "импорт: ": "import: ", "нечего мержить": "nothing to merge", " — перезагрузка…": " — reloading…", "ссылка на вид": "view link", "битый ?state= — игнорирую": "broken ?state= — ignoring", "Атлас — статичный file://, данные пересобирает генератор в терминале. Отметь нужное, скопируй команду, прогони — затем «⟳ перезагрузить». Раскладки/цвета/слои пересборки не требуют — они живые, крути прямо в HUD.": "The atlas is a static file://; data is rebuilt by the generator in the terminal. Tick what you need, copy the command, run it — then “⟳ reload”. Layouts/colors/layers need no rebuild — they are live, tune them right in the HUD.", "Всё ручное (пины · виды · свои теги · user-рёбра · negatives · zone-overrides · конфиг) живёт в localStorage этого браузера. Профиль = один JSON для бэкапа/переезда между хостами. Импорт": "Everything manual (pins · views · own tags · user edges · negatives · zone-overrides · config) lives in this browser's localStorage. A profile = one JSON for backup / moving between hosts. Import"}</script>
 <script>
 const DATA = "__DATA__";
 
@@ -864,6 +868,39 @@ const KEYP = 'atlas:' + (DATA.title || 'atlas') + ':';
 function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v === null ? fb : JSON.parse(v); } catch (e) { return fb; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 const CFG = lsGet(KEYP + 'cfg', {});
+// ==== i18n: RU = канон в разметке/коде, EN = словарь поверх; язык фиксируется
+// на загрузку страницы (toggle в баре = reload) — init-структуры безопасны ====
+const I18N_EN = JSON.parse(document.getElementById('i18nEN').textContent);
+const LANG = (CFG.lang === 'ru' || CFG.lang === 'en') ? CFG.lang : '__LANG__';
+const T = s => (LANG === 'en' && I18N_EN[s]) || s;
+if (LANG === 'en') {   // статическая разметка: атрибуты + текст-ноды по словарю
+  for (const el of document.querySelectorAll('[data-hint],[title],[placeholder]'))
+    for (const a of ['data-hint', 'title', 'placeholder']) {
+      const v = el.getAttribute(a);
+      if (v && I18N_EN[v]) el.setAttribute(a, I18N_EN[v]);
+    }
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let tn;
+  while ((tn = w.nextNode())) {
+    if (tn.parentNode && /^(SCRIPT|STYLE)$/.test(tn.parentNode.nodeName)) continue;
+    const mm = tn.nodeValue.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    const k = mm[2].replace(/\s+/g, ' ');   // ключи словаря нормализованы по пробелам
+    if (k && I18N_EN[k]) tn.nodeValue = mm[1] + I18N_EN[k] + mm[3];
+  }
+}
+{
+  const lb = document.getElementById('langBtn');
+  lb.textContent = LANG === 'en' ? 'RU' : 'EN';
+  lb.addEventListener('click', () => {
+    CFG.lang = LANG === 'en' ? 'ru' : 'en';
+    const c = lsGet(KEYP + 'cfg', {}); c.lang = CFG.lang; lsSet(KEYP + 'cfg', c);
+    location.reload();
+  });
+  let lit = 0;   // auto-hide: кнопка растворяется по бездействию, будится движением
+  const wake = () => { lb.classList.remove('dim'); clearTimeout(lit); lit = setTimeout(() => lb.classList.add('dim'), 5000); };
+  window.addEventListener('pointermove', wake, { passive: true });
+  wake();
+}
 const hiddenZones = new Set(CFG.hiddenZones || []);
 // объёмные детектор-слои по дефолту скрыты (принцип #3: линии = шум, включает юзер чипом);
 // wiki/md/shared_ref/user видны сразу
@@ -1049,7 +1086,7 @@ function saveCfg() {
     color: mode(), size: sizeMode(), focus2: focusMode(), labelMode: labelModeV(),
     labelHops: labelHopsV(), camPolicy2: camPolicy(),
     edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value, labelDens: +$('labelDens').value,
-    maxN: maxN, TS: TS, toggles: toggles, layout: layoutName,
+    maxN: maxN, TS: TS, toggles: toggles, layout: layoutName, lang: CFG.lang,
     hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
   });
 }
@@ -1062,7 +1099,7 @@ for (const id of Object.keys(toggles)) {
     if (id === 'gestures') gesturesToggle(toggles[id]);
     if (id === 'particles' && toggles[id]) lastPT = performance.now();
     if (id === 'hulls' && toggles.hulls && layoutName === 'semantic')
-      toast('в semantic hulls не рисуются (зоны перемешаны) — контраст зон несут кольца нод');
+      toast(T('в semantic hulls не рисуются (зоны перемешаны) — контраст зон несут кольца нод'));
     saveCfg(); requestDraw();
   });
 }
@@ -1138,7 +1175,7 @@ function tagSuggest(n) {
   const have = new Set(nodeTags(n));
   const sug = allUserTags().filter(t => !have.has(t));
   return `${sug.length ? `<div class="taglinks sugrow">${sug.slice(0, 6).map(t =>
-      `<span class="tag sug" data-addtag="${esc(t)}" title="повесить этот тег на ноду"><span class="sw" style="background:${tagColor(t)}"></span>+ ${esc(t)}</span>`).join('')}</div>` : ''}
+      `<span class="tag sug" data-addtag="${esc(t)}" title="${T('повесить этот тег на ноду')}"><span class="sw" style="background:${tagColor(t)}"></span>+ ${esc(t)}</span>`).join('')}</div>` : ''}
     <datalist id="tagDatalist">${allUserTags().map(t => `<option value="${esc(t)}">`).join('')}</datalist>`;
 }
 function addTagTo(ids, t) {
@@ -1152,7 +1189,7 @@ function addTagTo(ids, t) {
   }
   saveUserTags(); renderTags();
   if (selected) selectNode(selected, { noFly: true });
-  toast(`тег «${t}»: +${added} нод`);
+  toast(`${T('тег')} «${t}»: +${added} ${T('нод')}`);
   requestDraw();
 }
 function removeUserTag(id, t) {
@@ -1160,7 +1197,7 @@ function removeUserTag(id, t) {
   if (!userTags[id].length) delete userTags[id];
   saveUserTags(); renderTags();
   if (selected) selectNode(selected, { noFly: true });
-  toast(`тег «${t}» снят`);
+  toast(`${T('тег')} «${t}» ${T('снят')}`);
   requestDraw();
 }
 // ∪ any (хотя бы один выбранный тег) | ∩ все (пересечение) — тумблер в шапке тегов
@@ -1295,7 +1332,7 @@ function fitTransform(subset) {
 function fitView() {
   const t = fitTarget();
   d3.select(canvas).transition().duration(500).call(zoom.transform, fitTransform(t));
-  if (t.length < nodes.filter(visible).length) toast(`fit: ${t.length} нод контекста (весь граф = ⌂/h)`);
+  if (t.length < nodes.filter(visible).length) toast(`fit: ${t.length} ${T('нод контекста (весь граф = ⌂/h)')}`);
 }
 document.getElementById('fit').addEventListener('click', fitView);
 // стартовый вид = fit по прогретой раскладке; он же = home (⌂ / h, ставится в boot-блоке)
@@ -1346,7 +1383,7 @@ function tipNode(n) {
   const lline = (ids, mark) => ids.length
     ? `<div class="tlinks"><b>${mark}${ids.length}</b> ${ids.slice(0, 3).map(id => esc(lname(id))).join(' · ')}${ids.length > 3 ? ' …' : ''}</div>` : '';
   const tags = nodeTags(n);
-  tooltip.innerHTML = `<div>${esc(n.label)}${n.ghost ? ' <span class="tg-mark">ghost — ноты нет</span>' : ''}</div>
+  tooltip.innerHTML = `<div>${esc(n.label)}${n.ghost ? T(' <span class="tg-mark">ghost — ноты нет</span>') : ''}</div>
     <div class="tmeta">${esc(n.zone)} · ${esc(n.type)} · deg ${n.degree}${mode()==='heat'&&!n.ghost?` · ${HEAT.label} ${(n.heat??0).toFixed(2)}`:''}</div>
     ${n.desc ? `<div class="tdesc">${esc(n.desc)}</div>` : ''}
     ${tags.length ? `<div class="ttags">${tags.map(t =>
@@ -1356,7 +1393,7 @@ function tipNode(n) {
 function tipEdge(e) {
   const st = EDGE_STYLES[e.kind];
   tooltip.innerHTML = `<div><span class="ekind" style="border-color:${st ? st.c : '#8b8983'};border-top-style:${st && st.dash ? 'dashed' : 'solid'}"></span>${esc(e.source.label)} ⟷ ${esc(e.target.label)}</div>
-    <div class="tmeta">${esc(e.kind || 'wiki')}${e.score ? ' · score ' + (+e.score).toFixed(2) : ''}${e.w ? ' · w ' + e.w : ''}${e.user ? ' · нарисовано руками' : ''}</div>`;
+    <div class="tmeta">${esc(e.kind || 'wiki')}${e.score ? ' · score ' + (+e.score).toFixed(2) : ''}${e.w ? ' · w ' + e.w : ''}${e.user ? T(' · нарисовано руками') : ''}</div>`;
 }
 function tipPlace(ev) {
   tooltip.style.display = 'block';
@@ -1401,7 +1438,7 @@ let pendingLink = null;
 canvas.addEventListener('click', ev => {
   const n = pick(ev.clientX, ev.clientY);
   if (ev.ctrlKey && n && !n.ghost) {
-    if (!pendingLink) { pendingLink = n; toast('overlay: кликни вторую ноду для user-ребра'); return; }
+    if (!pendingLink) { pendingLink = n; toast(T('overlay: кликни вторую ноду для user-ребра')); return; }
     if (pendingLink !== n) addUserEdge(pendingLink, n);
     pendingLink = null;
     return;
@@ -1441,7 +1478,7 @@ function selectNode(n, opts) {
         const isUser = userPairs.has(negKey(n.id, id));
         const isNeg = negSet.has(negKey(n.id, id));
         return `<div class="lnkrow"><a class="lnk" data-id="${esc(id)}" style="${isNeg?'opacity:.35;text-decoration:line-through':''}">${esc(t?t.label:id)}${t&&t.ghost?' <span class=gm>ghost</span>':''}${isUser?' <span class=gm>user</span>':''}</a>` +
-          `<span class="neg" data-${isUser?'deluser':isNeg?'restore':'neg'}="${esc(id)}" title="${isUser?'удалить user-ребро':isNeg?'вернуть ребро':'negative: спрятать авто-ребро'}">${isNeg?'↺':'✕'}</span></div>`;
+          `<span class="neg" data-${isUser?'deluser':isNeg?'restore':'neg'}="${esc(id)}" title="${isUser?T('удалить user-ребро'):isNeg?T('вернуть ребро'):T('negative: спрятать авто-ребро')}">${isNeg?'↺':'✕'}</span></div>`;
       }).join('')
     : '';
   const zopts = ['auto', ...zoneOrder].map(z =>
@@ -1450,25 +1487,25 @@ function selectNode(n, opts) {
     <h2>${esc(n.label)}</h2>
     <div class="chips">
       <span class="chip"><span class="dot" style="background:${zoneColor(n.zone)}"></span>${esc(n.zone)}${zOver[n.id] ? ' ★' : ''}
-        <select class="zsel" id="zoverSel" title="override зоны (порт layers.overrides)">${zopts}</select></span>
+        <select class="zsel" id="zoverSel" title="${T('override зоны (порт layers.overrides)')}">${zopts}</select></span>
       <span class="chip">${esc(n.type)}</span>
-      ${n.ghost ? '<span class="chip ghostchip">ghost — нота не написана</span>' : ''}
+      ${n.ghost ? T('<span class="chip ghostchip">ghost — нота не написана</span>') : ''}
     </div>
     <div class="acts">
-      <button class="abtn" data-copy="${esc(n.id)}" title="копировать id">⧉ id</button>
-      ${n.path ? `<button class="abtn" data-copypath="1">⧉ path</button><button class="abtn" data-opened="1" title="открыть в редакторе (пресет в ?)">↗ open</button>` : ''}
+      <button class="abtn" data-copy="${esc(n.id)}" title="${T('копировать id')}">⧉ id</button>
+      ${n.path ? `<button class="abtn" data-copypath="1">⧉ path</button><button class="abtn" data-opened="1" title="${T('открыть в редакторе (пресет в ?)')}">↗ open</button>` : ''}
       ${n.desc ? '<button class="abtn" data-copydesc="1">⧉ desc</button>' : ''}
       <button class="abtn" data-pinbtn="1">${pinIds.includes(n.id) ? '✕ unpin' : '📌 pin'}</button>
-      <button class="abtn" data-hide="1" title="скрыть до перезагрузки">👁 hide</button>
-      <button class="abtn" data-frame="1" title="подтянуть ноду+соседей в кадр (c)">⌖ в кадр</button>
+      <button class="abtn" data-hide="1" title="${T('скрыть до перезагрузки')}">👁 hide</button>
+      <button class="abtn" data-frame="1" title="${T('подтянуть ноду+соседей в кадр (c)')}">${T('⌖ в кадр')}</button>
     </div>
-    <h3>теги · клик = линза</h3>
+    <h3>${T('теги · клик = линза')}</h3>
     <div class="taglinks">${nodeTags(n).map(t =>
-      `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-tag="${esc(t)}"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}${isUserTag(n, t) ? `<span class="tx" data-deltag="${esc(t)}" title="снять свой тег">✕</span>` : ''}</span>`).join('')}${
-      n.ghost ? '' : `<span class="tag addtag"><input id="tagAdd" list="tagDatalist" placeholder="+ тег (t)" autocomplete="off" title="enter = повесить тег; клавиша t фокусирует сюда"></span>`}</div>
+      `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-tag="${esc(t)}"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}${isUserTag(n, t) ? `<span class="tx" data-deltag="${esc(t)}" title="${T('снять свой тег')}">✕</span>` : ''}</span>`).join('')}${
+      n.ghost ? '' : `<span class="tag addtag"><input id="tagAdd" list="tagDatalist" placeholder="${T('+ тег (t)')}" autocomplete="off" title="${T('enter = повесить тег; клавиша t фокусирует сюда')}"></span>`}</div>
     ${n.ghost ? '' : tagSuggest(n)}
-    <div class="meta">${n.path ? `${esc(n.path)} · ${(n.bytes/1024).toFixed(1)}k · изменена ${n.age_days}д назад<br>` : ''}degree ${n.degree} (out ${outLinks.get(n.id).length} / in ${inLinks.get(n.id).length}) · cluster ${n.cluster}</div>
-    ${n.ghost ? '' : `<span class="readbrowse" data-read="${esc(n.id)}">▤ читать полностью</span>`}
+    <div class="meta">${n.path ? `${esc(n.path)} · ${(n.bytes/1024).toFixed(1)}k · ${T('изменена')} ${n.age_days}${T('д')}${T(' назад')}<br>` : ''}degree ${n.degree} (out ${outLinks.get(n.id).length} / in ${inLinks.get(n.id).length}) · cluster ${n.cluster}</div>
+    ${n.ghost ? '' : `<span class="readbrowse" data-read="${esc(n.id)}">${T('▤ читать полностью')}</span>`}
     ${n.desc ? `<div class="desc">${esc(n.desc)}</div>` : ''}
     ${links(outLinks.get(n.id), 'links out')}
     ${links(inLinks.get(n.id), 'links in')}`;
@@ -1505,7 +1542,7 @@ document.getElementById('panelBody').addEventListener('click', ev => {
   else if (el.dataset.copydesc) copyText(n.desc, 'desc');
   else if (el.dataset.opened) openInEditor(n);
   else if (el.dataset.pinbtn) togglePin(n, true);
-  else if (el.dataset.hide) { hiddenNodes.add(n.id); $('hiddenCnt').textContent = hiddenNodes.size; selectNode(null); toast('скрыта до перезагрузки (вернуть — в ?)'); }
+  else if (el.dataset.hide) { hiddenNodes.add(n.id); $('hiddenCnt').textContent = hiddenNodes.size; selectNode(null); toast(T('скрыта до перезагрузки (вернуть — в ?)')); }
   else if (el.dataset.frame) frameEgo(n);
   else if (el.dataset.addtag) addTagTo([n.id], el.dataset.addtag);
   else if (el.dataset.deltag) removeUserTag(n.id, el.dataset.deltag);
@@ -1840,7 +1877,7 @@ function toggleTag(t) {
 document.getElementById('tagClr').addEventListener('click', () => { tagSel.clear(); renderTags(); requestDraw(); });
 $('tagMode').addEventListener('click', () => {   // ∪ any ↔ ∩ все (пересечение выбранных тегов)
   tagAnd = !tagAnd;
-  $('tagMode').textContent = tagAnd ? '∩ все' : '∪ any';
+  $('tagMode').textContent = tagAnd ? T('∩ все') : '∪ any';
   lensT = performance.now();
   renderTags(); requestDraw();
 });
@@ -1858,18 +1895,18 @@ function frameSet(es) {
 const lensEl = document.getElementById('lens');
 function renderLens() {
   const parts = [];
-  for (const t of tagSel) parts.push(`<span class="lchip"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}<span class="x" data-deltag="${esc(t)}" title="снять тег из линзы">✕</span></span>`);
-  if (tagSel.size > 1) parts.push(`<span class="lcnt">${tagAnd ? '∩ все' : '∪ any'}</span>`);
-  if (query.length) parts.push(`<span class="lchip">⌕ ${esc(query.join(' '))}<span class="x" data-clrq="1" title="снять поиск">✕</span></span>`);
+  for (const t of tagSel) parts.push(`<span class="lchip"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}<span class="x" data-deltag="${esc(t)}" title="${T('снять тег из линзы')}">✕</span></span>`);
+  if (tagSel.size > 1) parts.push(`<span class="lcnt">${tagAnd ? T('∩ все') : '∪ any'}</span>`);
+  if (query.length) parts.push(`<span class="lchip">⌕ ${esc(query.join(' '))}<span class="x" data-clrq="1" title="${T('снять поиск')}">✕</span></span>`);
   const dispIso = k => mode() === 'cluster' && typeof k === 'number' ? clusterName(k) : String(k);
-  for (const k of isolate) parts.push(`<span class="lchip">⊙ ${esc(dispIso(k))}<span class="x" data-deliso="${esc(String(k))}" title="снять изоляцию">✕</span></span>`);
-  if (hiddenZones.size) parts.push(`<span class="lchip">зоны −${hiddenZones.size}<span class="x" data-zones="1" title="показать все зоны">✕</span></span>`);
-  if (keepSet) parts.push(`<span class="lchip">top ${maxN}<span class="x" data-maxn="1" title="вернуть все ноды">✕</span></span>`);
+  for (const k of isolate) parts.push(`<span class="lchip">⊙ ${esc(dispIso(k))}<span class="x" data-deliso="${esc(String(k))}" title="${T('снять изоляцию')}">✕</span></span>`);
+  if (hiddenZones.size) parts.push(`<span class="lchip">${T('зоны')} −${hiddenZones.size}<span class="x" data-zones="1" title="${T('показать все зоны')}">✕</span></span>`);
+  if (keepSet) parts.push(`<span class="lchip">top ${maxN}<span class="x" data-maxn="1" title="${T('вернуть все ноды')}">✕</span></span>`);
   if (!parts.length) { lensEl.classList.remove('on'); return; }
   const vis = nodes.filter(n => !n.ghost && visible(n) && matches(n) && hasTag(n) &&
     (!isolate.size || isolate.has(groupKey(n))) && inKeep(n)).length;
-  parts.push(`<span class="lcnt">· ${vis} нот</span>`);
-  parts.push(`<span class="lsave" data-lsave="1" title="сохранить линзу как вид">💾 в вид</span>`);
+  parts.push(`<span class="lcnt">· ${vis} ${T('нот')}</span>`);
+  parts.push(`<span class="lsave" data-lsave="1" title="${T('сохранить линзу как вид')}">${T('💾 в вид')}</span>`);
   lensEl.innerHTML = parts.join('');
   lensEl.classList.add('on');
 }
@@ -1884,7 +1921,7 @@ lensEl.addEventListener('click', ev => {
   }
   else if (el.dataset.zones) { hiddenZones.clear(); saveCfg(); renderZoneChips(); requestDraw(); }
   else if (el.dataset.maxn) { maxN = realCount; $('maxN').value = maxN; rebuildKeep(); saveCfg(); renderLens(); requestDraw(); }
-  else if (el.dataset.lsave) saveView([...tagSel].join('+') || query.join(' ') || 'линза');
+  else if (el.dataset.lsave) saveView([...tagSel].join('+') || query.join(' ') || T('линза'));
 });
 
 // ==== graph-lab ports: pins / chips / overlay / views / misc ====
@@ -1899,7 +1936,7 @@ function toast(msg) {
   setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 300); }, 2400);
 }
 function copyText(txt, label) {
-  const done = () => toast('⧉ ' + (label || 'скопировано'));
+  const done = () => toast('⧉ ' + (label || T('скопировано')));
   if (navigator.clipboard && navigator.clipboard.writeText)
     navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
   else fallbackCopy(txt, done);
@@ -1907,7 +1944,7 @@ function copyText(txt, label) {
 function fallbackCopy(txt, done) {
   const ta = document.createElement('textarea');
   ta.value = txt; document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); done(); } catch (e) { toast('copy не удался'); }
+  try { document.execCommand('copy'); done(); } catch (e) { toast(T('copy не удался')); }
   ta.remove();
 }
 
@@ -1966,8 +2003,8 @@ function renderPins() {
 $('pinsClr').addEventListener('click', () => setPins([]));
 // пачку в тег: пины (ctrl+rmb = мультивыбор) → один тег на всех; фильтруется в «рабочих тегах»
 $('pinsTag').addEventListener('click', () => {
-  if (!pinIds.length) { toast('нет пинов: rmb = пин, ctrl+rmb = стек'); return; }
-  const t = prompt(`тег для ${pinIds.length} запиненных нод:`);
+  if (!pinIds.length) { toast(T('нет пинов: rmb = пин, ctrl+rmb = стек')); return; }
+  const t = prompt(`${T('тег для')} ${pinIds.length} ${T('запиненных нод:')}`);
   if (t) addTagTo(pinIds, t);
 });
 
@@ -2006,7 +2043,7 @@ function renderKindChips() {
 // ---- overlay CRUD (порт OverlayStore: user-edges + negatives, tombstone не нужен — LS) ----
 function addUserEdge(a, b) {
   const key = negKey(a.id, b.id);
-  if (overlay.edges.some(e => negKey(e.source, e.target) === key)) { toast('ребро уже есть'); return; }
+  if (overlay.edges.some(e => negKey(e.source, e.target) === key)) { toast(T('ребро уже есть')); return; }
   overlay.edges.push({ source: a.id, target: b.id, type: 'user', ts: Date.now() });
   saveOverlay();
   const e = { source: a, target: b, kind: 'user', cross: true, user: true };
@@ -2015,7 +2052,7 @@ function addUserEdge(a, b) {
   outLinks.get(a.id).push(b.id); inLinks.get(b.id).push(a.id);
   kindCounts.set('user', (kindCounts.get('user') || 0) + 1);
   renderKindChips(); rebuildPinHl();
-  toast(`user-ребро: ${a.label} → ${b.label}`);
+  toast(`${T('user-ребро:')} ${a.label} → ${b.label}`);
   if (selected) selectNode(selected, { noFly: true });
   requestDraw();
 }
@@ -2027,7 +2064,7 @@ function removeUserEdge(aid, bid) {
   if (idx >= 0) edges.splice(idx, 1);
   kindCounts.set('user', Math.max(0, (kindCounts.get('user') || 1) - 1));
   renderKindChips();
-  toast('user-ребро удалено');
+  toast(T('user-ребро удалено'));
   if (selected) selectNode(selected, { noFly: true });
   requestDraw();
 }
@@ -2035,7 +2072,7 @@ function addNegative(aid, bid) {
   overlay.negatives.push({ s: aid, t: bid, ts: Date.now() });
   negSet.add(negKey(aid, bid));
   saveOverlay();
-  toast('negative: ребро спрятано');
+  toast(T('negative: ребро спрятано'));
   if (selected) selectNode(selected, { noFly: true });
   requestDraw();
 }
@@ -2093,12 +2130,12 @@ function applyView(v) {
       [...$('layoutMode').options].some(o => o.value === v.layout))
     applyLayout(v.layout, true);
   else if (!v.layout)
-    toast('вид сохранён до раскладок — камера может не совпасть');
+    toast(T('вид сохранён до раскладок — камера может не совпасть'));
   renderZoneChips(); renderKindChips(); renderLegend();
   saveCfg();   // слои/цвет из вида ПЕРСИСТЯТСЯ — иначе reload молча откатывал
   d3.select(canvas).transition().duration(500).call(zoom.transform,
     d3.zoomIdentity.translate(v.t.x, v.t.y).scale(v.t.k));
-  toast('вид: ' + v.name);
+  toast(T('вид: ') + v.name);
 }
 function saveView(name) {
   views.push({ name, t: { x: transform.x, y: transform.y, k: transform.k },
@@ -2106,7 +2143,7 @@ function saveView(name) {
     tags: [...tagSel],   // вид несёт линзу: «tag-driven saved view»
     color: mode(), size: sizeMode(), layout: layoutName });
   lsSet(KEYP + 'views', views);
-  renderViews(); toast('вид сохранён: ' + name);
+  renderViews(); toast(T('вид сохранён: ') + name);
 }
 $('viewSave').addEventListener('click', () => {
   saveView($('viewName').value.trim() || 'view ' + (views.length + 1));
@@ -2140,7 +2177,7 @@ function exportJSON(full) {
   a.download = full ? 'atlas.full.json' : `atlas.view-${keepN.length}n.json`;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast('экспорт: ' + a.download);
+  toast(T('экспорт: ') + a.download);
 }
 
 // ---- hint: hover по контролу = строка в баре СРАЗУ + через 350мс человекочитаемая
@@ -2190,14 +2227,14 @@ function rgUpdate() {
     ? "'" + DATA.src.replace(/'/g, "'\\''") + "'" : DATA.src;
   $('rgCmd').textContent = DATA.src
     ? `memory-atlas --no-open --src ${srcQ}` + (flags.length ? ' ' + flags.join(' ') : '')
-    : '# граф собран внешним билдером (--data): пересобери его и перезапусти пайп';
+    : T('# граф собран внешним билдером (--data): пересобери его и перезапусти пайп');
 }
 function rgAgeText() {
-  let s = 'данные: ' + (DATA.generated || '?');
+  let s = T('данные: ') + (DATA.generated || '?');
   const tm = Date.parse(String(DATA.generated || '').replace(' ', 'T'));
   if (tm) {
     const hrs = Math.max(0, Math.round((Date.now() - tm) / 3600000));
-    s += ` · ${hrs < 48 ? hrs + 'ч' : Math.round(hrs / 24) + 'д'} назад`;
+    s += ` · ${hrs < 48 ? hrs + T('ч') : Math.round(hrs / 24) + T('д')}${T(' назад')}`;
   }
   return s;
 }
@@ -2206,7 +2243,7 @@ function rgAge() { $('regenAge').textContent = rgAgeText(); }
 const rebuildBtn = $('rebuildBtn');
 if (rebuildBtn) rebuildBtn.addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
 for (const id of ['rgVecs', 'rgStruct', 'rgNoSem', 'rgNoDet']) $(id).addEventListener('change', rgUpdate);
-$('rgCopy').addEventListener('click', () => copyText($('rgCmd').textContent, 'команда'));
+$('rgCopy').addEventListener('click', () => copyText($('rgCmd').textContent, T('команда')));
 $('rgReload').addEventListener('click', () => location.reload());
 $('rgClose').addEventListener('click', () => regenEl.classList.remove('on'));
 regenEl.addEventListener('click', ev => { if (ev.target === regenEl) regenEl.classList.remove('on'); });
@@ -2224,7 +2261,7 @@ function resetCorpus() {
 }
 $('helpReset').addEventListener('click', resetCorpus);
 $('helpRestoreHidden').addEventListener('click', () => {
-  hiddenNodes.clear(); $('hiddenCnt').textContent = 0; requestDraw(); toast('скрытые ноды возвращены');
+  hiddenNodes.clear(); $('hiddenCnt').textContent = 0; requestDraw(); toast(T('скрытые ноды возвращены'));
 });
 $('helpExportOverlay').addEventListener('click', () => {
   const a = document.createElement('a');
@@ -2233,13 +2270,13 @@ $('helpExportOverlay').addEventListener('click', () => {
 });
 $('helpKinds').innerHTML = Object.entries(EDGE_STYLES).map(([k, st]) =>
   `<tr><td style="color:${st.c}">${k}</td><td>${{
-    shared_ref: 'две зоны ссылаются на один ghost (всегда on)',
-    semantic: 'cosine эмбеддингов ≥ 0.75 (Ollama, build-time)',
-    tag_overlap: 'Jaccard рабочих тегов ≥ 0.5',
-    temporal_proximity: 'co-modification в окне 24h',
-    session_co_occurrence: 'co-touched в git-коммитах',
-    structural_homology: 'chain-3 мотивы (opt-in, research)',
-    user: 'нарисовано юзером (ctrl+click ×2)',
+    shared_ref: T('две зоны ссылаются на один ghost (всегда on)'),
+    semantic: T('cosine эмбеддингов ≥ 0.75 (Ollama, build-time)'),
+    tag_overlap: T('Jaccard рабочих тегов ≥ 0.5'),
+    temporal_proximity: T('co-modification в окне 24h'),
+    session_co_occurrence: T('co-touched в git-коммитах'),
+    structural_homology: T('chain-3 мотивы (opt-in, research)'),
+    user: T('нарисовано юзером (ctrl+click ×2)'),
   }[k] || ''}</td></tr>`).join('');
 
 // ---- gestures (порт gestures.js: MediaPipe CDN, graceful degrade) ----
@@ -2274,10 +2311,10 @@ function gesturesToggle(on) {
         prev = { x: palm.x, y: palm.y, pinch };
       });
       const cam = new window.Camera(video, { onFrame: async () => hands.send({ image: video }), width: 320, height: 240 });
-      cam.start().then(() => { gestState = { cam, video }; toast('🎥 жесты: ладонь = пан, щипок = зум'); })
-        .catch(() => fail('вебкамера недоступна'));
+      cam.start().then(() => { gestState = { cam, video }; toast(T('🎥 жесты: ладонь = пан, щипок = зум')); })
+        .catch(() => fail(T('вебкамера недоступна')));
     })
-    .catch(() => fail('CDN недоступен (offline) — жесты выключены'));
+    .catch(() => fail(T('CDN недоступен (offline) — жесты выключены')));
 }
 
 // ---- minimap (orientation-порт: side-map + viewport rect, click = pan) ----
@@ -2568,7 +2605,7 @@ $('layoutMode').addEventListener('change', () => applyLayout($('layoutMode').val
 // admin, перенесённая в клиент: не сервер перегенерит — вид пересобирается на месте) ----
 const PRESETS = {
   overview: { layout: 'force',    color: 'zone',    size: 'degree', clusters: false, ghosts: true,
-              toast: 'обзор: зоны силами, ghost-пунктир виден' },
+              toast: T('обзор: зоны силами, ghost-пунктир виден') },
   themes:   { layout: 'pack',     color: 'cluster', size: 'degree', clusters: false, ghosts: false,
               toast: 'тематики: круг зоны ⊃ круги louvain-кластеров' },
   synergy:  { layout: 'ring',     color: 'zone',    size: 'degree', clusters: false, ghosts: false,
@@ -2585,8 +2622,8 @@ const PRESETS = {
 function applyPreset(name) {
   const p = PRESETS[name];
   if (!p) return;
-  if (p.layout === 'semantic' && !hasSem) { toast('semantic-раскладки нет: пересобери с эмбеддингами (⚙)'); return; }
-  if (p.layout === 'timeline' && !hasAge) { toast('нет данных возраста для timeline'); return; }
+  if (p.layout === 'semantic' && !hasSem) { toast(T('semantic-раскладки нет: пересобери с эмбеддингами (⚙)')); return; }
+  if (p.layout === 'timeline' && !hasAge) { toast(T('нет данных возраста для timeline')); return; }
   $('colorMode').value = p.color;
   $('sizeMode').value = p.size;
   if (p.labels) $('labelMode').value = p.labels;
@@ -2598,7 +2635,7 @@ function applyPreset(name) {
   renderLegend(); renderKindChips();
   applyLayout(p.layout);   // saveCfg внутри
   toast(p.toast + (p.kinds && p.kinds.some(k => sessionKinds.has(k))
-    ? ' · слой включён на сессию (насовсем = чип)' : ''));
+    ? T(' · слой включён на сессию (насовсем = чип)') : ''));
 }
 $('taskPreset').addEventListener('change', () => { applyPreset($('taskPreset').value); $('taskPreset').value = ''; });
 
@@ -3258,9 +3295,9 @@ const nCross = edges.filter(e => e.cross && !e.user).length;
 document.getElementById('counts').textContent = `${nodes.length-nGhost}·${edges.length}`;
 document.getElementById('stats').textContent =
   (DATA.version ? `v${DATA.version} · ` : '') +
-  `${nodes.length-nGhost} нот + ${nGhost} ghost · ${edges.length} рёбер` +
-  (nCross ? ` (cross ${nCross}${DATA.detectors && DATA.detectors.length ? ' · ' + DATA.detectors.length + ' детекторов' : ''})` : '') +
-  ` · ${nClusters} кластеров · ${DATA.generated || ''}${DATA.src ? ' · '+DATA.src : ''}` +
+  `${nodes.length-nGhost} ${T('нот')} + ${nGhost} ghost · ${edges.length} ${T('рёбер')}` +
+  (nCross ? ` (cross ${nCross}${DATA.detectors && DATA.detectors.length ? ' · ' + DATA.detectors.length + T(' детекторов') : ''})` : '') +
+  ` · ${nClusters} ${T('кластеров')} · ${DATA.generated || ''}${DATA.src ? ' · '+DATA.src : ''}` +
   (overlayStale ? ` · overlay stale ${overlayStale}` : '');
 
 // deep-link: ?color & size & q & node=id
@@ -3308,7 +3345,7 @@ if (params.get('q')) {
     d.classList.toggle('sel', statDefs[i][3] !== null && statDefs[i][3] === curCat)); }
 
   // ---- categories ----
-  const cats = [['all','всё',S.total,'#cdd6f4'],['light','light index',S.light,'#a6e3a1'],
+  const cats = [['all',T('всё'),S.total,'#cdd6f4'],['light','light index',S.light,'#a6e3a1'],
     ['heavy','heavy index',S.heavy,'#89b4fa'],['orphan','orphan',S.orphan,'#f9e2af'],
     ['dangling','dangling',S.dangling,'#f38ba8'],['conflict','sync-conflict',S.conflict,'#f5c2e7']];
   Object.entries(D.types).sort((a, b) => b[1] - a[1]).forEach(([t, c]) => cats.push(['type:' + t, t, c, TC[t] || '#6c7086']));
@@ -3337,7 +3374,7 @@ if (params.get('q')) {
     if (curCat === 'dangling') ns = D.nodes.filter(n => n.type === 'missing' && (!curQ || n.name.toLowerCase().includes(curQ)));
     ns.sort((a, b) => (b.deg || 0) - (a.deg || 0) || a.name.localeCompare(b.name));
     listEl.innerHTML = '';
-    if (!ns.length) { listEl.innerHTML = '<div class="empty">пусто</div>'; return; }
+    if (!ns.length) { listEl.innerHTML = T('<div class="empty">пусто</div>'); return; }
     ns.forEach(n => { const d = document.createElement('div'); d.className = 'row' + (n.id === curId ? ' sel' : '');
       d.style.setProperty('--cur', TC[n.type] || '#cba6f7');
       let badge = '';
@@ -3359,7 +3396,7 @@ if (params.get('q')) {
     if (n.type === 'missing') {
       const refs = D.edges.filter(e => e.t === id).map(e => e.s);
       prev.innerHTML = '<div class="ph"><div class="fn">' + besc(n.name) + '</div>' +
-        '<div class="meta"><span class="bd dangling">dangling target</span> файла нет; ссылаются:</div></div>' +
+        '<div class="meta"><span class="bd dangling">dangling target</span> ' + T('файла нет; ссылаются:') + '</div></div>' +
         '<div class="md"><ul>' + refs.map(r => '<li><span class="wl" data-goto="' + r + '">' + besc((bBy[r] || {}).name || r) + '</span></li>').join('') + '</ul></div>';
       wirePrev(); return; }
     const body = D.bodies[id] || '';
@@ -3369,7 +3406,7 @@ if (params.get('q')) {
       '<div class="meta"><span>type: ' + n.type + '</span><span>' + (n.light ? 'light ' : '') + (n.heavy ? 'heavy ' : '') + (n.orphan ? 'orphan ' : '') + '</span>' +
       '<span>' + (n.size / 1024).toFixed(1) + 'KB</span><span>' + n.age_days + 'd ago</span>' +
       '<span>→' + out + ' ←' + ins + '</span>' +
-      '<span class="gp" data-graph="' + id + '">◌ в граф</span></div></div>' +
+      '<span class="gp" data-graph="' + id + '">' + T('◌ в граф') + '</span></div></div>' +
       '<div class="md">' + mdRender(body) + '</div>';
     wirePrev();
   }
@@ -3461,7 +3498,7 @@ document.querySelectorAll('#viewtabs .vt').forEach(t => t.addEventListener('clic
 
 // ==== dash-таб (▦): KPI-пульт корпуса. Клики дёргают СУЩЕСТВУЮЩИЕ механизмы
 // (isolate/focusNode/openInBrowse/hiddenKinds) — dash = пульт, не вторая логика ====
-function fmtD(d) { return d < 1 ? '<1д' : d < 60 ? Math.round(d) + 'д' : Math.round(d / 30) + 'мес'; }
+function fmtD(d) { return d < 1 ? T('<1д') : d < 60 ? Math.round(d) + T('д') : Math.round(d / 30) + T('мес'); }
 function renderDash() {
   const real = nodes.filter(n => !n.ghost);
   const gh = nodes.filter(n => n.ghost);
@@ -3471,23 +3508,23 @@ function renderDash() {
   const conf = real.filter(n => n.conflict);
   const coll = real.filter(n => n.id.includes('~'));
   const kpis = [
-    ['ноты', real.length], ['wiki-рёбра', layoutEdges.length], ['cross-рёбра', nCross],
+    [T('ноты'), real.length], [T('wiki-рёбра'), layoutEdges.length], [T('cross-рёбра'), nCross],
     ['ghosts', gh.length], ['orphan', orph.length], ['conflict', conf.length],
-    ['кластеров', nClusters], ['медиана возраста', fmtD(med)]];
+    [T('кластеров'), nClusters], [T('медиана возраста'), fmtD(med)]];
   const zmax = Math.max(1, ...zoneOrder.map(z => real.filter(n => n.zone === z).length));
   const zoneRows = zoneOrder.map(z => {
     const c = real.filter(n => n.zone === z).length;
     return c ? `<div class="brow" data-zone="${esc(z)}"><span class="bl">${esc(z)}</span>
       <span class="bar" style="width:${(c / zmax * 82).toFixed(1)}%;background:${zoneColor(z)}"></span><span class="bn">${c}</span></div>` : '';
   }).join('');
-  const buckets = [[0, 1, 'сегодня'], [1, 7, 'неделя'], [7, 30, 'месяц'], [30, 90, 'квартал'], [90, 1e9, 'старше']];
+  const buckets = [[0, 1, T('сегодня')], [1, 7, T('неделя')], [7, 30, T('месяц')], [30, 90, T('квартал')], [90, 1e9, T('старше')]];
   const bc = buckets.map(([a, b]) => real.filter(n => (n.age_days || 0) >= a && (n.age_days || 0) < b).length);
   const bmax = Math.max(1, ...bc);
   const hist = buckets.map(([a, b, l], i) =>
     `<div class="hb" data-preset="fresh"><div class="hn">${bc[i]}</div><div class="fill" style="height:${Math.max(3, bc[i] / bmax * 58)}px"></div><div class="hl">${l}</div></div>`).join('');
   const ghostRows = gh.map(g => ({ g, r: (inLinks.get(g.id) || []).length }))
     .sort((a, b) => b.r - a.r).slice(0, 10).map(({ g, r }) =>
-      `<div class="hrow" data-node="${esc(g.id)}"><span class="name">${esc(g.label)}</span><span class="m">${r} реф.</span></div>`).join('');
+      `<div class="hrow" data-node="${esc(g.id)}"><span class="name">${esc(g.label)}</span><span class="m">${r} ${T('реф.')}</span></div>`).join('');
   const hubRows = real.slice().sort((a, b) => b.degree - a.degree).slice(0, 10).map(n =>
     `<div class="hrow" data-node="${esc(n.id)}"><span class="name">${esc(n.label)}</span><span class="m">deg ${n.degree} · ${esc(n.zone)}</span></div>`).join('');
   const bTab = DATA.browse ? 'data-bnode' : 'data-node';   // без browse-модуля читалка = граф
@@ -3504,17 +3541,17 @@ function renderDash() {
   dashEl.innerHTML = `<div class="wrap">
     <div class="kpis">${kpis.map(([l, n]) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
     <div class="grid">
-      <div class="card" data-hint="клик по полосе = в граф с изоляцией зоны"><h3>зоны</h3>${zoneRows}</div>
-      <div class="card" data-hint="когда ноты менялись; клик = timeline-пресет свежести"><h3>свежесть</h3><div class="hist">${hist}</div></div>
-      <div class="card" data-hint="на них ссылаются, файла нет — «стоит написать»; клик = к ноде в графе"><h3>ghost-долги · топ по ссылкам</h3>${ghostRows || '<div class="empty2">пусто</div>'}</div>
-      <div class="card" data-hint="самые связные ноты; клик = к ноде в графе"><h3>хабы</h3>${hubRows}</div>
-      <div class="card" data-hint="вне всех recall-индексов; клик = читать"><h3>orphans</h3>${orphRows || '<div class="empty2">чисто</div>'}</div>
-      <div class="card" data-hint="sync-конфликты файлов; клик = читать"><h3>конфликты</h3>${confRows || '<div class="empty2">чисто</div>'}</div>
-      <div class="card" data-hint="слои рёбер по детекторам; клик = вкл/выкл, синхронно с чипами HUD"><h3>рёбра по типу</h3><div class="chips-rail">${detRows}</div></div>
-      <div class="card"><h3>здоровье данных</h3>
-        <div class="empty2">собрано: ${esc(DATA.generated || '?')}${DATA.host ? ' · ' + esc(DATA.host) : ''}<br>src: ${esc(DATA.src || '—')}<br>
-        stem-коллизии: ${coll.length ? coll.map(n => esc(n.id)).join(', ') : 'нет'} · overlay stale: ${overlayStale} · скрыто руками: ${hiddenNodes.size}</div>
-        <button class="hbtn" id="dashRegen">⚙ пересборка…</button></div>
+      <div class="card" data-hint="${T('клик по полосе = в граф с изоляцией зоны')}"><h3>${T('зоны')}</h3>${zoneRows}</div>
+      <div class="card" data-hint="${T('когда ноты менялись; клик = timeline-пресет свежести')}"><h3>${T('свежесть')}</h3><div class="hist">${hist}</div></div>
+      <div class="card" data-hint="${T('на них ссылаются, файла нет — «стоит написать»; клик = к ноде в графе')}"><h3>${T('ghost-долги · топ по ссылкам')}</h3>${ghostRows || T('<div class="empty2">пусто</div>')}</div>
+      <div class="card" data-hint="${T('самые связные ноты; клик = к ноде в графе')}"><h3>${T('хабы')}</h3>${hubRows}</div>
+      <div class="card" data-hint="${T('вне всех recall-индексов; клик = читать')}"><h3>orphans</h3>${orphRows || T('<div class="empty2">чисто</div>')}</div>
+      <div class="card" data-hint="${T('sync-конфликты файлов; клик = читать')}"><h3>${T('конфликты')}</h3>${confRows || T('<div class="empty2">чисто</div>')}</div>
+      <div class="card" data-hint="${T('слои рёбер по детекторам; клик = вкл/выкл, синхронно с чипами HUD')}"><h3>${T('рёбра по типу')}</h3><div class="chips-rail">${detRows}</div></div>
+      <div class="card"><h3>${T('здоровье данных')}</h3>
+        <div class="empty2">${T('собрано:')} ${esc(DATA.generated || '?')}${DATA.host ? ' · ' + esc(DATA.host) : ''}<br>src: ${esc(DATA.src || '—')}<br>
+        ${T('stem-коллизии:')} ${coll.length ? coll.map(n => esc(n.id)).join(', ') : T('нет')} · overlay stale: ${overlayStale} · ${T('скрыто руками:')} ${hiddenNodes.size}</div>
+        <button class="hbtn" id="dashRegen">${T('⚙ пересборка…')}</button></div>
     </div></div>`;
   $('dashRegen').addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
 }
@@ -3564,14 +3601,14 @@ $('stExport').addEventListener('click', () => {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' }));
   a.download = `atlas-profile.${(DATA.title || 'atlas').replace(/\W+/g, '-')}.json`;
   a.click(); URL.revokeObjectURL(a.href);
-  toast('профиль экспортирован');
+  toast(T('профиль экспортирован'));
 });
 $('stImport').addEventListener('click', () => $('stImportFile').click());
 $('stImportFile').addEventListener('change', ev => {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
   const r = new FileReader();
-  r.onload = () => { try { importProfile(JSON.parse(r.result)); } catch (e) { toast('битый JSON профиля'); } };
+  r.onload = () => { try { importProfile(JSON.parse(r.result)); } catch (e) { toast(T('битый JSON профиля')); } };
   r.readAsText(f);
   ev.target.value = '';
 });
@@ -3579,17 +3616,17 @@ $('stImportFile').addEventListener('change', ev => {
 // хост может быть на более новом template). Stale id-refs дочистит boot-машинерия
 // (pins filter / overlayStale) — здесь не валидируем по byId.
 function importProfile(p) {
-  if (!p || p.kind !== 'atlas-profile') { toast('это не atlas-profile JSON'); return; }
+  if (!p || p.kind !== 'atlas-profile') { toast(T('это не atlas-profile JSON')); return; }
   const rep = [];
   if (p.cfg) { lsSet(KEYP + 'cfg', { ...lsGet(KEYP + 'cfg', {}), ...p.cfg }); rep.push('cfg'); }
   if (Array.isArray(p.pins) && p.pins.length) {
     const merged = [...new Set([...pinIds, ...p.pins])].slice(-6);
-    lsSet(KEYP + 'pins', merged); rep.push('пины→' + merged.length);
+    lsSet(KEYP + 'pins', merged); rep.push(T('пины→') + merged.length);
   }
   if (Array.isArray(p.views) && p.views.length) {
     const names = new Set(views.map(v => v.name));
     const add = p.views.filter(v => v && v.name && !names.has(v.name));
-    if (add.length) { lsSet(KEYP + 'views', views.concat(add)); rep.push('виды +' + add.length); }
+    if (add.length) { lsSet(KEYP + 'views', views.concat(add)); rep.push(T('виды +') + add.length); }
   }
   if (p.userTags) {
     const ut = lsGet(KEYP + 'userTags', {});
@@ -3598,7 +3635,7 @@ function importProfile(p) {
       const arr = ut[id] || (ut[id] = []);
       for (const t of ts || []) if (!arr.includes(t)) { arr.push(t); n++; }
     }
-    lsSet(KEYP + 'userTags', ut); rep.push('теги +' + n);
+    lsSet(KEYP + 'userTags', ut); rep.push(T('теги +') + n);
   }
   if (p.zoneOverride) { lsSet(KEYP + 'zoneOverride', { ...lsGet(KEYP + 'zoneOverride', {}), ...p.zoneOverride }); rep.push('overrides'); }
   if (p.overlay) {
@@ -3611,10 +3648,10 @@ function importProfile(p) {
     let nn = 0;
     for (const x of p.overlay.negatives || [])
       if (x && x.s && x.t && !nk.has(negKey(x.s, x.t))) { cur.negatives.push(x); nk.add(negKey(x.s, x.t)); nn++; }
-    lsSet(KEYP + 'overlay', cur); rep.push(`рёбра +${ne} · neg +${nn}`);
+    lsSet(KEYP + 'overlay', cur); rep.push(`${T('рёбра')} +${ne} · neg +${nn}`);
   }
   if (p.editor) lsSet('atlas:editor', p.editor);
-  toast('импорт: ' + (rep.join(' · ') || 'нечего мержить') + ' — перезагрузка…');
+  toast(T('импорт: ') + (rep.join(' · ') || T('нечего мержить')) + T(' — перезагрузка…'));
   setTimeout(() => location.reload(), 1400);
 }
 // ссылка на вид: НЕ сырой transform — на другом хосте другой корпус/позиции.
@@ -3626,7 +3663,7 @@ $('stShare').addEventListener('click', () => {
     node: selected ? selected.id : undefined, k: +transform.k.toFixed(3),
     q: searchEl.value.trim() || undefined };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(s))));
-  copyText(location.href.split('?')[0] + '?state=' + b64, 'ссылка на вид');
+  copyText(location.href.split('?')[0] + '?state=' + b64, T('ссылка на вид'));
 });
 
 // ---- boot ----
@@ -3646,7 +3683,7 @@ rebuildKeep();
 let bootState = null;
 if (params.get('state')) {
   try { bootState = JSON.parse(decodeURIComponent(escape(atob(params.get('state'))))); }
-  catch (e) { toast('битый ?state= — игнорирую'); }
+  catch (e) { toast(T('битый ?state= — игнорирую')); }
 }
 if (bootState) {
   for (const [k, id] of [['color', 'colorMode'], ['size', 'sizeMode']]) {
@@ -3657,7 +3694,7 @@ if (bootState) {
   if (Array.isArray(bootState.hk)) { hiddenKinds.clear(); bootState.hk.forEach(k => hiddenKinds.add(k)); renderKindChips(); }
   if (bootState.q) { searchEl.value = bootState.q; query = bootState.q.toLowerCase().split(/\s+/).filter(Boolean); rebuildMatch(); }
   if (Array.isArray(bootState.tags) && bootState.tags.length) {   // линза приезжает по ссылке
-    if (bootState.and) { tagAnd = true; $('tagMode').textContent = '∩ все'; }
+    if (bootState.and) { tagAnd = true; $('tagMode').textContent = T('∩ все'); }
     bootState.tags.forEach(t => tagSel.add(t));
     renderTags();
   }

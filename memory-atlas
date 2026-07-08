@@ -667,7 +667,7 @@ def to_browse_data(nodes, edges, bodies, now):
             "stats": stats, "types": types, "generated": int(now)}
 
 
-def render(data, out, d3js=None, tpl=None):
+def render(data, out, d3js=None, tpl=None, lang="ru"):
     if d3js is None:
         if not os.path.exists(D3_PATH):
             sys.exit(f"memory-atlas: d3 cache missing: {D3_PATH}\n"
@@ -681,7 +681,8 @@ def render(data, out, d3js=None, tpl=None):
             tpl = f.read()
     # </script> внутри desc разорвал бы инлайн-скрипт — экранируем слэш
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    html = tpl.replace("/*__D3__*/", d3js).replace("\"__DATA__\"", payload)
+    html = tpl.replace("/*__D3__*/", d3js).replace("\"__DATA__\"", payload) \
+              .replace("'__LANG__'", "'en'" if lang == "en" else "'ru'")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
@@ -696,6 +697,8 @@ def main():
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--data", help="готовый graph JSON (файл или '-' = stdin) вместо скана memory")
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--lang", choices=["ru", "en"], default="ru",
+                    help="стартовый язык UI (toggle в баре меняет и переживает пересборку)")
     ap.add_argument("--self-test", action="store_true")
     # cross-zone детекторы (имена флагов = graph-lab CLI, включая их асимметрию:
     # пять --no-X-cross default-on, structural opt-in)
@@ -760,7 +763,7 @@ def main():
                 by_kind[e["kind"]] = by_kind.get(e["kind"], 0) + 1
             print("cross: " + " ".join(f"{k}={v}" for k, v in sorted(by_kind.items())))
 
-    render(data, args.out)
+    render(data, args.out, lang=args.lang)
     ghosts = sum(1 for n in data["nodes"] if n.get("ghost"))
     print(f"nodes={len(data['nodes'])} (ghosts={ghosts}) edges={len(data['edges'])}")
     print(f"out: {args.out}")
@@ -1079,6 +1082,38 @@ def run_self_test():
                           out, d3js="/*d3-stub*/", tpl=tpl)
             self.assertNotIn("\"__DATA__\"", html)
             self.assertNotIn("/*__D3__*/", html)
+
+        def test_i18n_lang_placeholder(self):
+            # --lang прошивает стартовый язык; плейсхолдер не должен пережить render
+            data = {"title": "t", "zones": {}, "nodes": [], "edges": []}
+            tpl = "<script>/*__D3__*/</script><script>const L='__LANG__';const D=\"__DATA__\";</script>"
+            out = os.path.join(self.src, "l.html")
+            self.assertIn("const L='en'", render(data, out, d3js="/*d3*/", tpl=tpl, lang="en"))
+            self.assertIn("const L='ru'", render(data, out, d3js="/*d3*/", tpl=tpl))
+
+        def test_i18n_dict_covers_static_markup(self):
+            # drift-guard: каждая кириллическая строка статической разметки
+            # (data-hint/title/placeholder + текст-ноды) обязана иметь EN-перевод,
+            # иначе EN-режим покажет RU-дыру. Новую строку в разметке = новая пара в i18nEN.
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            m = re.search(r'<script type="application/json" id="i18nEN">(.*?)</script>', tpl, re.S)
+            self.assertIsNotNone(m, "i18nEN dict block missing")
+            en = json.loads(m.group(1).replace("<\\/", "</"))
+            cyr = re.compile(r"[А-Яа-яЁё]")
+            markup = tpl[:tpl.index('<script type="application/json" id="i18nEN">')]
+            markup = re.sub(r"<style>.*?</style>", "", markup, flags=re.S)
+            norm = lambda s: re.sub(r"\s+", " ", s.strip())  # клиентский walker нормализует так же
+            missing = set()
+            for attr, val in re.findall(r'(data-hint|title|placeholder)="([^"]*)"', markup):
+                if cyr.search(val) and norm(val) not in en:
+                    missing.add(norm(val))
+            for txt in re.findall(r">([^<>]+)<", markup, re.S):
+                if cyr.search(txt) and norm(txt) and norm(txt) not in en:
+                    missing.add(norm(txt))
+            self.assertFalse(missing, f"untranslated static markup: {sorted(missing)[:10]}")
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(T)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
