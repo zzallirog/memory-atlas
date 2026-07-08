@@ -949,6 +949,7 @@ for (const [sel, key] of [['colorMode','color'],['sizeMode','size'],['focusMode'
 for (const id of ['edgeAlpha', 'nodeSize', 'labelDens']) if (CFG[id] !== undefined) $(id).value = CFG[id];
 function saveCfg() {
   lsSet(KEYP + 'cfg', {
+    v: 2,   // версия конфига: v2 доверяет TS как есть (магия «TS===1 = легаси» умерла)
     color: mode(), size: sizeMode(), focus2: focusMode(), labelMode: labelModeV(),
     labelHops: labelHopsV(), camPolicy2: camPolicy(),
     edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value, labelDens: +$('labelDens').value,
@@ -971,6 +972,7 @@ for (const id of Object.keys(toggles)) {
 }
 for (const id of ['colorMode','sizeMode','focusMode','labelMode','labelHops','camPolicy'])
   $(id).addEventListener('change', saveCfg);
+$('colorMode').addEventListener('change', () => renderPins());   // сватчи пинов не стареют
 const showGhosts = () => toggles.ghosts;
 // в semantic-раскладке зонные hulls лгут (позиции = cosine, зоны перемешаны) — авто-выкл;
 // зонный контраст там несут цветные кольца нод (см. paintFrame)
@@ -1320,7 +1322,7 @@ document.getElementById('panelBody').addEventListener('click', ev => {
   if (tg) { toggleTag(tg.dataset.tag); return; }
   const rb = ev.target.closest('.readbrowse');   // fuse: graph → browse (полное тело)
   if (rb && window.openInBrowse) { window.openInBrowse(rb.dataset.read); return; }
-  const el = ev.target.closest('[data-copy],[data-copypath],[data-copydesc],[data-openned],[data-opened],[data-pinbtn],[data-hide],[data-frame],[data-neg],[data-deluser],[data-restore],[data-deltag]');
+  const el = ev.target.closest('[data-copy],[data-copypath],[data-copydesc],[data-opened],[data-pinbtn],[data-hide],[data-frame],[data-neg],[data-deluser],[data-restore],[data-deltag]');
   if (!el || !n) return;
   if (el.dataset.copy) copyText(el.dataset.copy, 'id');
   else if (el.dataset.copypath) copyText(absPath(n), 'path');
@@ -1845,7 +1847,10 @@ function applyView(v) {
   if (v.layout && v.layout !== layoutName &&
       [...$('layoutMode').options].some(o => o.value === v.layout))
     applyLayout(v.layout, true);
+  else if (!v.layout)
+    toast('вид сохранён до раскладок — камера может не совпасть');
   renderZoneChips(); renderKindChips(); renderLegend();
+  saveCfg();   // слои/цвет из вида ПЕРСИСТЯТСЯ — иначе reload молча откатывал
   d3.select(canvas).transition().duration(500).call(zoom.transform,
     d3.zoomIdentity.translate(v.t.x, v.t.y).scale(v.t.k));
   toast('вид: ' + v.name);
@@ -1932,8 +1937,11 @@ function rgUpdate() {
   const flags = [['rgVecs', '--search-vecs'], ['rgStruct', '--structural-cross'],
     ['rgNoSem', '--no-semantic-cross'], ['rgNoDet', '--no-detectors']]
     .filter(([id]) => $(id).checked).map(([, f]) => f);
+  // src с пробелом/спецсимволом — в одинарные кавычки, иначе копипаста ломается в шелле
+  const srcQ = DATA.src && /[^\w@%+=:,.\/-]/.test(DATA.src)
+    ? "'" + DATA.src.replace(/'/g, "'\\''") + "'" : DATA.src;
   $('rgCmd').textContent = DATA.src
-    ? `memory-atlas --no-open --src ${DATA.src}` + (flags.length ? ' ' + flags.join(' ') : '')
+    ? `memory-atlas --no-open --src ${srcQ}` + (flags.length ? ' ' + flags.join(' ') : '')
     : '# граф собран внешним билдером (--data): пересобери его и перезапусти пайп';
 }
 function rgAgeText() {
@@ -2068,6 +2076,8 @@ let magActive = false;
 let magPrev = null, magDwell = 0;
 const PULL_DELAY = 1300;
 function magnetStep() {
+  // магнит выключен и офсеты давно затухли — не гонять decay-луп по всем нодам каждый кадр
+  if (!toggles.magnet && !magActive) { magNode = null; return; }
   magActive = false;
   let best = null, bd = Infinity;
   const magR = toggles.magnet ? Math.min(160, Math.max(36, 90 / transform.k)) : 0;
@@ -2526,14 +2536,17 @@ function paintFrame(g, opts) {
   // авто-читаемость (встроена в вид, не ручка): толпа нод в кадре → рёбра сами тише
   // (эффект «edge-α ≈ 0.2 при нагромождении»), разреженный кадр → полный номинал.
   // Плотность = видимые ноды на «плитку» ~140×140px вьюпорта; hot/selected не глушим.
-  let onScr = 0;
-  for (const n of nodes) {
-    if (!visible(n)) continue;
-    const sx = n.x * transform.k + transform.x, sy = n.y * transform.k + transform.y;
-    if (sx >= -20 && sx <= W + 20 && sy >= -20 && sy <= H + 20) onScr++;
+  let autoF = 1;
+  if (!only) {   // в ego-проходе autoF=1 — плотность не считаем зря (2× за кадр при blur)
+    let onScr = 0;
+    for (const n of nodes) {
+      if (!visible(n)) continue;
+      const sx = n.x * transform.k + transform.x, sy = n.y * transform.k + transform.y;
+      if (sx >= -20 && sx <= W + 20 && sy >= -20 && sy <= H + 20) onScr++;
+    }
+    const dens = onScr / ((W * H) / 20000);
+    autoF = Math.max(0.25, Math.min(1, 1.5 / Math.max(1, dens)));
   }
-  const dens = onScr / ((W * H) / 20000);
-  const autoF = only ? 1 : Math.max(0.25, Math.min(1, 1.5 / Math.max(1, dens)));
   const iA = Math.sqrt(autoF) * (0.6 + 0.4 * zf);   // внутризонные гаснут мягче: текстура зоны остаётся
   for (const e of edges) {
     const s = e.source, t = e.target;
@@ -3070,9 +3083,18 @@ if (params.get('q')) {
   function inline(s) {
     s = besc(s);
     s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-    s = s.replace(/\[\[([a-z0-9_-]+)\]\]/g, (m, t) => { const k = t.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const hit = D.nodes.find(n => n.id.toLowerCase().replace(/[^a-z0-9]/g, '') === k || (n.name || '').toLowerCase().replace(/[^a-z0-9]/g, '') === k);
-      return hit ? '<span class="wl" data-goto="' + hit.id + '">' + t + '</span>' : '<span class="wl dead">' + t + '</span>'; });
+    // зеркало генераторной семантики (WIKILINK_RE + norm): [[x|alias]], регистр,
+    // кириллица, .md-суффикс — старый [a-z0-9_-]-регекс ронял их в dead/сырой текст
+    s = s.replace(/\[\[([^\]|#\n]+?)(?:\|([^\]\n]*))?\]\]/g, (m, t, alias) => {
+      const k = t.trim().toLowerCase().replace(/-/g, '_').replace(/\.md$/, '');
+      const loose = x => x.toLowerCase().replace(/[^a-zа-яёіїєґ0-9]/g, '');
+      const hit = bBy[k] || D.nodes.find(n => n.id === k ||
+        (n.name || '').trim().toLowerCase().replace(/-/g, '_') === k ||
+        loose(n.id) === loose(t) || loose(n.name || '') === loose(t));
+      const shown = (alias || t).trim() || t;
+      return hit ? '<span class="wl" data-goto="' + hit.id + '">' + shown + '</span>'
+                 : '<span class="wl dead">' + shown + '</span>';
+    });
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     return s;
@@ -3115,6 +3137,9 @@ if (params.get('q')) {
 const dashEl = document.getElementById('dash');
 window.showTab = function (v) {
   const b = v === 'browse', d = v === 'dash';
+  // смена вкладки закрывает sheet-оверлеи: settings, открытый над графом,
+  // не должен висеть поверх browse (пойман playwright-пассом 07-09)
+  for (const id of ['help', 'regen', 'settings']) $(id).classList.remove('on');
   document.querySelectorAll('#viewtabs .vt').forEach(t => t.classList.toggle('on', t.dataset.v === v));
   document.getElementById('browse').classList.toggle('on', b);
   dashEl.classList.toggle('on', d);
@@ -3191,9 +3216,10 @@ function renderDash() {
 dashEl.addEventListener('click', ev => {
   const z = ev.target.closest('[data-zone]');
   if (z) {
+    // программный сеттер НЕ фирит change-листенеры — зависимые рендеры дёргаем руками
     $('colorMode').value = 'zone'; saveCfg();
     isolate = new Set([z.dataset.zone]);
-    renderLegend(); showTab('graph'); requestDraw();
+    renderLegend(); renderPins(); showTab('graph'); requestDraw();
     return;
   }
   const nd = ev.target.closest('[data-node]');
@@ -3306,7 +3332,8 @@ renderKindChips();
 rebuildPinHl();
 renderPins();
 renderViews();
-if (CFG.TS && CFG.TS !== 1) { TS = CFG.TS; }   // TS=1 = нетронутый старый дефолт → апгрейд до 1.25
+// v2-конфиг доверяет TS как есть; v1: TS=1 = нетронутый старый дефолт → апгрейд до 1.25
+if (CFG.TS !== undefined && ((CFG.v || 1) >= 2 || CFG.TS !== 1)) { TS = CFG.TS; }
 applyUIZoom();
 rebuildKeep();
 // ?state= — полный вид одной строкой (из ⛭ «ссылка на вид»); камера якорится

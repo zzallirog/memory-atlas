@@ -405,7 +405,7 @@ OLLAMA = "http://127.0.0.1:11434"
 
 
 def _ollama_up(timeout=3):
-    """1s-класс health-check (контракт lib/ollama.is_available graph-lab)."""
+    """Быстрый health-check, 3s-кап (контракт lib/ollama.is_available graph-lab)."""
     try:
         with urllib.request.urlopen(OLLAMA + "/api/version", timeout=timeout):
             return True
@@ -556,14 +556,17 @@ def run_detectors(nodes, edges, bodies, src, args):
             added.append(e)
 
     merge("shared_ref", detect_shared_ref(nodes, edges))
-    if getattr(args, "semantic_cross", True):
+    # эмбеддинги нужны и детектору, и --search-vecs, и semantic-раскладке:
+    # `--search-vecs --no-semantic-cross` раньше терял ВСЁ три молча
+    if getattr(args, "semantic_cross", True) or getattr(args, "search_vecs", False):
         texts = {n["id"]: (n["label"] + "\n" + n["desc"] + "\n" +
                            bodies.get(n["id"], "")[:1500])
                  for n in nodes if not n.get("ghost")}
         vecs = fetch_embeddings(texts)
         if vecs:
-            merge("semantic", detect_semantic(nodes, vecs, args.semantic_threshold,
-                                              args.semantic_top_k))
+            if getattr(args, "semantic_cross", True):
+                merge("semantic", detect_semantic(nodes, vecs, args.semantic_threshold,
+                                                  args.semantic_top_k))
             if getattr(args, "search_vecs", False):
                 args._vecs_payload = quantize_vecs(vecs)
             # semantic-layout: node.sx/sy для layout-режима «semantic» в шаблоне
@@ -940,6 +943,29 @@ def run_self_test():
 
         def test_detect_session_no_git_silent(self):
             self.assertEqual(detect_session(self._two_zone_nodes(), self.src), [])
+
+        def test_search_vecs_survive_no_semantic_cross(self):
+            # --search-vecs --no-semantic-cross: vecs+layout живут, детектор молчит
+            saved = globals()["fetch_embeddings"]
+            globals()["fetch_embeddings"] = lambda texts, **kw: {
+                "a": [1.0, 0.0], "b": [0.9, 0.1], "c": [0.0, 1.0]}
+            try:
+                ns = self._two_zone_nodes()
+                for n in ns:   # texts-путь требует label/desc; общая фикстура их не несёт
+                    n.setdefault("label", n["id"])
+                    n.setdefault("desc", "")
+                args = argparse.Namespace(
+                    semantic_cross=False, search_vecs=True,
+                    semantic_threshold=0.75, semantic_top_k=3,
+                    tag_cross=False, temporal_cross=False, session_cross=False,
+                    structural_cross=False)
+                ran, added = run_detectors(ns, [], {}, self.src, args)
+                self.assertNotIn("semantic", ran)
+                self.assertFalse(any(e["kind"] == "semantic" for e in added))
+                self.assertEqual(getattr(args, "_vecs_payload")["ids"], ["a", "b", "c"])
+                self.assertTrue(all("sx" in n for n in ns if not n["ghost"]))
+            finally:
+                globals()["fetch_embeddings"] = saved
 
         def test_semantic_layout_separates_clusters(self):
             # два кластера в 4D: внутрикластерные дистанции < межкластерных
