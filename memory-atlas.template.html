@@ -159,13 +159,13 @@
   }
   #keys { margin-left: auto; color: var(--muted); font: 10px var(--mono); opacity: .75; flex: none; }
   #keys b { color: var(--ink-2); font-weight: 500; }
-  #fit, #homeBtn, #reloadBtn, #rebuildBtn, #exportBtn, #helpBtn {
+  #fit, #homeBtn, #reloadBtn, #rebuildBtn, #exportBtn, #settingsBtn, #helpBtn {
     pointer-events: auto; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border); color: var(--ink-2);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-radius: 8px; padding: 5px 12px; font: 10.5px var(--mono);
   }
-  #fit:hover, #homeBtn:hover, #reloadBtn:hover, #rebuildBtn:hover, #exportBtn:hover, #helpBtn:hover { border-color: var(--accent); color: var(--ink); }
+  #fit:hover, #homeBtn:hover, #reloadBtn:hover, #rebuildBtn:hover, #exportBtn:hover, #settingsBtn:hover, #helpBtn:hover { border-color: var(--accent); color: var(--ink); }
 
   /* ---- text-size stepper (канвас-читаемость под рукой юзера) ---- */
   #tsz { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
@@ -453,6 +453,53 @@
   #browse .md table{border-collapse:collapse;margin:8px 0;font-size:.78rem}
   #browse .md td,#browse .md th{border:1px solid var(--surf0);padding:3px 8px}#browse .md th{background:var(--mantle);color:var(--text)}
   #browse .empty{color:var(--ovl0);padding:40px;text-align:center;font-size:.85rem}
+
+  /* ==== dash-таб (▦): KPI-пульт корпуса, glass-язык атласа ==== */
+  #dash { position:absolute; inset:0; z-index:4; display:none; overflow-y:auto;
+    background:var(--page); padding:64px 22px 24px; }
+  #dash.on { display:block; }
+  #dash .wrap { max-width:1160px; margin:0 auto; }
+  #dash .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px; margin-bottom:12px; }
+  #dash .kpi { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:10px 14px; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+  #dash .kpi .n { color:var(--ink); font:600 20px/1.2 var(--mono); letter-spacing:-.5px; }
+  #dash .kpi .l { color:var(--muted); font:10px var(--mono); text-transform:uppercase; letter-spacing:.07em; margin-top:2px; }
+  #dash .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:12px; }
+  #dash .card h3 { font:10px var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+  #dash .brow { display:flex; align-items:center; gap:8px; padding:2px 0; font-size:11.5px; cursor:pointer; border-radius:6px; }
+  #dash .brow:hover { background:rgba(255,255,255,0.05); }
+  #dash .brow .bl { flex:0 0 92px; text-align:right; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #dash .brow .bar { height:12px; border-radius:3px; min-width:2px; }
+  #dash .brow .bn { color:var(--muted); font:10px var(--mono); }
+  #dash .hrow { display:flex; align-items:baseline; gap:8px; padding:2px 6px; margin:0 -6px; border-radius:6px; cursor:pointer; font-size:12px; }
+  #dash .hrow:hover { background:rgba(255,255,255,0.05); }
+  #dash .hrow .name { color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #dash .hrow .m { margin-left:auto; color:var(--muted); font:10px var(--mono); white-space:nowrap; }
+  #dash .hist { display:flex; align-items:flex-end; gap:2px; height:96px; margin-top:4px; }
+  #dash .hist .hb { flex:1; display:flex; flex-direction:column; justify-content:flex-end; cursor:pointer; }
+  #dash .hist .hb .fill { background:var(--accent); border-radius:3px 3px 0 0; min-height:2px; border-bottom:2px solid var(--page); }
+  #dash .hist .hb:hover .fill { background:#5da0ee; }
+  #dash .hist .hb .hl { color:var(--muted); font:9px var(--mono); text-align:center; margin-top:3px; }
+  #dash .hist .hb .hn { color:var(--ink-2); font:10px var(--mono); text-align:center; }
+  #dash .empty2 { color:var(--muted); font:11px/1.7 var(--mono); padding:2px 0; }
+
+  /* ==== settings sheet (⛭) ==== */
+  #settings { position:absolute; inset:0; z-index:50; display:none; overflow-y:auto;
+    background:rgba(12,12,11,0.82); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+  #settings.on { display:block; }
+  #settings .sheet { max-width:620px; margin:8vh auto; background:var(--surface-solid);
+    border:1px solid var(--border-hi); border-radius:14px; padding:22px 26px; box-shadow:var(--shadow); }
+  #settings h2 { color:var(--ink); font:600 14px var(--mono); letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px; }
+  #settings h3 { color:var(--muted); font:10px var(--mono); letter-spacing:.08em; text-transform:uppercase; margin:16px 0 6px; }
+  #settings .note { color:var(--ink-2); font:12px/1.5 system-ui, sans-serif; margin:4px 0 8px; }
+  #settings .hbtn, #dash .hbtn { cursor:pointer; border:1px solid var(--grid); background:none; color:var(--ink-2);
+    border-radius:6px; font:10.5px var(--mono); padding:4px 10px; margin:4px 8px 0 0; }
+  #settings .hbtn:hover, #dash .hbtn:hover { border-color:var(--accent); color:var(--ink); }
+  #settings label.opt { display:flex; gap:9px; align-items:flex-start; color:var(--ink-2);
+    font:12px/1.45 system-ui, sans-serif; padding:5px 0; cursor:pointer; }
+  #settings label.opt input { margin-top:2px; accent-color:var(--accent); }
+  #settings select { background:rgba(0,0,0,0.35); color:var(--ink-2); border:1px solid var(--grid);
+    border-radius:6px; padding:3px 5px; font:11px var(--mono); }
 </style>
 <script>/*__D3__*/</script>
 </head>
@@ -462,12 +509,15 @@
 <div id="viewtabs">
   <div class="vt on" data-v="graph">◌ graph</div>
   <div class="vt" data-v="browse">▤ browse</div>
+  <div class="vt" data-v="dash">▦ dash</div>
 </div>
+
+<div id="dash"></div>
 
 <div id="browse">
   <div class="top">
     <span class="path" id="bpath">~/memory</span>
-    <span class="who">· zzalli@mac · self-audit</span>
+    <span class="who" id="bwho"></span>
     <span class="date" id="bgen"></span>
   </div>
   <div class="stats" id="bstats"></div>
@@ -649,14 +699,35 @@
     <tr><td>A− / A+</td><td>масштаб текста графа и панелей UI</td></tr>
   </table>
   <h3>настройки</h3>
-  <div>editor: <select id="editorPref">
+  <div>профиль · редактор · пересборка · ссылка на вид — в <b>⛭</b> (кнопка в баре)</div>
+  <button class="hbtn" id="helpRestoreHidden">показать скрытые ноды (<span id="hiddenCnt">0</span>)</button>
+  <button class="hbtn" id="helpExportOverlay">экспорт overlay.json</button>
+  <button class="hbtn" id="helpReset">сбросить конфиг + localStorage этого корпуса</button>
+  <button class="hbtn" id="helpClose">закрыть (esc)</button>
+</div></div>
+<div id="settings"><div class="sheet">
+  <h2>⛭ настройки</h2>
+  <h3>профиль</h3>
+  <div class="note">Всё ручное (пины · виды · свои теги · user-рёбра · negatives · zone-overrides · конфиг)
+    живёт в localStorage этого браузера. Профиль = один JSON для бэкапа/переезда между хостами.
+    Импорт <b>мержит</b> с текущим, не затирает; незнакомые ключи переносятся как есть.</div>
+  <button class="hbtn" id="stExport">↧ экспорт профиля</button>
+  <button class="hbtn" id="stImport">↥ импорт профиля…</button>
+  <input type="file" id="stImportFile" accept="application/json,.json" style="display:none">
+  <button class="hbtn" id="stShare" title="?state= — раскладка/цвет/слои/нода/зум; кросс-хост: камера якорится на ноду, не на координаты">⧉ ссылка на текущий вид</button>
+  <h3>поведение</h3>
+  <label class="opt"><input type="checkbox" id="stMotion"><span>восстанавливать <code>magnet</code>/<code>particles</code> при старте (иначе motion-режимы включаются только руками в сессии)</span></label>
+  <h3>данные</h3>
+  <div class="note" id="stAgeLine"></div>
+  <button class="hbtn" id="stRegen">⚙ пересборка данных…</button>
+  <h3>редактор (↗ open в панели ноды)</h3>
+  <div><select id="editorPref">
     <option value="copy">copy path</option><option value="vscode">vscode://</option>
     <option value="idea">idea://</option><option value="hx">hx://</option>
   </select></div>
-  <button class="hbtn" id="helpRestoreHidden">показать скрытые ноды (<span id="hiddenCnt">0</span>)</button>
-  <button class="hbtn" id="helpExportOverlay">экспорт overlay.json</button>
-  <button class="hbtn" id="helpReset">сбросить конфиг + localStorage атласа</button>
-  <button class="hbtn" id="helpClose">закрыть (esc)</button>
+  <h3>опасное</h3>
+  <button class="hbtn" id="stReset">сбросить конфиг + localStorage ЭТОГО корпуса</button>
+  <button class="hbtn" id="stClose">закрыть (esc)</button>
 </div></div>
 <div id="regen"><div class="sheet">
   <h2>⚙ пересборка данных</h2>
@@ -680,6 +751,7 @@
   <button id="reloadBtn" data-hint="перезагрузить страницу (свежий файл атласа после пересборки)" title="перезагрузить">⟳</button>
   <button id="rebuildBtn" data-hint="пересборка ДАННЫХ атласа: собрать команду генератора с нужными флагами — выполняется в терминале" title="пересборка данных">⚙</button>
   <button id="exportBtn" data-hint="скачать видимый срез графа как JSON; shift+клик = полный корпус" title="экспорт видимого среза JSON; shift = полный корпус">↓</button>
+  <button id="settingsBtn" data-hint="настройки: профиль export/import, ссылка на вид, поведение, пересборка, редактор" title="настройки">⛭</button>
   <button id="helpBtn" data-hint="справка по всем клавишам и типам рёбер (?)" title="справка (?)">?</button>
   <div id="tsz" data-hint="масштаб текста на графе И панелей UI (сохраняется)"><span class="lbl">текст</span><button id="tszMinus" title="мельче">A−</button><button id="tszPlus" title="крупнее">A+</button></div>
   <div id="hint"></div>
@@ -865,7 +937,10 @@ const toggles = { hulls: true, clusters: false, ghosts: true, labels: true,
   edgesOn: true, particles: false, magnet: false, gestures: false,
   collide: true, softFade: true, lockZoom: false };
 // persisted knobs (порт graph-lab:config:v1) — restore ДО первого draw
-if (CFG.toggles) Object.assign(toggles, CFG.toggles, { gestures: false });  // 🎥 не автостартуем (webcam)
+// 🎥 не автостартуем (webcam); magnet/particles = motion-режимы, по дефолту тоже
+// session-only (постоянный rAF-луп с бута удивляет) — opt-in чекбоксом в ⛭
+if (CFG.toggles) Object.assign(toggles, CFG.toggles, { gestures: false },
+  lsGet(KEYP + 'motionRestore', false) ? {} : { magnet: false, particles: false });
 for (const [sel, key] of [['colorMode','color'],['sizeMode','size'],['focusMode','focus2'],
     ['labelMode','labelMode'],['labelHops','labelHops'],['camPolicy','camPolicy2']]) {   // v2-ключи: старые дефолты (adaptive / dim) не восстанавливаем — зум ручной, ego дефолт
   const el = $(sel);
@@ -1444,6 +1519,8 @@ window.addEventListener('keydown', ev => {
   if (ev.key === 'Escape') {
     if (helpEl.classList.contains('on')) helpEl.classList.remove('on');
     else if (regenEl.classList.contains('on')) regenEl.classList.remove('on');
+    else if (settingsEl.classList.contains('on')) settingsEl.classList.remove('on');
+    else if (dashEl.classList.contains('on')) window.showTab('graph');
     else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; hideDrop(); searchEl.blur(); }
     else if (selected) selectNode(null);
     else if (pinIds.length) setPins([]);                      // камера НЕ откатывается (spatial memory)
@@ -1859,15 +1936,16 @@ function rgUpdate() {
     ? `memory-atlas --no-open --src ${DATA.src}` + (flags.length ? ' ' + flags.join(' ') : '')
     : '# граф собран внешним билдером (--data): пересобери его и перезапусти пайп';
 }
-function rgAge() {
+function rgAgeText() {
   let s = 'данные: ' + (DATA.generated || '?');
   const tm = Date.parse(String(DATA.generated || '').replace(' ', 'T'));
   if (tm) {
     const hrs = Math.max(0, Math.round((Date.now() - tm) / 3600000));
     s += ` · ${hrs < 48 ? hrs + 'ч' : Math.round(hrs / 24) + 'д'} назад`;
   }
-  $('regenAge').textContent = s;
+  return s;
 }
+function rgAge() { $('regenAge').textContent = rgAgeText(); }
 $('rebuildBtn').addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
 for (const id of ['rgVecs', 'rgStruct', 'rgNoSem', 'rgNoDet']) $(id).addEventListener('change', rgUpdate);
 $('rgCopy').addEventListener('click', () => copyText($('rgCmd').textContent, 'команда'));
@@ -1880,10 +1958,13 @@ const helpEl = $('help');
 $('helpBtn').addEventListener('click', () => helpEl.classList.toggle('on'));
 $('helpClose').addEventListener('click', () => helpEl.classList.remove('on'));
 helpEl.addEventListener('click', ev => { if (ev.target === helpEl) helpEl.classList.remove('on'); });
-$('helpReset').addEventListener('click', () => {
-  for (const k of Object.keys(localStorage)) if (k.startsWith('atlas:')) localStorage.removeItem(k);
+// скоуп до ЭТОГО корпуса (KEYP): wipe по 'atlas:' сносил localStorage чужих
+// атласов (bastra — ручные рёбра/теги). Глобальный atlas:editor выживает.
+function resetCorpus() {
+  for (const k of Object.keys(localStorage)) if (k.startsWith(KEYP)) localStorage.removeItem(k);
   location.reload();
-});
+}
+$('helpReset').addEventListener('click', resetCorpus);
 $('helpRestoreHidden').addEventListener('click', () => {
   hiddenNodes.clear(); $('hiddenCnt').textContent = 0; requestDraw(); toast('скрытые ноды возвращены');
 });
@@ -2897,6 +2978,9 @@ if (params.get('q')) {
 
   document.getElementById('bgen').textContent =
     'snapshot ' + new Date(D.generated * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  // шапка из DATA, не хардкод: '~/memory · zzalli@mac' врал на втором хосте
+  document.getElementById('bpath').textContent = DATA.src || '';
+  document.getElementById('bwho').textContent = DATA.host ? '· ' + DATA.host : '';
 
   // ---- stats strip (кликабельные тайлы → фильтр) ----
   const S = D.stats;
@@ -3018,24 +3102,201 @@ if (params.get('q')) {
     return h + '</table>';
   }
 
-  // ---- view switch (atlas viewtabs; browse ⊕ graph переключаемо) ----
+  // ---- lazy build: главный showTab (main scope, работает и без browse) зовёт при входе ----
   let built = false;
-  window.showTab = function (v) {
-    const b = v === 'browse';
-    document.querySelectorAll('#viewtabs .vt').forEach(t => t.classList.toggle('on', t.dataset.v === v));
-    document.getElementById('browse').classList.toggle('on', b);
-    document.getElementById('hud').style.display = b ? 'none' : '';
-    document.getElementById('bar').style.display = b ? 'none' : '';
-    canvas.style.display = b ? 'none' : '';
-    if (b) { selectNode(null); tooltip.style.display = 'none'; sim.stop();
-      if (!built) { renderCats(); renderList(); built = true; } }
-    else { sim.alpha(0.03).restart(); requestDraw(); }
-  };
-  document.querySelectorAll('#viewtabs .vt').forEach(t => t.addEventListener('click', () => showTab(t.dataset.v)));
+  window.buildBrowse = function () { if (!built) { renderCats(); renderList(); built = true; } };
 
   // fuse: graph-панель зовёт это (кнопка «▤ читать полностью»)
   window.openInBrowse = function (id) { showTab('browse'); openNode(id); };
 })();
+
+// ==== view switch (graph / browse / dash) — main scope: раньше жил внутри
+// browseModule и у --data-корпусов (без DATA.browse) НЕ СУЩЕСТВОВАЛ — вкладки были глухие ====
+const dashEl = document.getElementById('dash');
+window.showTab = function (v) {
+  const b = v === 'browse', d = v === 'dash';
+  document.querySelectorAll('#viewtabs .vt').forEach(t => t.classList.toggle('on', t.dataset.v === v));
+  document.getElementById('browse').classList.toggle('on', b);
+  dashEl.classList.toggle('on', d);
+  document.getElementById('hud').style.display = (b || d) ? 'none' : '';
+  document.getElementById('bar').style.display = (b || d) ? 'none' : '';
+  canvas.style.display = (b || d) ? 'none' : '';
+  mm.style.display = (b || d) ? 'none' : '';   // минимапа (z5) плавала ПОВЕРХ browse (z4)
+  if (b || d) { selectNode(null); tooltip.style.display = 'none'; hideDrop(); sim.stop(); }
+  else { sim.alpha(0.03).restart(); requestDraw(); }
+  if (b && window.buildBrowse) window.buildBrowse();
+  if (d) renderDash();
+};
+document.querySelectorAll('#viewtabs .vt').forEach(t => t.addEventListener('click', () => showTab(t.dataset.v)));
+
+// ==== dash-таб (▦): KPI-пульт корпуса. Клики дёргают СУЩЕСТВУЮЩИЕ механизмы
+// (isolate/focusNode/openInBrowse/hiddenKinds) — dash = пульт, не вторая логика ====
+function fmtD(d) { return d < 1 ? '<1д' : d < 60 ? Math.round(d) + 'д' : Math.round(d / 30) + 'мес'; }
+function renderDash() {
+  const real = nodes.filter(n => !n.ghost);
+  const gh = nodes.filter(n => n.ghost);
+  const ages = real.map(n => n.age_days || 0).sort((a, b) => a - b);
+  const med = ages.length ? ages[ages.length >> 1] : 0;
+  const orph = real.filter(n => n.orphan);
+  const conf = real.filter(n => n.conflict);
+  const coll = real.filter(n => n.id.includes('~'));
+  const kpis = [
+    ['ноты', real.length], ['wiki-рёбра', layoutEdges.length], ['cross-рёбра', nCross],
+    ['ghosts', gh.length], ['orphan', orph.length], ['conflict', conf.length],
+    ['кластеров', nClusters], ['медиана возраста', fmtD(med)]];
+  const zmax = Math.max(1, ...zoneOrder.map(z => real.filter(n => n.zone === z).length));
+  const zoneRows = zoneOrder.map(z => {
+    const c = real.filter(n => n.zone === z).length;
+    return c ? `<div class="brow" data-zone="${esc(z)}"><span class="bl">${esc(z)}</span>
+      <span class="bar" style="width:${(c / zmax * 82).toFixed(1)}%;background:${zoneColor(z)}"></span><span class="bn">${c}</span></div>` : '';
+  }).join('');
+  const buckets = [[0, 1, 'сегодня'], [1, 7, 'неделя'], [7, 30, 'месяц'], [30, 90, 'квартал'], [90, 1e9, 'старше']];
+  const bc = buckets.map(([a, b]) => real.filter(n => (n.age_days || 0) >= a && (n.age_days || 0) < b).length);
+  const bmax = Math.max(1, ...bc);
+  const hist = buckets.map(([a, b, l], i) =>
+    `<div class="hb" data-preset="fresh"><div class="hn">${bc[i]}</div><div class="fill" style="height:${Math.max(3, bc[i] / bmax * 58)}px"></div><div class="hl">${l}</div></div>`).join('');
+  const ghostRows = gh.map(g => ({ g, r: (inLinks.get(g.id) || []).length }))
+    .sort((a, b) => b.r - a.r).slice(0, 10).map(({ g, r }) =>
+      `<div class="hrow" data-node="${esc(g.id)}"><span class="name">${esc(g.label)}</span><span class="m">${r} реф.</span></div>`).join('');
+  const hubRows = real.slice().sort((a, b) => b.degree - a.degree).slice(0, 10).map(n =>
+    `<div class="hrow" data-node="${esc(n.id)}"><span class="name">${esc(n.label)}</span><span class="m">deg ${n.degree} · ${esc(n.zone)}</span></div>`).join('');
+  const bTab = DATA.browse ? 'data-bnode' : 'data-node';   // без browse-модуля читалка = граф
+  const orphRows = orph.slice(0, 12).map(n =>
+    `<div class="hrow" ${bTab}="${esc(n.id)}"><span class="name">${esc(n.label)}</span><span class="m">${fmtD(n.age_days || 0)}</span></div>`).join('');
+  const confRows = conf.slice(0, 12).map(n =>
+    `<div class="hrow" ${bTab}="${esc(n.id)}"><span class="name">${esc(n.label)}</span><span class="m">conflict</span></div>`).join('');
+  const detRows = [...kindCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, c]) => {
+    const st = EDGE_STYLES[k];
+    const sw = st ? `<span class="swl" style="border-color:${st.c};border-top-style:${st.dash ? 'dashed' : 'solid'}"></span>`
+      : '<span class="swl" style="border-color:#8b8983"></span>';
+    return `<span class="zc${hiddenKinds.has(k) ? ' off' : ''}" data-kind="${esc(k)}">${sw}${esc(k)}<span class="n">${c}</span></span>`;
+  }).join('');
+  dashEl.innerHTML = `<div class="wrap">
+    <div class="kpis">${kpis.map(([l, n]) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
+    <div class="grid">
+      <div class="card" data-hint="клик по полосе = в граф с изоляцией зоны"><h3>зоны</h3>${zoneRows}</div>
+      <div class="card" data-hint="когда ноты менялись; клик = timeline-пресет свежести"><h3>свежесть</h3><div class="hist">${hist}</div></div>
+      <div class="card" data-hint="на них ссылаются, файла нет — «стоит написать»; клик = к ноде в графе"><h3>ghost-долги · топ по ссылкам</h3>${ghostRows || '<div class="empty2">пусто</div>'}</div>
+      <div class="card" data-hint="самые связные ноты; клик = к ноде в графе"><h3>хабы</h3>${hubRows}</div>
+      <div class="card" data-hint="вне всех recall-индексов; клик = читать"><h3>orphans</h3>${orphRows || '<div class="empty2">чисто</div>'}</div>
+      <div class="card" data-hint="sync-конфликты файлов; клик = читать"><h3>конфликты</h3>${confRows || '<div class="empty2">чисто</div>'}</div>
+      <div class="card" data-hint="слои рёбер по детекторам; клик = вкл/выкл, синхронно с чипами HUD"><h3>рёбра по типу</h3><div class="chips-rail">${detRows}</div></div>
+      <div class="card"><h3>здоровье данных</h3>
+        <div class="empty2">собрано: ${esc(DATA.generated || '?')}${DATA.host ? ' · ' + esc(DATA.host) : ''}<br>src: ${esc(DATA.src || '—')}<br>
+        stem-коллизии: ${coll.length ? coll.map(n => esc(n.id)).join(', ') : 'нет'} · overlay stale: ${overlayStale} · скрыто руками: ${hiddenNodes.size}</div>
+        <button class="hbtn" id="dashRegen">⚙ пересборка…</button></div>
+    </div></div>`;
+  $('dashRegen').addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
+}
+dashEl.addEventListener('click', ev => {
+  const z = ev.target.closest('[data-zone]');
+  if (z) {
+    $('colorMode').value = 'zone'; saveCfg();
+    isolate = new Set([z.dataset.zone]);
+    renderLegend(); showTab('graph'); requestDraw();
+    return;
+  }
+  const nd = ev.target.closest('[data-node]');
+  if (nd && byId.has(nd.dataset.node)) {
+    const n = byId.get(nd.dataset.node);
+    showTab('graph'); selectNode(n, { noFly: true }); frameEgo(n);   // из dash = явный интент «покажи»
+    return;
+  }
+  const bn = ev.target.closest('[data-bnode]');
+  if (bn && window.openInBrowse) { window.openInBrowse(bn.dataset.bnode); return; }
+  const pr = ev.target.closest('[data-preset]');
+  if (pr) { showTab('graph'); applyPreset(pr.dataset.preset); return; }
+  const kd = ev.target.closest('[data-kind]');
+  if (kd) {
+    const k = kd.dataset.kind;
+    hiddenKinds.has(k) ? hiddenKinds.delete(k) : hiddenKinds.add(k);
+    saveCfg(); renderKindChips(); renderDash();
+  }
+});
+
+// ==== settings sheet (⛭): профиль-IO / поведение / данные / редактор ====
+const settingsEl = document.getElementById('settings');
+$('settingsBtn').addEventListener('click', () => {
+  $('stAgeLine').textContent = rgAgeText();
+  $('stMotion').checked = !!lsGet(KEYP + 'motionRestore', false);
+  settingsEl.classList.add('on');
+});
+$('stClose').addEventListener('click', () => settingsEl.classList.remove('on'));
+settingsEl.addEventListener('click', ev => { if (ev.target === settingsEl) settingsEl.classList.remove('on'); });
+$('stMotion').addEventListener('change', () => lsSet(KEYP + 'motionRestore', $('stMotion').checked));
+$('stRegen').addEventListener('click', () => { settingsEl.classList.remove('on'); rgAge(); rgUpdate(); regenEl.classList.add('on'); });
+$('stReset').addEventListener('click', resetCorpus);
+$('stExport').addEventListener('click', () => {
+  const p = { kind: 'atlas-profile', v: 1, title: DATA.title || 'atlas', exported: Date.now(),
+    cfg: lsGet(KEYP + 'cfg', {}), pins: pinIds, views: views, userTags: userTags,
+    zoneOverride: zOver, overlay: overlay, editor: lsGet('atlas:editor', 'copy') };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' }));
+  a.download = `atlas-profile.${(DATA.title || 'atlas').replace(/\W+/g, '-')}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('профиль экспортирован');
+});
+$('stImport').addEventListener('click', () => $('stImportFile').click());
+$('stImportFile').addEventListener('change', ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { importProfile(JSON.parse(r.result)); } catch (e) { toast('битый JSON профиля'); } };
+  r.readAsText(f);
+  ev.target.value = '';
+});
+// merge, не replace; незнакомые cfg-ключи проносятся спредом (forward-compat: другой
+// хост может быть на более новом template). Stale id-refs дочистит boot-машинерия
+// (pins filter / overlayStale) — здесь не валидируем по byId.
+function importProfile(p) {
+  if (!p || p.kind !== 'atlas-profile') { toast('это не atlas-profile JSON'); return; }
+  const rep = [];
+  if (p.cfg) { lsSet(KEYP + 'cfg', { ...lsGet(KEYP + 'cfg', {}), ...p.cfg }); rep.push('cfg'); }
+  if (Array.isArray(p.pins) && p.pins.length) {
+    const merged = [...new Set([...pinIds, ...p.pins])].slice(-6);
+    lsSet(KEYP + 'pins', merged); rep.push('пины→' + merged.length);
+  }
+  if (Array.isArray(p.views) && p.views.length) {
+    const names = new Set(views.map(v => v.name));
+    const add = p.views.filter(v => v && v.name && !names.has(v.name));
+    if (add.length) { lsSet(KEYP + 'views', views.concat(add)); rep.push('виды +' + add.length); }
+  }
+  if (p.userTags) {
+    const ut = lsGet(KEYP + 'userTags', {});
+    let n = 0;
+    for (const [id, ts] of Object.entries(p.userTags)) {
+      const arr = ut[id] || (ut[id] = []);
+      for (const t of ts || []) if (!arr.includes(t)) { arr.push(t); n++; }
+    }
+    lsSet(KEYP + 'userTags', ut); rep.push('теги +' + n);
+  }
+  if (p.zoneOverride) { lsSet(KEYP + 'zoneOverride', { ...lsGet(KEYP + 'zoneOverride', {}), ...p.zoneOverride }); rep.push('overrides'); }
+  if (p.overlay) {
+    const cur = lsGet(KEYP + 'overlay', { edges: [], negatives: [] });
+    const ek = new Set(cur.edges.map(e => negKey(e.source, e.target)));
+    let ne = 0;
+    for (const e of p.overlay.edges || [])
+      if (e && e.source && e.target && !ek.has(negKey(e.source, e.target))) { cur.edges.push(e); ek.add(negKey(e.source, e.target)); ne++; }
+    const nk = new Set(cur.negatives.map(x => negKey(x.s, x.t)));
+    let nn = 0;
+    for (const x of p.overlay.negatives || [])
+      if (x && x.s && x.t && !nk.has(negKey(x.s, x.t))) { cur.negatives.push(x); nk.add(negKey(x.s, x.t)); nn++; }
+    lsSet(KEYP + 'overlay', cur); rep.push(`рёбра +${ne} · neg +${nn}`);
+  }
+  if (p.editor) lsSet('atlas:editor', p.editor);
+  toast('импорт: ' + (rep.join(' · ') || 'нечего мержить') + ' — перезагрузка…');
+  setTimeout(() => location.reload(), 1400);
+}
+// ссылка на вид: НЕ сырой transform — на другом хосте другой корпус/позиции.
+// Камера якорится на node-id (+ зум), фильтры/раскладка/цвет — по значениям.
+$('stShare').addEventListener('click', () => {
+  const s = { v: 1, layout: layoutName, color: mode(), size: sizeMode(),
+    hz: [...hiddenZones], hk: [...hiddenKinds],
+    node: selected ? selected.id : undefined, k: +transform.k.toFixed(3),
+    q: searchEl.value.trim() || undefined };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+  copyText(location.href.split('?')[0] + '?state=' + b64, 'ссылка на вид');
+});
 
 // ---- boot ----
 renderLegend();
@@ -3048,14 +3309,39 @@ renderViews();
 if (CFG.TS && CFG.TS !== 1) { TS = CFG.TS; }   // TS=1 = нетронутый старый дефолт → апгрейд до 1.25
 applyUIZoom();
 rebuildKeep();
-const bootLayout = params.get('layout') || CFG.layout;   // deep-link ?layout= бьёт сохранённый
+// ?state= — полный вид одной строкой (из ⛭ «ссылка на вид»); камера якорится
+// на node-id, не на transform: сырые x/y на другом хосте = другой корпус = мусор
+let bootState = null;
+if (params.get('state')) {
+  try { bootState = JSON.parse(decodeURIComponent(escape(atob(params.get('state'))))); }
+  catch (e) { toast('битый ?state= — игнорирую'); }
+}
+if (bootState) {
+  for (const [k, id] of [['color', 'colorMode'], ['size', 'sizeMode']]) {
+    const v = bootState[k], sel = $(id);
+    if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
+  }
+  if (Array.isArray(bootState.hz)) { hiddenZones.clear(); bootState.hz.forEach(z => hiddenZones.add(z)); renderZoneChips(); }
+  if (Array.isArray(bootState.hk)) { hiddenKinds.clear(); bootState.hk.forEach(k => hiddenKinds.add(k)); renderKindChips(); }
+  if (bootState.q) { searchEl.value = bootState.q; query = bootState.q.toLowerCase().split(/\s+/).filter(Boolean); }
+  renderLegend();
+}
+const bootLayout = (bootState && bootState.layout) || params.get('layout') || CFG.layout;   // deep-link бьёт сохранённый
 // guard = наличие option: semantic/timeline сами выпадают из select, если данных нет
 if (bootLayout && bootLayout !== 'force' && [...$('layoutMode').options].some(o => o.value === bootLayout)) {
   applyLayout(bootLayout, true);   // синхронный прогрев в сохранённую раскладку
   d3.select(canvas).call(zoom.transform, fitTransform());
 }
 homeTransform = fitTransform();
-if (params.get('node') && byId.has(params.get('node'))) focusNode(params.get('node'));
+const bootNode = (bootState && bootState.node) || params.get('node');
+if (bootNode && byId.has(bootNode)) {
+  const n = byId.get(bootNode);
+  selectNode(n, { noFly: true });
+  frameEgo(n);   // deep-link = явный интент «покажи ноду»: cam=stay его не глушит
+  if (bootState && bootState.k)
+    d3.select(canvas).call(zoom.transform,
+      d3.zoomIdentity.translate(W / 2, H / 2).scale(bootState.k).translate(-n.x, -n.y));
+}
 // deep-link ?zoom=K: встать на масштаб K вокруг выделенной ноды (или центроида) — repro видов
 const zk = +params.get('zoom') || 0;
 if (zk > 0) {

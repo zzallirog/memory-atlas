@@ -24,6 +24,7 @@ DATA CONTRACT (для --data и внешних билдеров, напр. memor
 {
   "title": str,                    # wordmark в HUD
   "generated": str, "src": str,
+  "host": str,                     # опц.; кто собрал (browse-шапка + dash-здоровье)
   "zones": {name: [ax, ay]},       # якоря зон в [-1..1]; порядок = порядок легенды
   "heat": {"label": str, "high": str, "low": str},   # подпись heat-режима
   "nodes": [{id,label,desc,type,zone,path,bytes,age_days,mtime?,heat,ghost,light,heavy,orphan,conflict}],
@@ -40,6 +41,7 @@ import hashlib
 import itertools
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -705,6 +707,7 @@ def main():
             "title": "memory-atlas",
             "version": VERSION,
             "generated": time.strftime("%Y-%m-%d %H:%M"),
+            "host": platform.node(),
             "src": args.src,
             "zones": ZONES,
             "heat": {"label": "freshness", "high": "fresh", "low": "stale"},

@@ -12,6 +12,7 @@ Mac прямо сейчас правит: **(а)** лейбл-каша на зу
 - лейбл-блок `paintFrame` (~2531–2610), `drawTile`/`TILE_K`/`DESC_K` (~2613–2659), `drawFocus` (~2251–2263), `pick`/labelHits (~1083–1099).
 
 Правило для билдера: эти диапазоны **принимает от Mac** (rebase на её следующий пуш), свои правки — новыми блоками + фиксы вне зон. Ветка в bare: не main; merge в main после её пуша.
+**Merge-точки ЭТОЙ ветки (arch-audit-v2) при rebase:** `#viewtabs` (+dash-вкладка) · esc-каскад (:1417, +settings/dash) · `showTab` ВЫНЕСЕН из browseModule в main scope (её правки внутри browseModule-хвоста конфликтнут — брать обе: её логику, мой вынос) · #bar (+⛭) · boot-блок (?state=/frameEgo) · строка 867 (motion-restore) · helpReset→resetCorpus.
 «Раст?» всплывал дважды — вердикт Mac (подтверждаю по коду): **не язык, per-frame пересчёт** (см. §7). Зафиксировать, чтобы не всплывало.
 
 ---
@@ -26,7 +27,7 @@ Mac прямо сейчас правит: **(а)** лейбл-каша на зу
 
 **B3 · template:2218 · preset утекает в слои навсегда.** `applyPreset('meaning')` делает `hiddenKinds.delete('semantic')` + saveCfg → semantic-слой остаётся включённым после ухода с пресета, до ручного клика. Пресеты мутируют персистентное состояние без отката. Фикс-драфт: pre-preset snapshot слоёв, «—» в селекте = вернуть; или пресет не трогает hiddenKinds персистентно (сессионный override).
 
-**B4 · template:1857 · `helpReset` сносит ЧУЖИЕ корпуса.** Wipe по префиксу `atlas:` убивает localStorage и bastra-атласа (пины/user-рёбра/теги — ручной труд). Фикс: скоуп до `KEYP` + отдельно спросить про общий `atlas:editor`.
+**B4 ✅ FIXED (эта ветка) — `resetCorpus()` скоуплен до KEYP; `atlas:editor` (глобальный) выживает намеренно. · template:1857 · `helpReset` сносит ЧУЖИЕ корпуса.** Wipe по префиксу `atlas:` убивает localStorage и bastra-атласа (пины/user-рёбра/теги — ручной труд). Фикс: скоуп до `KEYP` + отдельно спросить про общий `atlas:editor`.
 
 **B5 · generator:549–563 · `--search-vecs --no-semantic-cross` = тихий ноль.** Фетч эмбеддингов, `_vecs_payload` И `semantic_layout` живут внутри `if semantic_cross` — выключил детектор → потерял и клиентский поиск, и semantic-раскладку, без warn. Фикс: фетчить если `search_vecs or semantic_cross`; layout считать при любом наличии vecs.
 
@@ -38,13 +39,13 @@ Mac прямо сейчас правит: **(а)** лейбл-каша на зу
 
 **B9 · template:1735–1748 · `applyView` не персистит.** Меняет hiddenZones/hiddenKinds/color/size/layout, но saveCfg не зовёт → reload после применения вида возвращает старые слои. Плюс старые views без `layout` — камера летит в координаты чужой раскладки (guard есть только на смену, не на отсутствие: v.layout undefined → камера применяется как есть). Фикс: saveCfg в конце applyView; нет v.layout → применять только фильтры + toast.
 
-**B10 · template:469–470 · browse-шапка врёт всегда.** `#bpath` захардкожен `~/memory`, `.who` — `zzalli@mac · self-audit`. Никогда не обновляются из DATA (src есть!). На Арче — двойная ложь. Фикс: `bpath = DATA.src`, who — из DATA (генератору эмитить `host` = `platform.node()`), или убрать.
+**B10 ✅ FIXED (эта ветка) — генератор эмитит `host` (platform.node), шапка = DATA.src + DATA.host. · template:469–470 · browse-шапка врёт всегда.** `#bpath` захардкожен `~/memory`, `.who` — `zzalli@mac · self-audit`. Никогда не обновляются из DATA (src есть!). На Арче — двойная ложь. Фикс: `bpath = DATA.src`, who — из DATA (генератору эмитить `host` = `platform.node()`), или убрать.
 
 ### Поведенческие / полировка
 
-**B11 · template:867 · magnet+particles автостартуют с бута.** `Object.assign(toggles, CFG.toggles, {gestures:false})` — вебка исключена, а motion-режимы нет: включил магнит раз — он навсегда в буте (постоянный rAF-луп). Фикс: восстанавливать только статические тоглы; magnet/particles/gestures = session-only.
+**B11 ✅ FIXED (эта ветка) — motion-режимы session-only по дефолту; возврат старого поведения = чекбокс в ⛭ (`KEYP:motionRestore`). · template:867 · magnet+particles автостартуют с бута.** `Object.assign(toggles, CFG.toggles, {gestures:false})` — вебка исключена, а motion-режимы нет: включил магнит раз — он навсегда в буте (постоянный rAF-луп). Фикс: восстанавливать только статические тоглы; magnet/particles/gestures = session-only.
 
-**B12 · template:2885 · deep-link `?node=` при cam=stay показывает не ноду.** focusNode → selectNode(noFly) → stay → камера остаётся на стартовом fit; панель открыта, нода где-то. Deep-link = явный интент «покажи» → форсить frameEgo независимо от stay (как Enter в поиске).
+**B12 ✅ FIXED (эта ветка) — boot-нода (из `?node=` и `?state=`) получает frameEgo всегда: deep-link = явный интент. Проверено playwright'ом. · template:2885 · deep-link `?node=` при cam=stay показывает не ноду.** focusNode → selectNode(noFly) → stay → камера остаётся на стартовом fit; панель открыта, нода где-то. Deep-link = явный интент «покажи» → форсить frameEgo независимо от stay (как Enter в поиске).
 
 **B13 · template:2875 · `TS===1` неотличим от легаси.** `if (CFG.TS && CFG.TS !== 1)` — магическое значение вместо версии конфига. Практически недостижимо шагом 0.15 от 1.25, но правильный фикс: `cfg.v: 2` и явная миграция, магию убрать.
 
@@ -125,7 +126,11 @@ Mac прямо сейчас правит: **(а)** лейбл-каша на зу
 2. **«Вид» недоспецифицирован**: views хранят камеру+слои+color/size/layout, но НЕ edgeAlpha/nodeSize/maxN/labelMode/focus/tagSel/isolate — восстановленный вид выглядит иначе. Решить, что такое view (моё предложение: полный снапшот cfg + фильтры + камера; версионировать `{v:2}`).
 3. **Пресеты и виды не дружат**: пресет = мутация без отката, вид = частичный снапшот. Унифицировать: preset = builtin-view (та же машинерия применения, transactional).
 
-## 4. Драфт: settings-sheet + профиль
+## 4. ✅ ПОСТРОЕНО (эта ветка): settings-sheet + профиль
+
+**Реализация 07-08 (Fable/Arch), отклонения от драфта:** HUD-ручки НЕ дублируются в sheet (два DOM = рассинхрон; sheet несёт только то, чего в HUD нет: профиль-IO / поведение / данные / редактор / reset). Regen остался своей модалкой — вход из ⛭ и dash, переезд разметки = churn без ценности. `?state=` реализован по S2: камера якорится node-id + k, НЕ transform. Профиль: merge-семантика, unknown cfg-ключи проносятся спредом (S8), stale-refs дочищает boot-машинерия. Верификация: playwright — sheet открывается, `?state=`-линк восстанавливает цвет/слои/ноду/зум, esc-каскад расширен (help → regen → settings → dash→graph). Новое ⛭ в баре; editorPref переехал из help (дубликат id убран).
+
+Драфт (исходный):
 
 HUD остаётся quick-controls. Новый ⚙-sheet (тот же glass, esc-каскад, hint-механика `data-hint` уже есть):
 - **Секции:** Вид (color/size/labels/TS) · Камера (policy/lockZoom/зум-пределы) · Слои (zones/kinds/ghosts/hulls/clusters) · Поведение (magnet/particles/gestures/collide/softFade — с пометкой «не персистятся») · Данные (regen-билдер сюда из отдельной модалки; возраст данных) · Профиль · Редактор.
@@ -140,7 +145,11 @@ HUD остаётся quick-controls. Новый ⚙-sheet (тот же glass, es
   Import = merge (не replace): stale id-refs скипаются со счётчиком (паттерн overlayStale:721 уже есть). Кнопки: экспорт всего / импорт / reset-корпуса (скоупленный, B4).
 - **Deep-link `?state=`** = base64(JSON срез cfg+фильтры+камера) — полный вид шарится между хостами одной строкой. Существующие короткие параметры остаются.
 
-## 5. Драфт: dash-таб («▦ dash», третья вкладка)
+## 5. ✅ ПОСТРОЕНО (эта ветка): dash-таб («▦ dash», третья вкладка)
+
+**Реализация 07-08 (Fable/Arch), отклонения:** stem-коллизии — client-side по `~` в id (генератор не трогали, тайл «здоровье» показывает `rail~2` живьём); orphans/conflicts кликают в browse только при DATA.browse, иначе в граф; свежесть = 5 бакетов HTML-барами (один hue, dataviz: магнитуда длиной, текст ink-токенами; палитра CAT не менялась — валидация 07-06 в силе). **Попутно вскрыт и починен B23**: showTab жил ВНУТРИ browseModule — у `--data`-корпусов вкладки были глухими (обход early-return), плюс минимапа (z5) плавала поверх browse (z4). showTab вынесен в main scope, минимапа прячется. Верификация: скриншоты dash/drill-down (клик зоны → граф с изоляцией, клик ноды → frameEgo), KPI сверены с сырьём (wiki 1138=1119+19 ✓ cross 1994=Σдетекторов ✓ orphan 3 = B1 ✓).
+
+Драфт (исходный):
 
 Пульт над корпусом, без новой логики — всё wired в существующие механизмы. Стиль = glass-HUD (не Catppuccin browse). Билдеру: читать `dataviz` ПЕРЕД графиками.
 
