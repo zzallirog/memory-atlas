@@ -1390,11 +1390,9 @@ canvas.addEventListener('mousemove', ev => {
   if (canvas.classList.contains('dragging')) return;   // drag-путь: ноль hover-работы
   cursorW = transform.invert([ev.clientX, ev.clientY]);
   const n = pick(ev.clientX, ev.clientY);
-  const he = n ? null : pickEdge(ev.clientX, ev.clientY);
   if (n !== hovered) { hovered = n; if (n) tipNode(n); requestDraw(); }
-  if (he !== hoveredEdge) { hoveredEdge = he; if (he) tipEdge(he); requestDraw(); }
   if (toggles.magnet) requestDraw();
-  if (n || he) tipPlace(ev); else tipHide();
+  if (n) tipPlace(ev); else tipHide();
 });
 canvas.addEventListener('mouseleave', () => { cursorW = null; hovered = null; hoveredEdge = null; tipHide(); requestDraw(); });
 
@@ -2863,10 +2861,7 @@ function paintFrame(g, opts) {
           : `rgba(255,255,255,${capA(0.09*iA)})`;
       }
     }
-    if (e === hoveredEdge && !muted) {   // hover-превью связи: ребро под курсором читается сразу
-      g.strokeStyle = st ? hexA(st.c, 0.95) : 'rgba(244,243,238,0.75)';
-      g.lineWidth = baseLw * 2.4 * (st && st.w || 1);
-    }
+    // edge hover-highlight убран по запросу (рёбра не подсвечиваются на ховер)
     if (st && st.dash) g.setLineDash(st.dash.map(d => d / Math.sqrt(transform.k)));
     g.beginPath();
     g.moveTo(NX(s), NY(s));
