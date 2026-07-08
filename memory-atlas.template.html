@@ -609,7 +609,7 @@
       </select>
     </div>
     <div class="row" data-hint="оставить яркими только top-N нод по degree, остальные притушить (не удалять)"><label>max n</label><input type="range" id="maxN" min="20" max="2000" step="10"><span class="rv" id="maxNv">all</span></div>
-    <div class="row" data-hint="множитель прозрачности всех рёбер"><label>edge α</label><input type="range" id="edgeAlpha" min="0" max="2" step="0.05" value="1"><span class="rv" id="edgeAlphav">1.0</span></div>
+    <div class="row" data-hint="множитель прозрачности всех рёбер"><label>edge α</label><input type="range" id="edgeAlpha" min="0" max="2" step="0.05" value="0.5"><span class="rv" id="edgeAlphav">0.5</span></div>
     <div class="row" data-hint="множитель размера нод"><label>node ×</label><input type="range" id="nodeSize" min="0.5" max="3" step="0.05" value="1"><span class="rv" id="nodeSizev">1.0</span></div>
     <div class="toggles">
       <div class="tg on" id="hulls" data-hint="контуры зон памяти на подложке">hulls</div>
@@ -2533,10 +2533,14 @@ function paintFrame(g, opts) {
   // overview-зум глушит межзонный туман: на fit-масштабе сотни cross-zone wiki-линий
   // складывались в серый клубок по центру; при k≥0.55 возвращаются к номиналу
   const zf = Math.max(0.3, Math.min(1, transform.k / 0.55));
-  // авто-читаемость (встроена в вид, не ручка): толпа нод в кадре → рёбра сами тише
+  // авто-читаемость (встроена в вид, не ручка): толпа нод в кадре → рёбра И шары сами тише
   // (эффект «edge-α ≈ 0.2 при нагромождении»), разреженный кадр → полный номинал.
-  // Плотность = видимые ноды на «плитку» ~140×140px вьюпорта; hot/selected не глушим.
-  let autoF = 1;
+  // Плотность = видимые ноды на «плитку» ~140×140px вьюпорта; hot/selected/пин/поиск не глушим.
+  // --- тюнинг адаптива на глаз (эти 3 можно крутить в DevTools без регена) ---
+  const EDGE_FADE_FLOOR = 0.30;   // как тихо рёбра в самой гуще (× edgeAlpha-слайдер)
+  const NODE_FADE_KNEE  = 2.6;    // с какой плотности шары начинают таять (выше = позже/мягче)
+  const NODE_FADE_FLOOR = 0.20;   // минимальная видимость незначимого шара в гуще
+  let autoF = 1, nodeF = 1;
   if (!only) {   // в ego-проходе autoF=1 — плотность не считаем зря (2× за кадр при blur)
     let onScr = 0;
     for (const n of nodes) {
@@ -2545,7 +2549,9 @@ function paintFrame(g, opts) {
       if (sx >= -20 && sx <= W + 20 && sy >= -20 && sy <= H + 20) onScr++;
     }
     const dens = onScr / ((W * H) / 20000);
-    autoF = Math.max(0.25, Math.min(1, 1.5 / Math.max(1, dens)));
+    autoF = Math.max(EDGE_FADE_FLOOR, Math.min(1, 1.5 / Math.max(1, dens)));
+    // шары гаснут «в радиусе обзора» позже рёбер (knee выше): толпа тает, разрежённое — ярко
+    nodeF = Math.max(NODE_FADE_FLOOR, Math.min(1, NODE_FADE_KNEE / Math.max(1, dens)));
   }
   const iA = Math.sqrt(autoF) * (0.6 + 0.4 * zf);   // внутризонные гаснут мягче: текстура зоны остаётся
   for (const e of edges) {
@@ -2667,7 +2673,12 @@ function paintFrame(g, opts) {
     }
     const isFocus = n === selected || n === hovered;
     // pin=context delivery: вне highlighted-set — alpha 0.22 (не 0.10 dim: фон читается)
-    g.globalAlpha = only ? 1 : dimmed(n) ? 0.10 : (pinDimmed(n) && !isFocus) ? 0.22 : n.ghost ? 0.55 : 1;
+    let na = only ? 1 : dimmed(n) ? 0.10 : (pinDimmed(n) && !isFocus) ? 0.22 : n.ghost ? 0.55 : 1;
+    // шары тают «в радиусе обзора» под нагромождением: незначимые гаснут по nodeF,
+    // значимые (фокус/пин/поиск/top-N хаб) держат яркость — landmark'и не пропадают
+    if (nodeF < 1 && na === 1 && !(isFocus || pinSet.has(n.id) || searchHit(n) || (keepSet && keepSet.has(n.id))))
+      na *= nodeF;
+    g.globalAlpha = na;
     if (isFocus) { g.shadowColor = nodeColor(n); g.shadowBlur = 14; }
     g.beginPath();
     g.arc(nx, ny, r, 0, 2*Math.PI);
