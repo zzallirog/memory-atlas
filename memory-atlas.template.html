@@ -783,6 +783,16 @@ const hiddenZones = new Set(CFG.hiddenZones || []);
 // wiki/md/shared_ref/user видны сразу
 const hiddenKinds = new Set(CFG.hiddenKinds ||
   ['semantic', 'tag_overlap', 'temporal_proximity', 'session_co_occurrence', 'structural_homology']);
+// B3: пресет БОЛЬШЕ НЕ мутирует персистентные слои — слой, показанный пресетом, живёт
+// в sessionKinds (session-only override). Клик по чипу забирает руль: session-слой гаснет
+// (persist-truth не тронут), обычный — переключается насовсем.
+const sessionKinds = new Set();
+const kindHidden = k => hiddenKinds.has(k) && !sessionKinds.has(k);
+function toggleKind(k) {
+  if (sessionKinds.has(k)) sessionKinds.delete(k);            // пресет-слой: клик = выключить
+  else kindHidden(k) ? hiddenKinds.delete(k) : hiddenKinds.add(k);
+  saveCfg();
+}
 const hiddenNodes = new Set();   // context-menu hide: до refresh (контракт graph-lab)
 
 // zone override (порт layers.overrides: приоритет №1, recolor без re-layout)
@@ -1390,16 +1400,33 @@ const searchEl = document.getElementById('search');
 const sdrop = document.getElementById('sdrop');
 let sHits = [], sSel = -1, sSeq = 0;
 const BODIES = (DATA.browse && DATA.browse.bodies) || {};
+// B19/S3: matches() звался per-node PER-FRAME с конкатенацией строк — теперь match-set
+// пересобирается ОДИН раз на input (включая tier-2 body-хиты: канвас и дропдаун видят
+// одинаково), кадры читают Set. Тела lowercase-ятся лениво и кэшируются.
+const HAY = new Map(nodes.map(n =>
+  [n.id, (n.id+' '+n.label+' '+(n.desc||'')+' '+n.type+' '+n.zone).toLowerCase()]));
+const BODYL = new Map();
+let matchSet = null;
+function rebuildMatch() {
+  if (!query.length) { matchSet = null; return; }
+  matchSet = new Set();
+  for (const n of nodes) {
+    let hit = query.some(q => HAY.get(n.id).includes(q));
+    if (!hit && BODIES[n.id]) {
+      let b = BODYL.get(n.id);
+      if (b === undefined) { b = BODIES[n.id].toLowerCase(); BODYL.set(n.id, b); }
+      hit = query.some(q => b.includes(q));
+    }
+    if (hit) matchSet.add(n.id);
+  }
+}
+const matches = n => !matchSet || matchSet.has(n.id);
 searchEl.addEventListener('input', ev => {
   query = ev.target.value.toLowerCase().split(/\s+/).filter(Boolean);
+  rebuildMatch();
   buildDrop(ev.target.value.trim().toLowerCase());
   requestDraw();
 });
-function matches(n) {
-  if (!query.length) return true;
-  const hay = (n.id+' '+n.label+' '+n.desc+' '+n.type+' '+n.zone).toLowerCase();
-  return query.some(q => hay.includes(q));
-}
 function hideDrop() { sdrop.style.display = 'none'; sHits = []; sSel = -1; }
 function buildDrop(q) {
   if (q.length < 2) { hideDrop(); return; }
@@ -1445,7 +1472,7 @@ function renderDrop(divider) {
 function pickHit(i) {
   const h = sHits[i];
   if (!h) return;
-  searchEl.value = ''; query = [];
+  searchEl.value = ''; query = []; rebuildMatch();
   hideDrop(); searchEl.blur();
   selectNode(h.n);
   flyToNeighbourhood(h.n, true);
@@ -1523,7 +1550,7 @@ window.addEventListener('keydown', ev => {
     else if (regenEl.classList.contains('on')) regenEl.classList.remove('on');
     else if (settingsEl.classList.contains('on')) settingsEl.classList.remove('on');
     else if (dashEl.classList.contains('on')) window.showTab('graph');
-    else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; hideDrop(); searchEl.blur(); }
+    else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; rebuildMatch(); hideDrop(); searchEl.blur(); }
     else if (selected) selectNode(null);
     else if (pinIds.length) setPins([]);                      // камера НЕ откатывается (spatial memory)
     else if (tagSel.size) { tagSel.clear(); renderTags(); }
@@ -1753,12 +1780,10 @@ function renderKindChips() {
     const st = EDGE_STYLES[k];
     const sw = st ? `<span class="swl" style="border-color:${st.c};border-top-style:${st.dash ? 'dashed' : 'solid'}"></span>`
                   : '<span class="swl" style="border-color:#8b8983"></span>';
-    return `<span class="zc${hiddenKinds.has(k) ? ' off' : ''}" data-k="${esc(k)}">${sw}${esc(k)}<span class="n">${cnt}</span></span>`;
+    return `<span class="zc${kindHidden(k) ? ' off' : ''}" data-k="${esc(k)}">${sw}${esc(k)}<span class="n">${cnt}</span></span>`;
   }).join('');
   $('kindChips').querySelectorAll('.zc').forEach(c => c.addEventListener('click', () => {
-    const k = c.dataset.k;
-    hiddenKinds.has(k) ? hiddenKinds.delete(k) : hiddenKinds.add(k);
-    saveCfg(); renderKindChips(); requestDraw();
+    toggleKind(c.dataset.k); renderKindChips(); requestDraw();
   }));
 }
 
@@ -1841,6 +1866,7 @@ function renderViews() {
 function applyView(v) {
   hiddenZones.clear(); (v.hiddenZones || []).forEach(z => hiddenZones.add(z));
   hiddenKinds.clear(); (v.hiddenKinds || []).forEach(k => hiddenKinds.add(k));
+  sessionKinds.clear();   // вид = явное состояние слоёв, session-override пресета сгорает
   if (v.color) $('colorMode').value = v.color;
   if (v.size) $('sizeMode').value = v.size;
   // вид без раскладки = камера летит в координаты ЧУЖОЙ раскладки (дебаг-кейс аудита 07-08)
@@ -1879,7 +1905,7 @@ function exportJSON(full) {
     (!isolate.size || isolate.has(groupKey(n))) && (!neighbors || neighbors.has(n.id)));
   const ids = new Set(keepN.map(n => n.id));
   const eOut = edges.filter(e => ids.has(e.source.id) && ids.has(e.target.id) &&
-      (full || (!hiddenKinds.has(e.kind) && !edgeSuppressed(e))))
+      (full || (!kindHidden(e.kind) && !edgeSuppressed(e))))
     .map(e => ({ source: e.source.id, target: e.target.id, kind: e.kind,
       ...(e.w ? { w: e.w } : {}), ...(e.score ? { score: e.score } : {}) }));
   const out = { title: DATA.title, generated: DATA.generated, src: DATA.src, zones: ZONES,
@@ -2342,11 +2368,13 @@ function applyPreset(name) {
   if (p.labels) $('labelMode').value = p.labels;
   toggles.clusters = p.clusters; $('clusters').classList.toggle('on', p.clusters);
   toggles.ghosts = p.ghosts; $('ghosts').classList.toggle('on', p.ghosts);
-  if (p.kinds) for (const k of p.kinds) hiddenKinds.delete(k);   // слой рёбер, нужный пресету
+  // B3: слой, нужный пресету, включается session-only — persist-truth (hiddenKinds) не мутируем
+  if (p.kinds) for (const k of p.kinds) if (hiddenKinds.has(k)) sessionKinds.add(k);
   isolate.clear();
   renderLegend(); renderKindChips();
   applyLayout(p.layout);   // saveCfg внутри
-  toast(p.toast);
+  toast(p.toast + (p.kinds && p.kinds.some(k => sessionKinds.has(k))
+    ? ' · слой включён на сессию (насовсем = чип)' : ''));
 }
 $('taskPreset').addEventListener('change', () => { applyPreset($('taskPreset').value); $('taskPreset').value = ''; });
 
@@ -2392,7 +2420,7 @@ function drawFocus(fm) {
   sizeBg();
   const stamp = [transform.x.toFixed(1), transform.y.toFixed(1), transform.k.toFixed(3),
     canvas.width, canvas.height, dpr, selected.id, layoutName, mode(), sizeMode(),
-    nsMul(), maxN, hiddenZones.size, hiddenKinds.size, hiddenNodes.size,
+    nsMul(), maxN, hiddenZones.size, hiddenKinds.size, sessionKinds.size, hiddenNodes.size,
     toggles.edgesOn, toggles.hulls, toggles.ghosts].join('|');
   const moving = sim.alpha() > 0.005 || magActive;
   if (stamp !== bgStamp || (moving && performance.now() - bgAt > BG_MS)) {
@@ -2441,7 +2469,9 @@ function paintFrame(g, opts) {
 
   const neighbors = selected ? new Set([selected.id, ...adj.get(selected.id)]) : null;
   const inIso = n => !isolate.size || isolate.has(groupKey(n));
-  const dimmed = n => (query.length && !matches(n)) || (neighbors && !neighbors.has(n.id)) || !inIso(n) || !hasTag(n) || !inKeep(n);
+  // B2: pinned + selected НЕ гасятся никаким фильтром (pin = context delivery, контракт v1.1)
+  const dimmed = n => !(n === selected || pinSet.has(n.id)) &&
+    ((query.length && !matches(n)) || (neighbors && !neighbors.has(n.id)) || !inIso(n) || !hasTag(n) || !inKeep(n));
   const pinDimmed = n => pinSet.size && !pinHl.has(n.id);   // pin=context: остальное в фон 0.22
   const searchHit = n => query.length && matches(n);
 
@@ -2450,7 +2480,8 @@ function paintFrame(g, opts) {
     const zoneLblBoxes = [];   // деконфликт зонных подписей: налезание → подпись уводится выше
     const ringMode = layoutName === 'ring';   // дуга кольца: hull-хорда накрывает центр — не заливаем
     for (const z of zoneOrder) {
-      const pts = nodes.filter(n => n.zone === z && visible(n)).map(n => [n.x, n.y]);
+      // B21: ghost-фантомы не растягивают контур зоны — hull по написанным нотам
+      const pts = nodes.filter(n => n.zone === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
       if (pts.length < 3) continue;
       const hull = d3.polygonHull(pts);
       if (!hull) continue;
@@ -2557,7 +2588,7 @@ function paintFrame(g, opts) {
   for (const e of edges) {
     const s = e.source, t = e.target;
     if (!visible(s) || !visible(t)) continue;
-    if (hiddenKinds.has(e.kind)) continue;
+    if (kindHidden(e.kind)) continue;
     if (edgeSuppressed(e)) continue;                             // negative assertion
     if (keepSet && !(inKeep(s) && inKeep(t))) continue;          // FILTER: оба endpoint в keep
     const hotCtx = (neighbors && (s === selected || t === selected)) ||
@@ -2984,6 +3015,7 @@ for (const [p, id] of [['color','colorMode'], ['size','sizeMode']]) {
 if (params.get('q')) {
   searchEl.value = params.get('q');
   query = params.get('q').toLowerCase().split(/\s+/).filter(Boolean);
+  rebuildMatch();
 }
 
 // ==== browse module: ДО-ребренд memory-map, ВЕРБАТИМ логика на DATA.browse ====
@@ -3106,7 +3138,11 @@ if (params.get('q')) {
       return hit ? '<span class="wl" data-goto="' + hit.id + '">' + shown + '</span>'
                  : '<span class="wl dead">' + shown + '</span>';
     });
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // B8: allowlist схем — [t](javascript:…) проходил в href; чужие схемы → плейн-текст
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, t, u) =>
+      /^(https?:|#|mailto:)/i.test(u.trim())
+        ? '<a href="' + u.trim().replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + t + '</a>'
+        : t + ' <code>' + u + '</code>');
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     return s;
   }
@@ -3205,7 +3241,7 @@ function renderDash() {
     const st = EDGE_STYLES[k];
     const sw = st ? `<span class="swl" style="border-color:${st.c};border-top-style:${st.dash ? 'dashed' : 'solid'}"></span>`
       : '<span class="swl" style="border-color:#8b8983"></span>';
-    return `<span class="zc${hiddenKinds.has(k) ? ' off' : ''}" data-kind="${esc(k)}">${sw}${esc(k)}<span class="n">${c}</span></span>`;
+    return `<span class="zc${kindHidden(k) ? ' off' : ''}" data-kind="${esc(k)}">${sw}${esc(k)}<span class="n">${c}</span></span>`;
   }).join('');
   dashEl.innerHTML = `<div class="wrap">
     <div class="kpis">${kpis.map(([l, n]) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
@@ -3245,9 +3281,8 @@ dashEl.addEventListener('click', ev => {
   if (pr) { showTab('graph'); applyPreset(pr.dataset.preset); return; }
   const kd = ev.target.closest('[data-kind]');
   if (kd) {
-    const k = kd.dataset.kind;
-    hiddenKinds.has(k) ? hiddenKinds.delete(k) : hiddenKinds.add(k);
-    saveCfg(); renderKindChips(); renderDash();
+    toggleKind(kd.dataset.kind);
+    renderKindChips(); renderDash();
   }
 });
 
@@ -3328,7 +3363,7 @@ function importProfile(p) {
 // Камера якорится на node-id (+ зум), фильтры/раскладка/цвет — по значениям.
 $('stShare').addEventListener('click', () => {
   const s = { v: 1, layout: layoutName, color: mode(), size: sizeMode(),
-    hz: [...hiddenZones], hk: [...hiddenKinds],
+    hz: [...hiddenZones], hk: [...hiddenKinds].filter(k => !sessionKinds.has(k)),   // шарим то, что ВИДНО
     node: selected ? selected.id : undefined, k: +transform.k.toFixed(3),
     q: searchEl.value.trim() || undefined };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(s))));
@@ -3361,7 +3396,7 @@ if (bootState) {
   }
   if (Array.isArray(bootState.hz)) { hiddenZones.clear(); bootState.hz.forEach(z => hiddenZones.add(z)); renderZoneChips(); }
   if (Array.isArray(bootState.hk)) { hiddenKinds.clear(); bootState.hk.forEach(k => hiddenKinds.add(k)); renderKindChips(); }
-  if (bootState.q) { searchEl.value = bootState.q; query = bootState.q.toLowerCase().split(/\s+/).filter(Boolean); }
+  if (bootState.q) { searchEl.value = bootState.q; query = bootState.q.toLowerCase().split(/\s+/).filter(Boolean); rebuildMatch(); }
   renderLegend();
 }
 const bootLayout = (bootState && bootState.layout) || params.get('layout') || CFG.layout;   // deep-link бьёт сохранённый
