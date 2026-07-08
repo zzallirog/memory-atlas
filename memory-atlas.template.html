@@ -100,7 +100,8 @@
     box-shadow: var(--shadow);
     padding: 16px; overflow-y: auto; display: none;
   }
-  #panel.open { display: block; }
+  #panel.open { display: block; animation: panelIn .22s cubic-bezier(.2,.8,.25,1) both; }
+  @keyframes panelIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
   #panel h2 { font-size: 14px; color: var(--ink); word-break: break-word; padding-right: 22px; line-height: 1.3; }
   #panel .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0 10px; }
   .chip {
@@ -134,14 +135,35 @@
   }
   #panel .close:hover { background: rgba(255,255,255,0.07); color: var(--ink); }
 
+  /* hover-превью: структурная карточка (title/desc/tags/links), вплывает мягко */
   #tooltip {
     position: absolute; z-index: 6; pointer-events: none; display: none;
-    background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 8px;
-    padding: 6px 10px; font-size: 12px; color: var(--ink); max-width: 340px;
+    background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 10px;
+    padding: 9px 12px; font-size: 12.5px; color: var(--ink); max-width: 360px;
     box-shadow: var(--shadow);
+    animation: floatIn .16s cubic-bezier(.2,.85,.3,1.12) both;
   }
-  #tooltip .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 2px; }
+  #tooltip .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 3px; }
   #tooltip .tg-mark { color: var(--ghost); font: 10px var(--mono); }
+  #tooltip .tdesc {
+    color: var(--ink-2); font-size: 11.5px; line-height: 1.45; margin-top: 5px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #tooltip .ttags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  #tooltip .ttags .tt {
+    display: inline-flex; align-items: center; gap: 4px; font: 9.5px var(--mono);
+    padding: 1px 6px; border-radius: 10px; border: 1px solid var(--grid); color: var(--ink-2);
+  }
+  #tooltip .ttags .tt .sw { width: 6px; height: 6px; border-radius: 50%; }
+  #tooltip .tlinks {
+    color: var(--muted); font: 10px/1.5 var(--mono); margin-top: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 336px;
+  }
+  #tooltip .tlinks b { color: var(--ink-2); font-weight: 500; }
+  #tooltip .ekind { display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
+  @keyframes floatIn { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sheetIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
 
   #bar {
     position: absolute; left: 14px; bottom: 12px; right: 14px; z-index: 5;
@@ -285,6 +307,7 @@
     position: fixed; z-index: 40; display: none; max-height: 320px; overflow-y: auto;
     background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 10px;
     box-shadow: var(--shadow); padding: 4px;
+    animation: floatIn .15s ease both;
   }
   #sdrop .sr { padding: 5px 9px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--ink-2);
     display: flex; align-items: baseline; gap: 7px; }
@@ -312,7 +335,8 @@
     position: absolute; inset: 0; z-index: 50; display: none; overflow-y: auto;
     background: rgba(12,12,11,0.82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
-  #help.on { display: block; }
+  #help.on { display: block; animation: fadeIn .15s ease both; }
+  #help.on .sheet, #regen.on .sheet, #settings.on .sheet { animation: sheetIn .2s cubic-bezier(.2,.8,.25,1) both; }
   #help .sheet {
     max-width: 720px; margin: 6vh auto; background: var(--surface-solid);
     border: 1px solid var(--border-hi); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow);
@@ -333,7 +357,7 @@
     position: absolute; inset: 0; z-index: 50; display: none; overflow-y: auto;
     background: rgba(12,12,11,0.82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
-  #regen.on { display: block; }
+  #regen.on { display: block; animation: fadeIn .15s ease both; }
   #regen .sheet {
     max-width: 620px; margin: 10vh auto; background: var(--surface-solid);
     border: 1px solid var(--border-hi); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow);
@@ -358,6 +382,7 @@
     background: var(--surface-solid); border: 1px solid var(--border-hi); border-radius: 10px;
     padding: 8px 11px; box-shadow: var(--shadow);
     color: var(--ink-2); font: 12px/1.45 system-ui, sans-serif;
+    animation: floatIn .18s cubic-bezier(.2,.85,.3,1.12) both;
   }
   #hintCard b {
     display: block; color: var(--ink); font: 600 10.5px var(--mono);
@@ -457,7 +482,7 @@
   /* ==== dash-таб (▦): KPI-пульт корпуса, glass-язык атласа ==== */
   #dash { position:absolute; inset:0; z-index:4; display:none; overflow-y:auto;
     background:var(--page); padding:64px 22px 24px; }
-  #dash.on { display:block; }
+  #dash.on { display:block; animation: fadeIn .18s ease both; }
   #dash .wrap { max-width:1160px; margin:0 auto; }
   #dash .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px; margin-bottom:12px; }
   #dash .kpi { background:var(--surface); border:1px solid var(--border); border-radius:12px;
@@ -486,7 +511,7 @@
   /* ==== settings sheet (⛭) ==== */
   #settings { position:absolute; inset:0; z-index:50; display:none; overflow-y:auto;
     background:rgba(12,12,11,0.82); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
-  #settings.on { display:block; }
+  #settings.on { display:block; animation: fadeIn .15s ease both; }
   #settings .sheet { max-width:620px; margin:8vh auto; background:var(--surface-solid);
     border:1px solid var(--border-hi); border-radius:14px; padding:22px 26px; box-shadow:var(--shadow); }
   #settings h2 { color:var(--ink); font:600 14px var(--mono); letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px; }
@@ -1212,29 +1237,74 @@ function pick(mx, my) {
 d3.select(canvas).call(d3.drag()
   .container(canvas)
   .subject(ev => pick(ev.x, ev.y))
-  .on('start', ev => { canvas.classList.add('dragging'); if (!ev.active) sim.alphaTarget(0.25).restart(); ev.subject.fx = ev.subject.x; ev.subject.fy = ev.subject.y; })
+  .on('start', ev => { canvas.classList.add('dragging'); tipHide(); hoveredEdge = null; if (!ev.active) sim.alphaTarget(0.25).restart(); ev.subject.fx = ev.subject.x; ev.subject.fy = ev.subject.y; })
   .on('drag', ev => { const [x,y] = transform.invert([ev.x, ev.y]); ev.subject.fx = x; ev.subject.fy = y; })
   .on('end', ev => { canvas.classList.remove('dragging'); if (!ev.active) sim.alphaTarget(0); ev.subject.fx = null; ev.subject.fy = null; }));
 
 // ---- hover / click ----
+// hover-превью: не «имя+мета», а карточка того, что под курсором — title/desc/tags/links
+// для ноды, «A ⟷ B · детектор» для ребра. Контент собирается ТОЛЬКО при смене цели
+// (не на каждый mousemove); во время drag весь hover-путь выключен (60fps контракт §7).
 const tooltip = document.getElementById('tooltip');
 let hovered = null;
+let hoveredEdge = null;
 let cursorW = null;   // курсор в world-координатах: magnet + label-режим near
+function tipHide() { tooltip.style.display = 'none'; }
+function tipNode(n) {
+  const lname = id => { const m = byId.get(id); return m ? m.label : id; };
+  const lline = (ids, mark) => ids.length
+    ? `<div class="tlinks"><b>${mark}${ids.length}</b> ${ids.slice(0, 3).map(id => esc(lname(id))).join(' · ')}${ids.length > 3 ? ' …' : ''}</div>` : '';
+  const tags = nodeTags(n);
+  tooltip.innerHTML = `<div>${esc(n.label)}${n.ghost ? ' <span class="tg-mark">ghost — ноты нет</span>' : ''}</div>
+    <div class="tmeta">${esc(n.zone)} · ${esc(n.type)} · deg ${n.degree}${mode()==='heat'&&!n.ghost?` · ${HEAT.label} ${(n.heat??0).toFixed(2)}`:''}</div>
+    ${n.desc ? `<div class="tdesc">${esc(n.desc)}</div>` : ''}
+    ${tags.length ? `<div class="ttags">${tags.map(t =>
+      `<span class="tt"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}</span>`).join('')}</div>` : ''}
+    ${lline(outLinks.get(n.id) || [], '→')}${lline(inLinks.get(n.id) || [], '←')}`;
+}
+function tipEdge(e) {
+  const st = EDGE_STYLES[e.kind];
+  tooltip.innerHTML = `<div><span class="ekind" style="border-color:${st ? st.c : '#8b8983'};border-top-style:${st && st.dash ? 'dashed' : 'solid'}"></span>${esc(e.source.label)} ⟷ ${esc(e.target.label)}</div>
+    <div class="tmeta">${esc(e.kind || 'wiki')}${e.score ? ' · score ' + (+e.score).toFixed(2) : ''}${e.w ? ' · w ' + e.w : ''}${e.user ? ' · нарисовано руками' : ''}</div>`;
+}
+function tipPlace(ev) {
+  tooltip.style.display = 'block';
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  tooltip.style.left = Math.min(ev.clientX + 14, W - tw - 10) + 'px';
+  tooltip.style.top = Math.min(ev.clientY + 14, H - th - 10) + 'px';
+}
+// ребро под курсором (нода — приоритет): bbox-reject держит проход дешёвым
+function pickEdge(mx, my) {
+  const [x, y] = transform.invert([mx, my]);
+  const tol = 6 / transform.k;
+  let best = null, bd = tol;
+  for (const e of edges) {
+    const s = e.source, t = e.target;
+    if (kindHidden(e.kind) || edgeSuppressed(e)) continue;
+    if (!toggles.edgesOn && !e.user) continue;   // спрятанный слой не ховерится
+    const sx = NX(s), sy = NY(s), tx = NX(t), ty = NY(t);
+    if (x < Math.min(sx, tx) - tol || x > Math.max(sx, tx) + tol ||
+        y < Math.min(sy, ty) - tol || y > Math.max(sy, ty) + tol) continue;
+    if (!visible(s) || !visible(t)) continue;
+    if (keepSet && !(inKeep(s) && inKeep(t))) continue;
+    const dx = tx - sx, dy = ty - sy, L2 = dx*dx + dy*dy || 1;
+    const u = Math.max(0, Math.min(1, ((x - sx) * dx + (y - sy) * dy) / L2));
+    const d = Math.hypot(sx + u * dx - x, sy + u * dy - y);
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
 canvas.addEventListener('mousemove', ev => {
+  if (canvas.classList.contains('dragging')) return;   // drag-путь: ноль hover-работы
   cursorW = transform.invert([ev.clientX, ev.clientY]);
   const n = pick(ev.clientX, ev.clientY);
-  if (n !== hovered) { hovered = n; requestDraw(); }
+  const he = n ? null : pickEdge(ev.clientX, ev.clientY);
+  if (n !== hovered) { hovered = n; if (n) tipNode(n); requestDraw(); }
+  if (he !== hoveredEdge) { hoveredEdge = he; if (he) tipEdge(he); requestDraw(); }
   if (toggles.magnet) requestDraw();
-  if (n) {
-    tooltip.style.display = 'block';
-    tooltip.innerHTML = `<div>${esc(n.label)}${n.ghost?' <span class="tg-mark">ghost</span>':''}</div>
-      <div class="tmeta">${esc(n.zone)} · ${esc(n.type)} · deg ${n.degree}${mode()==='heat'&&!n.ghost?` · ${HEAT.label} ${(n.heat??0).toFixed(2)}`:''}</div>`;
-    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-    tooltip.style.left = Math.min(ev.clientX+14, W-tw-10)+'px';
-    tooltip.style.top = Math.min(ev.clientY+14, H-th-10)+'px';
-  } else tooltip.style.display = 'none';
+  if (n || he) tipPlace(ev); else tipHide();
 });
-canvas.addEventListener('mouseleave', () => { cursorW = null; hovered = null; requestDraw(); });
+canvas.addEventListener('mouseleave', () => { cursorW = null; hovered = null; hoveredEdge = null; tipHide(); requestDraw(); });
 
 // Ctrl+click ×2 = user-ребро (overlay, thought-cloud контракт: связи рисует юзер)
 let pendingLink = null;
@@ -2615,6 +2685,10 @@ function paintFrame(g, opts) {
           : s.zone !== t.zone ? `rgba(255,255,255,${capA(0.035*zf*autoF)})`
           : `rgba(255,255,255,${capA(0.09*iA)})`;
       }
+    }
+    if (e === hoveredEdge && !muted) {   // hover-превью связи: ребро под курсором читается сразу
+      g.strokeStyle = st ? hexA(st.c, 0.95) : 'rgba(244,243,238,0.75)';
+      g.lineWidth = baseLw * 2.4 * (st && st.w || 1);
     }
     if (st && st.dash) g.setLineDash(st.dash.map(d => d / Math.sqrt(transform.k)));
     g.beginPath();
