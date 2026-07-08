@@ -78,6 +78,12 @@
   }
   .tg.on { border-color: var(--accent); color: var(--ink); background: var(--accent-dim); }
   .tg:hover { border-color: var(--border-hi); }
+  .tg.solo { flex: 0 0 auto; padding: 4px 10px; }
+  /* секции HUD: главная карта разбита на именованные блоки — видно, ЧТО крутишь */
+  .sec {
+    font: 9.5px var(--mono); color: var(--muted); letter-spacing: .13em; text-transform: uppercase;
+    margin: 13px -14px 0; padding: 9px 14px 0; border-top: 1px solid var(--border);
+  }
 
   #legend { display: flex; flex-direction: column; gap: 2px; max-height: 38vh; overflow-y: auto; }
   #legendTitle { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
@@ -181,13 +187,25 @@
   }
   #keys { margin-left: auto; color: var(--muted); font: 10px var(--mono); opacity: .75; flex: none; }
   #keys b { color: var(--ink-2); font-weight: 500; }
-  #fit, #homeBtn, #reloadBtn, #rebuildBtn, #exportBtn, #settingsBtn, #helpBtn {
+  #fit, #homeBtn, #reloadBtn, #exportBtn, #settingsBtn, #helpBtn {
     pointer-events: auto; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border); color: var(--ink-2);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-radius: 8px; padding: 5px 12px; font: 10.5px var(--mono);
   }
-  #fit:hover, #homeBtn:hover, #reloadBtn:hover, #rebuildBtn:hover, #exportBtn:hover, #settingsBtn:hover, #helpBtn:hover { border-color: var(--accent); color: var(--ink); }
+  #fit:hover, #homeBtn:hover, #reloadBtn:hover, #exportBtn:hover, #settingsBtn:hover, #helpBtn:hover { border-color: var(--accent); color: var(--ink); }
+  /* бар-группы: [камера] [данные] [настройки] — сегменты, не россыпь одинаковых кнопок */
+  .bgrp { display: flex; pointer-events: none; flex: none; }
+  .bgrp button { border-radius: 0; }
+  .bgrp button:first-child { border-radius: 8px 0 0 8px; }
+  .bgrp button:last-child { border-radius: 0 8px 8px 0; }
+  .bgrp button + button { border-left-width: 0; }
+  /* узкий вьюпорт (S13): keys-строка уходит, статус ужимается — бар не оборачивается */
+  @media (max-width: 1240px) {
+    #keys { display: none; }
+    #stats { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #tsz .lbl { display: none; }
+  }
 
   /* ---- text-size stepper (канвас-читаемость под рукой юзера) ---- */
   #tsz { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
@@ -268,6 +286,13 @@
   }
   #viewtabs .vt:hover { color: var(--ink-2); }
   #viewtabs .vt.on { background: var(--accent-dim); border-color: var(--accent); color: var(--ink); }
+  /* browse = Catppuccin-остров: вкладки принимают его хром, а не висят чужим glass-стеклом */
+  body[data-tab="browse"] #viewtabs { background: #181825; border-color: #313244; box-shadow: 0 8px 28px rgba(0,0,0,0.6); }
+  body[data-tab="browse"] #viewtabs .vt { color: #6c7086; }
+  body[data-tab="browse"] #viewtabs .vt:hover { color: #a6adc8; }
+  body[data-tab="browse"] #viewtabs .vt.on { background: #313244; border-color: #45475a; color: #cdd6f4; }
+  /* линза-пилюля живёт только над графом */
+  body[data-tab="browse"] #lens, body[data-tab="dash"] #lens { display: none; }
 
   /* fuse: graph→browse connector in graph node panel (atlas side) */
   #panel .readbrowse {
@@ -591,6 +616,7 @@
     </div>
     <input id="search" type="search" placeholder="search — terms OR'ed  ( / )" spellcheck="false" autocomplete="off"
       data-hint="фильтр: термы через пробел = OR; дропдаун: ↑↓ + enter = перелёт к ноде">
+    <div class="sec">вид</div>
     <div class="row" data-hint="цвет нод: cluster = тематики из топологии (louvain) · zone = зона памяти · type = тип ноты · heat = свежесть"><label>color</label>
       <select id="colorMode">
         <option value="cluster">cluster (louvain)</option>
@@ -603,33 +629,6 @@
       <select id="sizeMode">
         <option value="degree">degree</option>
         <option value="bytes">file size</option>
-      </select>
-    </div>
-    <div class="row" data-hint="что делает клик по ноде: dim = приглушить остальное · ego blur = фон в блюр, нода+соседи резко · тайлы = ego карточками"><label>focus</label>
-      <select id="focusMode" title="что делает выделение ноды">
-        <option value="dim">dim · приглушить</option>
-        <option value="blur" selected>ego · blur фона</option>
-        <option value="tiles">ego · тайлы</option>
-      </select>
-    </div>
-    <div class="row" data-hint="кто подписан: hubs = топ-degree · hops = N шагов от выделенной · near = вокруг курсора · all (клавиша l = цикл)"><label>lbls</label>
-      <select id="labelMode" title="какие ноды получают лейбл (l = cycle)">
-        <option value="hubs">hubs</option>
-        <option value="hops">hops (от selected)</option>
-        <option value="near">near (у курсора)</option>
-        <option value="all">all</option>
-      </select>
-      <select id="labelHops" class="mini" title="BFS-глубина для hops">
-        <option>1</option><option selected>2</option><option>3</option><option>4</option>
-      </select>
-    </div>
-    <div class="row" data-hint="плотность подписей — ось, НЕЗАВИСИМАЯ от зума: бюджет имён на экран (приоритет selected > pin > hover > degree); 0 = только выделенное/пины; зум добавляет бюджет сам, ползунок — множитель"><label>lbl ρ</label><input type="range" id="labelDens" min="0" max="3" step="0.1" value="1"><span class="rv" id="labelDensv">1.0</span></div>
-    <div class="row" data-hint="камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner"><label>cam</label>
-      <select id="camPolicy" title="framing при select; stay = зум ручной, камера не трогается">
-        <option value="stay" selected>stay · ручной</option>
-        <option value="adaptive">adaptive</option>
-        <option value="fit">fit</option>
-        <option value="corner">corner</option>
       </select>
     </div>
     <div class="row" data-hint="раскладка ([ ] = цикл): force = зоны силами · semantic = близость по смыслу · pack = вложенные круги зона⊃кластер, всё поле · ring = кольцо синергии зон · petals = спираль-подсолнух на зону · radial = хабы в центр · grid = полки по зонам · zones = колонки · timeline = свежесть по X"><label>layout</label>
@@ -657,25 +656,57 @@
         <option value="debts">долги · ghost-ноты</option>
       </select>
     </div>
+    <div class="sec">фокус · камера</div>
+    <div class="row" data-hint="что делает клик по ноде: dim = приглушить остальное · ego blur = фон в блюр, нода+соседи резко · тайлы = ego карточками"><label>focus</label>
+      <select id="focusMode" title="что делает выделение ноды">
+        <option value="dim">dim · приглушить</option>
+        <option value="blur" selected>ego · blur фона</option>
+        <option value="tiles">ego · тайлы</option>
+      </select>
+    </div>
+    <div class="row" data-hint="камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner"><label>cam</label>
+      <select id="camPolicy" title="framing при select; stay = зум ручной, камера не трогается">
+        <option value="stay" selected>stay · ручной</option>
+        <option value="adaptive">adaptive</option>
+        <option value="fit">fit</option>
+        <option value="corner">corner</option>
+      </select>
+      <div class="tg solo" id="lockZoom" data-hint="перелёты камеры не меняют масштаб, только пан">lockz</div>
+    </div>
+    <div class="sec">подписи</div>
+    <div class="row" data-hint="кто подписан: hubs = топ-degree · hops = N шагов от выделенной · near = вокруг курсора · all (клавиша l = цикл)"><label>lbls</label>
+      <select id="labelMode" title="какие ноды получают лейбл (l = cycle)">
+        <option value="hubs">hubs</option>
+        <option value="hops">hops (от selected)</option>
+        <option value="near">near (у курсора)</option>
+        <option value="all">all</option>
+      </select>
+      <select id="labelHops" class="mini" title="BFS-глубина для hops">
+        <option>1</option><option selected>2</option><option>3</option><option>4</option>
+      </select>
+    </div>
+    <div class="row" data-hint="плотность подписей — ось, НЕЗАВИСИМАЯ от зума: бюджет имён на экран (приоритет selected > pin > hover > degree); 0 = только выделенное/пины; зум добавляет бюджет сам, ползунок — множитель"><label>lbl ρ</label><input type="range" id="labelDens" min="0" max="3" step="0.1" value="1"><span class="rv" id="labelDensv">1.0</span></div>
+    <div class="toggles">
+      <div class="tg on" id="labels" data-hint="подписи нод на графе">labels</div>
+      <div class="tg on" id="collide" data-hint="прятать налезающие друг на друга лейблы">cull</div>
+      <div class="tg on" id="softFade" data-hint="на месте спрятанного лейбла — крошечная метка-тире (видно, что имя есть; текст не мажется)">soft</div>
+    </div>
+    <div class="sec">плотность</div>
     <div class="row" data-hint="оставить яркими только top-N нод по degree, остальные притушить (не удалять)"><label>max n</label><input type="range" id="maxN" min="20" max="2000" step="10"><span class="rv" id="maxNv">all</span></div>
     <div class="row" data-hint="множитель прозрачности всех рёбер"><label>edge α</label><input type="range" id="edgeAlpha" min="0" max="2" step="0.05" value="0.5"><span class="rv" id="edgeAlphav">0.5</span></div>
     <div class="row" data-hint="множитель размера нод"><label>node ×</label><input type="range" id="nodeSize" min="0.5" max="3" step="0.05" value="1"><span class="rv" id="nodeSizev">1.0</span></div>
+    <div class="sec">слои</div>
     <div class="toggles">
       <div class="tg on" id="hulls" data-hint="контуры зон памяти на подложке">hulls</div>
       <div class="tg" id="clusters" data-hint="мягкие блобы вокруг louvain-кластеров (тематики из топологии)">clusters</div>
       <div class="tg on" id="ghosts" data-hint="пунктирные ноды = [[ссылка]] без файла — «стоит написать»">ghosts</div>
-      <div class="tg on" id="labels" data-hint="подписи нод на графе">labels</div>
-    </div>
-    <div class="toggles">
       <div class="tg on" id="edgesOn" data-hint="все рёбра; off = только у выделенной/пинов/hover (клавиша 9)">edges</div>
+    </div>
+    <div class="sec">моушн</div>
+    <div class="toggles">
       <div class="tg" id="particles" data-hint="бегущие частицы вдоль semantic/session/user рёбер (клавиша 0)">parts</div>
       <div class="tg" id="magnet" data-hint="курсор-магнит: раздвигает облако; ближняя нода после ~1.3с липнет к курсору">magnet</div>
       <div class="tg" id="gestures" data-hint="жесты вебкамерой: ладонь = пан, щипок = зум (нужен CDN)">🎥</div>
-    </div>
-    <div class="toggles">
-      <div class="tg on" id="collide" data-hint="прятать налезающие друг на друга лейблы">cull</div>
-      <div class="tg on" id="softFade" data-hint="на месте спрятанного лейбла — крошечная метка-тире (видно, что имя есть; текст не мажется)">soft</div>
-      <div class="tg" id="lockZoom" data-hint="перелёты камеры не меняют масштаб, только пан">lockz</div>
     </div>
   </div>
   <div class="card" id="zonesCard" data-hint="клик по чипу = скрыть/показать зону целиком (клавиши 1-8)">
@@ -686,22 +717,22 @@
     <div class="cardHead"><span class="t">рёбра по типу</span></div>
     <div class="chips-rail" id="kindChips"></div>
   </div>
-  <div class="card" id="pinsCard" data-hint="rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; 🏷 = собрать пачку пинов в свой тег">
-    <div class="cardHead"><span class="t">pins · rmb</span><span class="act" id="pinsTag" title="повесить один тег на все запиненные ноды">🏷 в тег</span><span class="act" id="pinsClr">сброс</span></div>
-    <div id="pinsList"></div>
-  </div>
-  <div class="card" id="viewsCard" data-hint="сохранить текущую камеру + фильтры под именем; клик по строке = вернуть вид">
-    <div class="cardHead"><span class="t">views</span></div>
-    <div id="viewsList"></div>
-    <div class="vnew"><input id="viewName" placeholder="имя вида…"><button id="viewSave">＋</button></div>
+  <div class="card" id="tagCard" data-hint="клик по тегу = ЛИНЗА: остаются только ноды с тегом, остальное растворяется в блюр-пустоту (в focus=dim — приглушается). Свои теги: «+ тег» в панели ноды (клавиша t) или 🏷 из пинов; ∪/∩ = режим нескольких тегов">
+    <div id="tagHead"><span class="t">теги · линза</span><span class="clr" id="tagMode" title="несколько тегов: ∪ = любой из них, ∩ = все сразу">∪ any</span><span class="clr" id="tagClr">сброс</span></div>
+    <div id="tags"></div>
   </div>
   <div class="card" data-hint="легенда цвета; клик по строке = изолировать группу (второй клик = вернуть)">
     <div id="legendTitle"></div>
     <div id="legend"></div>
   </div>
-  <div class="card" id="tagCard" data-hint="клик по тегу = ЛИНЗА: остаются только ноды с тегом, остальное растворяется в блюр-пустоту (в focus=dim — приглушается). Свои теги: «+ тег» в панели ноды (клавиша t) или 🏷 из пинов; ∪/∩ = режим нескольких тегов">
-    <div id="tagHead"><span class="t">теги · линза</span><span class="clr" id="tagMode" title="несколько тегов: ∪ = любой из них, ∩ = все сразу">∪ any</span><span class="clr" id="tagClr">сброс</span></div>
-    <div id="tags"></div>
+  <div class="card" id="pinsCard" data-hint="rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; 🏷 = собрать пачку пинов в свой тег">
+    <div class="cardHead"><span class="t">pins · rmb</span><span class="act" id="pinsTag" title="повесить один тег на все запиненные ноды">🏷 в тег</span><span class="act" id="pinsClr">сброс</span></div>
+    <div id="pinsList"></div>
+  </div>
+  <div class="card" id="viewsCard" data-hint="сохранить текущую камеру + фильтры (включая тег-линзу) под именем; клик по строке = вернуть вид">
+    <div class="cardHead"><span class="t">views</span></div>
+    <div id="viewsList"></div>
+    <div class="vnew"><input id="viewName" placeholder="имя вида…"><button id="viewSave">＋</button></div>
   </div>
 </div>
 
@@ -796,13 +827,18 @@
 </div></div>
 <div id="bar">
   <div id="stats"></div>
-  <button id="fit" data-hint="вписать КОНТЕКСТ в кадр (поиск / фильтр / пины / ego выделенной; без контекста — весь граф) — клавиша f; весь мир всегда = ⌂ / h">⤢ fit</button>
-  <button id="homeBtn" data-hint="вернуться к стартовому виду (клавиша h)" title="стартовый вид (h)">⌂</button>
-  <button id="reloadBtn" data-hint="перезагрузить страницу (свежий файл атласа после пересборки)" title="перезагрузить">⟳</button>
-  <button id="rebuildBtn" data-hint="пересборка ДАННЫХ атласа: собрать команду генератора с нужными флагами — выполняется в терминале" title="пересборка данных">⚙</button>
-  <button id="exportBtn" data-hint="скачать видимый срез графа как JSON; shift+клик = полный корпус" title="экспорт видимого среза JSON; shift = полный корпус">↓</button>
-  <button id="settingsBtn" data-hint="настройки: профиль export/import, ссылка на вид, поведение, пересборка, редактор" title="настройки">⛭</button>
-  <button id="helpBtn" data-hint="справка по всем клавишам и типам рёбер (?)" title="справка (?)">?</button>
+  <div class="bgrp" title="камера">
+    <button id="fit" data-hint="вписать КОНТЕКСТ в кадр (поиск / фильтр / пины / ego выделенной; без контекста — весь граф) — клавиша f; весь мир всегда = ⌂ / h">⤢ fit</button>
+    <button id="homeBtn" data-hint="вернуться к стартовому виду (клавиша h)" title="стартовый вид (h)">⌂</button>
+  </div>
+  <div class="bgrp" title="данные">
+    <button id="reloadBtn" data-hint="перезагрузить страницу (свежий файл атласа после пересборки; сама пересборка — в ⛭)" title="перезагрузить">⟳</button>
+    <button id="exportBtn" data-hint="скачать видимый срез графа как JSON; shift+клик = полный корпус" title="экспорт видимого среза JSON; shift = полный корпус">↓</button>
+  </div>
+  <div class="bgrp" title="настройки · справка">
+    <button id="settingsBtn" data-hint="настройки: профиль export/import, ссылка на вид, поведение, пересборка данных, редактор" title="настройки">⛭</button>
+    <button id="helpBtn" data-hint="справка по всем клавишам и типам рёбер (?)" title="справка (?)">?</button>
+  </div>
   <div id="tsz" data-hint="масштаб текста на графе И панелей UI (сохраняется)"><span class="lbl">текст</span><button id="tszMinus" title="мельче">A−</button><button id="tszPlus" title="крупнее">A+</button></div>
   <div id="hint"></div>
   <div id="keys"><b>/</b> search · <b>c</b> в кадр · <b>t</b> тег · <b>f</b> fit · <b>rmb</b> pin · <b>?</b> help</div>
@@ -2168,7 +2204,9 @@ function rgAgeText() {
   return s;
 }
 function rgAge() { $('regenAge').textContent = rgAgeText(); }
-$('rebuildBtn').addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
+// ⚙ убран из бара (двойник ⛭ был неразличим, §13): пересборка = ⛭ → «⚙ пересборка…» или dash
+const rebuildBtn = $('rebuildBtn');
+if (rebuildBtn) rebuildBtn.addEventListener('click', () => { rgAge(); rgUpdate(); regenEl.classList.add('on'); });
 for (const id of ['rgVecs', 'rgStruct', 'rgNoSem', 'rgNoDet']) $(id).addEventListener('change', rgUpdate);
 $('rgCopy').addEventListener('click', () => copyText($('rgCmd').textContent, 'команда'));
 $('rgReload').addEventListener('click', () => location.reload());
@@ -3408,6 +3446,7 @@ if (params.get('q')) {
 const dashEl = document.getElementById('dash');
 window.showTab = function (v) {
   const b = v === 'browse', d = v === 'dash';
+  document.body.dataset.tab = v;   // viewtabs красятся под остров вкладки (browse-Catppuccin)
   // смена вкладки закрывает sheet-оверлеи: settings, открытый над графом,
   // не должен висеть поверх browse (пойман playwright-пассом 07-09)
   for (const id of ['help', 'regen', 'settings']) $(id).classList.remove('on');
