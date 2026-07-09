@@ -50,7 +50,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.2.0"   # тег-линза (блюр-пустота) + hover-превью + бар-блоки + dash/settings (арч-пасс) + аудит-фиксы B2/B3/B8/B19/B21
+VERSION = "2.3.0"   # непрерывный LOD (desc-рампа 4.5→3.0, кроссфейд лейбл↔карточка), blur-перф ½-разрешения, ego-превью соседей, temporal-линза «ровесники», links-превью+скоринг, корпусные теги, usage-телеметрия, редакторы Linux
 def _resolve_default_src():
     # G1: первый существующий+НЕПУСТОЙ кандидат (Mac -Users- / Arch -home-), иначе первый.
     # чинит W5-баг: автодетект цеплял пустой -Users-zzalli на Арче → 0 нод
