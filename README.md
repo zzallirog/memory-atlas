@@ -16,7 +16,13 @@ The point isn't "a graph of my wikilinks". It's **overlap**: the generator runs 
 git clone https://github.com/zzallirog/memory-atlas && cd memory-atlas
 ./memory-atlas --demo            # tiny synthetic vault, opens in your browser
 ./memory-atlas --src ~/my-vault  # your own notes
+./memory-atlas --src ~/vault --src ~/wiki --src ~/snippets   # several roots, one graph
 ```
+
+`--src` is repeatable: the first root keeps its index-based zones, every extra root becomes
+one zone of its own, and `[[links]]` resolve same-root first, then across roots — a link that
+used to dangle as a ghost snaps to the real note in the other root. `--dump-data -` emits the
+graph JSON instead of rendering (the source end for external pipeline builders).
 
 Or the zero-clone route — one file, nothing else:
 
@@ -85,6 +91,7 @@ docs/QUICKSTART.md            # the friendly walkthrough
 
 ## Changelog
 
+- **2.8.0** (2026-07-09) — multi-root vaults: repeatable `--src [NAME=]DIR` (first root = primary index zones, extras one zone each, cross-root `[[link]]` resolve kills ghosts, readable parent-dir ids on stem collisions, per-root editor paths via `DATA.roots`); `--dump-data FILE|-` (DATA JSON out, pipeline source end); `temporal_proximity` now caps node DEGREE at top-k=2 (the per-source cap let hub notes collect a rose dash from everyone — ~1250 → ~250 edges).
 - **2.4.1** (2026-07-09) — refine pass: `--data` contract validator (broken external graphs fail at build time, not as a dead page); session detector fixed for vaults living in a subdir of a git repo (`git log --relative`); `--demo` also mutes the session detector (packaging commits ≠ sessions); preset toasts translate in EN mode; generator↔template version handshake (`atlas-tpl` meta, warns on stale symlink pair); `maxN` "all" persists as a sentinel (a grown corpus no longer comes back silently top-N-filtered); client semantic search honors `ATLAS_OLLAMA`; `.pyz` compressed (590K → 195K); dead edge-hover code removed.
 - **2.4.0** (2026-07-09) — public-release pass: EN comments/CLI, generic path autodetect, Windows toolchain + CI matrix, locale-auto UI language, pin cards with preview + view capture.
 - **2.3.0** (2026-07-09) — continuous zoom LOD, temporal lens, ego-blur at half resolution (fps), panel link previews, usage telemetry, editor URL-schemes.

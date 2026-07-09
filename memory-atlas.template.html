@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.7.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.8.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -2232,7 +2232,12 @@ function fallbackCopy(txt, done) {
 }
 
 // ---- editor dispatch (port of EditorHandler: URL scheme; abs path always to clipboard) ----
-const absPath = n => n.path ? (DATA.src ? DATA.src.replace(/\/$/, '') + '/' + n.path : n.path) : '';
+const absPath = n => {
+  if (!n.path) return '';
+  // multi-root: node.path is relative to its OWN root (DATA.roots), not DATA.src
+  const base = (DATA.roots && n.root && DATA.roots[n.root]) || DATA.src;
+  return base ? base.replace(/\/$/, '') + '/' + n.path : n.path;
+};
 // schemes are cross-platform: on Linux xdg-open resolves them (the editor registers
 // a .desktop handler on install); copy-path fallback works everywhere (clipboard+execCommand)
 const EDITOR_TPL = {
