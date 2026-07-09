@@ -126,7 +126,8 @@ MDLINK_RE = re.compile(r"\]\(([^)#\s]+?\.md)\)")
 
 
 def norm(key):
-    return key.strip().lower().replace("-", "_").removesuffix(".md")
+    k = key.strip().lower().replace("-", "_")
+    return k[:-3] if k.endswith(".md") else k   # str.removesuffix needs 3.9; floor is 3.8
 
 
 def parse_frontmatter(text):
