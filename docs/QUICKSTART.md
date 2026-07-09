@@ -86,7 +86,7 @@ carries on — every other bridge still works.
 |------|------|
 | `--demo` | build the bundled demo vault |
 | `--src DIR` | your vault |
-| `--out FILE` | where to write the HTML (default: next to the command) |
+| `--out FILE` | where to write the HTML (default: `./atlas-demo.html` for `--demo`, else the atlas cache dir — the build prints the path) |
 | `--lang ru\|en` | starting UI language |
 | `--no-open` | don't auto-open the browser |
 | `--no-detectors` | wikilink graph only, fastest |

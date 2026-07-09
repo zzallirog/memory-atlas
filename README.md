@@ -74,7 +74,23 @@ dist/memory-atlas.pyz         # prebuilt single-file bundle
 docs/QUICKSTART.md            # the friendly walkthrough
 ```
 
-`./memory-atlas --self-test` runs the built-in test suite (36 cases). Press `?` inside the atlas for every key and edge type.
+`./memory-atlas --self-test` runs the built-in test suite. Press `?` inside the atlas for every key and edge type.
+
+## Development
+
+- `dist/` is a build artifact (`python3 installer/build_pyz.py`), gitignored in dev; the published repo ships a prebuilt copy for the zero-clone route.
+- Deployed locally as `~/bin` symlinks (generator + template travel as a PAIR — the generator warns on version skew).
+- Durable off-machine backup channel: `git push origin main` (bare repo); Gitea intentionally skipped per backup topology.
+- CI (`.github/workflows/ci.yml`): ubuntu/macos/windows × py3.8/3.12 — self-test + demo build + `.pyz` build.
+
+## Changelog
+
+- **2.4.1** (2026-07-09) — refine pass: `--data` contract validator (broken external graphs fail at build time, not as a dead page); session detector fixed for vaults living in a subdir of a git repo (`git log --relative`); `--demo` also mutes the session detector (packaging commits ≠ sessions); preset toasts translate in EN mode; generator↔template version handshake (`atlas-tpl` meta, warns on stale symlink pair); `maxN` "all" persists as a sentinel (a grown corpus no longer comes back silently top-N-filtered); client semantic search honors `ATLAS_OLLAMA`; `.pyz` compressed (590K → 195K); dead edge-hover code removed.
+- **2.4.0** (2026-07-09) — public-release pass: EN comments/CLI, generic path autodetect, Windows toolchain + CI matrix, locale-auto UI language, pin cards with preview + view capture.
+- **2.3.0** (2026-07-09) — continuous zoom LOD, temporal lens, ego-blur at half resolution (fps), panel link previews, usage telemetry, editor URL-schemes.
+- **2.2.0** (2026-07-08→09) — tag-lens ("blur + emptiness"), hover-preview cards, HUD bar-blocks, generator portability for Obsidian vaults, adaptive readability, EN i18n layer + RU/EN toggle, installer zipapp + synthetic demo vault.
+- **2.1.0** (2026-07-08) — label declutter + density axis, ego-blur cache (60→10fps drag lag fixed), context-aware fit.
+- **2.0.0** (2026-07-08) — first versioned release: 9 layouts, task presets, server-less regen admin.
 
 ## License
 
