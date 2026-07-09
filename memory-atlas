@@ -1,39 +1,39 @@
 #!/usr/bin/env python3
-"""memory-atlas — граф memory-слоя в один self-contained HTML.
+"""memory-atlas — graph of the memory layer as a single self-contained HTML.
 
-Топология: emerge (D3-force на canvas, кластер-цвета, hulls, live-search)
-+ Understand-Anything (детерминированный парсер [[wikilinks]] + frontmatter).
-Без LLM, без сервера. Зоны light/work из членства в MEMORY.md / MEMORY-work.md.
+Topology: emerge (D3-force on canvas, cluster colors, hulls, live-search)
++ Understand-Anything (deterministic [[wikilinks]] + frontmatter parser).
+No LLM, no server. light/work zones come from membership in MEMORY.md / MEMORY-work.md.
 
 Usage: memory-atlas [--src DIR] [--out FILE] [--no-open]
-       memory-atlas --data graph.json|-        # рендер произвольного графа (см. DATA CONTRACT)
+       memory-atlas --data graph.json|-        # render an arbitrary graph (see DATA CONTRACT)
        memory-atlas --self-test
 
-Cross-zone детекторы (порт graph-lab multi-canvas: зоны = canvases):
-  shared_ref            всегда on — две зоны ссылаются на один ghost
-  semantic              cosine эмбеддингов (Ollama loopback, sha-кэш) --no-semantic-cross
-  tag_overlap           Jaccard рабочих тегов                         --no-tag-cross
-  temporal_proximity    co-modification окно 24h                      --no-temporal-cross
-  session_co_occurrence git log co-touched                            --no-session-cross
-  structural_homology   chain-3 мотивы (research-tier)                --structural-cross (opt-in)
-Пороги/top-k — флаги с дефолтами graph-lab (0.75/3 · 0.5/3 · 86400/5 · 1000 · 5000).
---search-vecs — врезать int8-эмбеддинги в DATA для клиентского semantic-поиска
-(работает только если OLLAMA_ORIGINS пускает file:// — иначе клиент тихо деградирует).
+Cross-zone detectors (port of graph-lab multi-canvas: zones = canvases):
+  shared_ref            always on — two zones reference the same ghost
+  semantic               cosine of embeddings (Ollama loopback, sha-cache)   --no-semantic-cross
+  tag_overlap            Jaccard of working tags                            --no-tag-cross
+  temporal_proximity     co-modification window 24h                        --no-temporal-cross
+  session_co_occurrence  git log co-touched                                 --no-session-cross
+  structural_homology    chain-3 motifs (research-tier)                     --structural-cross (opt-in)
+Thresholds/top-k — flags with graph-lab defaults (0.75/3 · 0.5/3 · 86400/5 · 1000 · 5000).
+--search-vecs — embed int8 embeddings into DATA for client-side semantic search
+(works only if OLLAMA_ORIGINS allows file:// — otherwise the client silently degrades).
 
-DATA CONTRACT (для --data и внешних билдеров, напр. memory-atlas-bastra):
+DATA CONTRACT (for --data and external builders, e.g. memory-atlas-bastra):
 {
-  "title": str,                    # wordmark в HUD
+  "title": str,                    # wordmark in the HUD
   "generated": str, "src": str,
-  "host": str,                     # опц.; кто собрал (browse-шапка + dash-здоровье)
-  "zones": {name: [ax, ay]},       # якоря зон в [-1..1]; порядок = порядок легенды
-  "heat": {"label": str, "high": str, "low": str},   # подпись heat-режима
+  "host": str,                     # opt.; who built it (browse header + dash-health)
+  "zones": {name: [ax, ay]},       # zone anchors in [-1..1]; order = legend order
+  "heat": {"label": str, "high": str, "low": str},   # heat-mode caption
   "nodes": [{id,label,desc,type,zone,path,bytes,age_days,mtime?,heat,ghost,light,heavy,orphan,conflict}],
-  "edges": [{source,target,kind,w?,score?}],   # kind → EDGE_STYLES в шаблоне; неизвестный kind = дефолт-стиль
-  "detectors": [str],              # опц.; какие cross-детекторы прогнаны (в статус-строку)
-  "vecs": {model,dim,ids,q},       # опц.; int8-эмбеддинги для клиентского semantic-поиска
-  "browse": {nodes,edges,bodies,stats,types,generated}   # опц.; терминальный browse-модуль
-}                                    # нет browse → вкладка browse скрыта (напр. --data билдеры)
-node.heat ∈ [0,1], 1 = ярко (свежее/горячее — полярность решает билдер).
+  "edges": [{source,target,kind,w?,score?}],   # kind → EDGE_STYLES in the template; unknown kind = default style
+  "detectors": [str],              # opt.; which cross-detectors ran (for the status line)
+  "vecs": {model,dim,ids,q},       # opt.; int8 embeddings for client-side semantic search
+  "browse": {nodes,edges,bodies,stats,types,generated}   # opt.; terminal browse module
+}                                    # no browse → browse tab hidden (e.g. --data builders)
+node.heat ∈ [0,1], 1 = bright (fresh/hot — polarity is up to the builder).
 """
 import argparse
 import bisect
@@ -41,6 +41,8 @@ import hashlib
 import itertools
 import math
 import json
+import glob
+import locale
 import os
 import platform
 import re
@@ -50,43 +52,64 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.3.0"   # непрерывный LOD (desc-рампа 4.5→3.0, кроссфейд лейбл↔карточка), blur-перф ½-разрешения, ego-превью соседей, temporal-линза «ровесники», links-превью+скоринг, корпусные теги, usage-телеметрия, редакторы Linux
+VERSION = "2.4.0"   # public-release pass: EN comments, generic path autodetect (no hardcoded users), Windows toolchain (LOCALAPPDATA, python installer, CI matrix), locale-auto UI lang, pin cards with note preview + view capture
+def _data_home():
+    # atlas working folder (out/caches): env → legacy path, if it already exists
+    # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
+    if os.environ.get("ATLAS_HOME"):
+        return os.path.expanduser(os.environ["ATLAS_HOME"])
+    legacy = os.path.expanduser("~/.mac-claw/atlas")
+    if os.path.isdir(legacy):
+        return legacy
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+        return os.path.join(base, "memory-atlas")
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(base, "memory-atlas")
+
+
+DATA_HOME = _data_home()
+
+
 def _resolve_default_src():
-    # G1: первый существующий+НЕПУСТОЙ кандидат (Mac -Users- / Arch -home-), иначе первый.
-    # чинит W5-баг: автодетект цеплял пустой -Users-zzalli на Арче → 0 нод
-    cands = [os.path.expanduser("~/.claude/projects/%s/memory" % p)
-             for p in ("-Users-zzalli", "-home-zzalli")]
-    for c in cands:
+    # G1-generic: ATLAS_SRC → any ~/.claude/projects/*/memory with .md files,
+    # most populated first (fixes the W5 bug: an empty host-twin gave 0 nodes).
+    # Nothing found → None, main() will ask for explicit --src.
+    if os.environ.get("ATLAS_SRC"):
+        return os.path.expanduser(os.environ["ATLAS_SRC"])
+    scored = []
+    for c in glob.glob(os.path.expanduser("~/.claude/projects/*/memory")):
         try:
-            if any(f.endswith(".md") for f in os.listdir(c)):
-                return c
+            n = sum(1 for f in os.listdir(c) if f.endswith(".md"))
         except OSError:
             continue
-    return cands[0]
+        if n:
+            scored.append((n, c))
+    return max(scored)[1] if scored else None
 
 
 DEFAULT_SRC = _resolve_default_src()
-DEFAULT_OUT = os.path.expanduser("~/.mac-claw/atlas/memory-atlas.html")
-# env-оверрайды — путь portable-дистрибутива (.pyz кладёт ресурсы во временную папку)
-# d3-резолв: env → vendor/ рядом с генератором (клон репо работает из коробки) → локальный кэш
+DEFAULT_OUT = os.path.join(DATA_HOME, "memory-atlas.html")
+# env overrides — path for the portable distribution (.pyz drops resources into a temp folder)
+# d3 resolution: env → vendor/ next to the generator (a repo clone works out of the box) → data-home cache
 def _resolve_d3():
     cands = [os.environ.get("ATLAS_D3"),
              os.path.join(os.path.dirname(os.path.realpath(__file__)), "vendor", "d3.v7.min.js"),
-             os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")]
+             os.path.join(DATA_HOME, "d3.v7.min.js")]
     for c in cands:
         if c and os.path.exists(c):
             return c
     return cands[-1]
 D3_PATH = _resolve_d3()
 EXCLUDE_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
-                ".obsidian", ".trash", "node_modules"}   # G7: чужие вульты (Obsidian и пр.)
+                ".obsidian", ".trash", "node_modules"}   # G7: foreign vaults (Obsidian etc.)
 INDEX_FILES = {"MEMORY.md", "MEMORY-work.md", "FEEDBACK_INDEX.md"}
 ZONES = {"light": [-0.55, 0.05], "work": [0.75, -0.15], "glados": [-0.1, -0.75],
          "bastra": [0.65, 0.65], "feedback": [-0.2, 0.6], "unindexed": [-0.85, 0.8]}
 
 def zone_anchors(nodes):
-    """Якоря зон [-1..1]. Наш корпус = фиксированный ZONES; foreign = круг по алфавиту.
-    >8 зон — легенда красит первые 8, остальное OTHER-grey (контракт B22)."""
+    """Zone anchors [-1..1]. Our own corpus = fixed ZONES; foreign = alphabetical circle.
+    >8 zones — legend colors the first 8, the rest OTHER-grey (contract B22)."""
     zs = sorted({n["zone"] for n in nodes})
     if set(zs) <= set(ZONES):
         return ZONES
@@ -97,7 +120,7 @@ def zone_anchors(nodes):
 
 
 FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
-# [[target]] и [[target|alias]] — берём target до |
+# [[target]] and [[target|alias]] — take target up to |
 WIKILINK_RE = re.compile(r"\[\[([^\]|#\n]+?)(?:\|[^\]\n]*)?\]\]")
 MDLINK_RE = re.compile(r"\]\(([^)#\s]+?\.md)\)")
 
@@ -114,7 +137,7 @@ def parse_frontmatter(text):
     if not m:
         return fm, text
     block = m.group(1)
-    # G2: ключи на ОБОИХ уровнях (^\s*) — наш вложенный формат И top-level Obsidian/эталон-вульт
+    # G2: keys at BOTH levels (^\s*) — our nested format AND top-level Obsidian/reference-vault
     for pat, key in ((r"^name:\s*(.+)$", "name"),
                      (r"^description:\s*(.+)$", "description"),
                      (r"^\s*type:\s*(.+)$", "type"),
@@ -125,14 +148,14 @@ def parse_frontmatter(text):
         mm = re.search(pat, block, re.M)
         if mm:
             fm[key] = mm.group(1).strip().strip("\"'")
-    # tags: инлайн `[a,b]`/`a,b` ИЛИ YAML-список из `- item` строк (Obsidian); top-level тоже
+    # tags: inline `[a,b]`/`a,b` OR a YAML list of `- item` lines (Obsidian); top-level too
     tm = re.search(r"^\s*tags:[^\S\n]*(.*)$", block, re.M)
     if tm:
         inline = tm.group(1).strip()
         if inline and inline not in ("[]", "|", ">"):
             fm["tags"] = [t.strip().strip("\"'[]") for t in inline.split(",")
                           if t.strip().strip("[] ")]
-        else:   # значение на последующих строках: `  - tag`
+        else:   # value on following lines: `  - tag`
             lst = []
             for ln in block[tm.end():].splitlines():
                 lm = re.match(r"^\s*-\s*(.+)$", ln)
@@ -155,7 +178,7 @@ def scan(src):
 
 
 def index_members(src, index_file):
-    """Стемы нот, на которые ссылается индекс-файл."""
+    """Stems of notes referenced by the index file."""
     path = os.path.join(src, index_file)
     if not os.path.exists(path):
         return set()
@@ -171,12 +194,12 @@ def build_graph(src):
     now = time.time()
     light_idx = index_members(src, "MEMORY.md")
     work_idx = index_members(src, "MEMORY-work.md")
-    # FEEDBACK_INDEX — тоже recall-поверхность: её членство НЕ unindexed
-    # (иначе 81 фидбек-нота травит вход gap-аудита ложным «never-indexed»)
+    # FEEDBACK_INDEX is also a recall surface: its membership is NOT unindexed
+    # (otherwise 81 feedback notes poison the gap-audit input with a false "never-indexed")
     fb_idx = index_members(src, "FEEDBACK_INDEX.md")
-    # foreign vault (наших индексов нет — Obsidian и пр.): зона = top-level папка.
-    # Без этого всё падает в unindexed = одна зона, и cross-zone детекторы
-    # (весь оверлап-слой, value-prop для чужого вульта) молча мертвы.
+    # foreign vault (none of our indexes exist — Obsidian etc.): zone = top-level folder.
+    # Without this, everything collapses into unindexed = one zone, and the cross-zone
+    # detectors (the whole overlap layer, the value-prop for a foreign vault) go silently dead.
     foreign = not (light_idx or work_idx or fb_idx)
 
     nodes, lookup = [], {}
@@ -188,8 +211,8 @@ def build_graph(src):
         rel = os.path.relpath(path, src)
         stem = norm(base)
         if stem in bodies:
-            # стем-коллизия (a-b.md vs a_b.md) — второй файл получает суффикс,
-            # иначе два узла делят id и рёбра сливаются молча
+            # stem collision (a-b.md vs a_b.md) — the second file gets a suffix,
+            # otherwise two nodes share an id and edges silently merge
             print(f"warn: stem collision '{stem}' ({rel}) — suffixed", file=sys.stderr)
             i = 2
             while f"{stem}~{i}" in bodies:
@@ -216,12 +239,12 @@ def build_graph(src):
         else:
             zone = "unindexed"
 
-        # browse-модуль: light/heavy — НЕЗАВИСИМЫЕ булевы (нота бывает в обоих
-        # индексах); zone их схлопывает, поэтому флаги эмитим отдельно.
+        # browse module: light/heavy are INDEPENDENT booleans (a note can be in both
+        # indexes); zone collapses them, so we emit the flags separately.
         in_light = stem in light_idx
         in_heavy = stem in work_idx
-        # FEEDBACK_INDEX — recall-поверхность: её членство гасит orphan так же,
-        # как light/work (иначе 81 fb-нота — ложный orphan, близнец бага «81 unindexed»)
+        # FEEDBACK_INDEX is a recall surface: its membership suppresses orphan just
+        # like light/work (otherwise 81 fb-notes become false orphans — twin of the "81 unindexed" bug)
         in_fb = stem in fb_idx
         node = {
             "id": stem,
@@ -238,11 +261,11 @@ def build_graph(src):
             "heavy": in_heavy,
             "orphan": not foreign and not in_light and not in_heavy and not in_fb and not top,
             "conflict": "sync-conflict" in base,
-            # рабочие теги: part_of (ведомый) + tier + ручные tags; session для fire-хука
+            # working tags: part_of (child) + tier + manual tags; session for the fire-hook
             "part_of": fm["part_of"],
             "tier": fm["tier"],
             "session": fm["session"],
-            "state": fm["state"],           # G2: metadata.state (superseded/transition) → STATE-слой
+            "state": fm["state"],           # G2: metadata.state (superseded/transition) → STATE layer
             "tags": fm["tags"],
         }
         nodes.append(node)
@@ -253,8 +276,8 @@ def build_graph(src):
 
     edges, seen = [], set()
     ghosts = {}
-    # ссылки на индекс-файлы ([[MEMORY-work]], [x](MEMORY.md)) — не ghost-долг:
-    # индексы исключены из нод намеренно, «стоит написать» к ним не относится
+    # links to index files ([[MEMORY-work]], [x](MEMORY.md)) — not ghost debt:
+    # indexes are excluded from nodes deliberately, "should be written" doesn't apply to them
     index_stems = {norm(f) for f in INDEX_FILES}
 
     def add_edge(a, b, kind):
@@ -289,7 +312,7 @@ def build_graph(src):
                 add_edge(stem, tkey, kind)
     nodes.extend(ghosts.values())
 
-    # heat ∈ [0,1]: 1 = свежая (age 0), 0 = самая старая
+    # heat ∈ [0,1]: 1 = fresh (age 0), 0 = oldest
     max_age = max((n["age_days"] for n in nodes if not n["ghost"]), default=1) or 1
     for n in nodes:
         n["heat"] = 0.0 if n["ghost"] else round(1 - n["age_days"] / max_age, 3)
@@ -297,10 +320,10 @@ def build_graph(src):
 
 
 # ------------------------------------------------- cross-zone detectors
-# Порт graph-lab lib/detectors/* на atlas-модель: «граф» = зона, cross-edges
-# соединяют зоны. Все чистые функции (semantic принимает готовые вектора),
-# session_co_occurrence единственный с I/O (git log). Дедуп против существующих
-# рёбер — на стороне вызова (_merge_cross).
+# Port of graph-lab lib/detectors/* onto the atlas model: "graph" = zone, cross-edges
+# connect zones. All pure functions (semantic takes ready-made vectors),
+# session_co_occurrence is the only one with I/O (git log). Dedup against existing
+# edges happens on the caller's side (_merge_cross).
 
 def _by_zone(nodes):
     zs = {}
@@ -311,8 +334,8 @@ def _by_zone(nodes):
 
 
 def detect_shared_ref(nodes, edges):
-    """Ноды РАЗНЫХ зон ссылаются на один ghost → ребро между ними.
-    Хабы (ghost с >6 реферерами) пропускаются — квадратичный шум, не сигнал."""
+    """Nodes from DIFFERENT zones reference the same ghost → an edge between them.
+    Hubs (a ghost with >6 referrers) are skipped — quadratic noise, not signal."""
     ghost_ids = {n["id"] for n in nodes if n.get("ghost")}
     zone_of = {n["id"]: n["zone"] for n in nodes}
     refs = {}
@@ -330,7 +353,7 @@ def detect_shared_ref(nodes, edges):
 
 
 def detect_tag_overlap(nodes, threshold=0.5, top_k=3):
-    """Jaccard по рабочим тегам (tags + part_of + tier) между зонами."""
+    """Jaccard over working tags (tags + part_of + tier) between zones."""
     def tagset(n):
         s = {t.lower() for t in n.get("tags", []) if len(t) >= 2}
         if n.get("part_of"):
@@ -359,7 +382,7 @@ def detect_tag_overlap(nodes, threshold=0.5, top_k=3):
 
 
 def detect_temporal(nodes, window_s=86400.0, top_k=5):
-    """Co-modification: ближайшие по mtime соседи в ЧУЖИХ зонах, окно 24h."""
+    """Co-modification: nearest-by-mtime neighbors in OTHER zones, window 24h."""
     zs = _by_zone(nodes)
     sorted_z = {z: sorted((n.get("mtime", 0), n["id"]) for n in ns if n.get("mtime"))
                 for z, ns in zs.items()}
@@ -389,14 +412,14 @@ def detect_temporal(nodes, window_s=86400.0, top_k=5):
 
 
 def detect_session(nodes, src, max_commits=1000):
-    """git log co-touched: файлы разных зон в одном коммите. Коммиты >30 файлов
-    пропускаются (snapshot-шум, не сессионный сигнал). Нет git → тихий скип."""
+    """git log co-touched: files from different zones in the same commit. Commits with >30 files
+    are skipped (snapshot noise, not a session signal). No git → silent skip."""
     node_by_rel = {n["path"]: n for n in nodes if n.get("path")}
     try:
         r = subprocess.run(
             ["git", "-C", src, "log", "--name-only", "--no-renames",
              f"-{max_commits}", "--pretty=format:@%h"],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if r.returncode != 0:
@@ -424,8 +447,8 @@ def detect_session(nodes, src, max_commits=1000):
 
 
 def detect_structural(nodes, edges, max_motifs=5000):
-    """chain-3 мотивы a→b→c, сигнатура (type, in, out) центра; матч между зонами.
-    Research-tier, opt-in: same shape ≠ same meaning (контракт graph-lab P8)."""
+    """chain-3 motifs a→b→c, center's signature is (type, in, out); matched across zones.
+    Research-tier, opt-in: same shape ≠ same meaning (graph-lab contract P8)."""
     real = {n["id"]: n for n in nodes if not n.get("ghost")}
     outs, ins = {}, {}
     for e in edges:
@@ -457,14 +480,14 @@ def detect_structural(nodes, edges, max_motifs=5000):
     return out
 
 
-# semantic: эмбеддинги через Ollama loopback (Mac: embeddinggemma/nomic), sha-кэш.
+# semantic: embeddings via Ollama loopback (Mac: embeddinggemma/nomic), sha-cache.
 EMB_MODEL = "nomic-embed-text"
-EMB_CACHE = os.environ.get("ATLAS_EMB_CACHE") or os.path.expanduser("~/.mac-claw/atlas/emb-cache.json")
+EMB_CACHE = os.environ.get("ATLAS_EMB_CACHE") or os.path.join(DATA_HOME, "emb-cache.json")
 OLLAMA = os.environ.get("ATLAS_OLLAMA") or "http://127.0.0.1:11434"
 
 
 def _ollama_up(timeout=3):
-    """Быстрый health-check, 3s-кап (контракт lib/ollama.is_available graph-lab)."""
+    """Quick health-check, 3s cap (graph-lab lib/ollama.is_available contract)."""
     try:
         with urllib.request.urlopen(OLLAMA + "/api/version", timeout=timeout):
             return True
@@ -473,8 +496,8 @@ def _ollama_up(timeout=3):
 
 
 def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
-    """id → vec. Кэш по sha256(текста). Ollama недоступна/заклинила →
-    ПАРТИАЛЬНЫЙ результат из кэша (что есть), не all-or-nothing; пусто → None."""
+    """id → vec. Cache keyed on sha256(text). Ollama unavailable/stuck →
+    PARTIAL result from the cache (whatever's there), not all-or-nothing; empty → None."""
     cache = {}
     if os.path.exists(cache_path):
         try:
@@ -488,13 +511,13 @@ def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
 
     def partial(reason):
         got = {nid: cache[k] for nid, k in keys.items() if k in cache}
-        print(f"warn: Ollama {reason} — semantic из кэша: {len(got)}/{len(keys)}, "
-              f"{len(keys) - len(got)} нот без вектора", file=sys.stderr)
+        print(f"warn: Ollama {reason} — semantic from cache: {len(got)}/{len(keys)}, "
+              f"{len(keys) - len(got)} notes without a vector", file=sys.stderr)
         return got or None
 
     if missing:
         if not _ollama_up():
-            return partial("недоступна (health-check)")
+            return partial("unavailable (health-check)")
         try:
             for i in range(0, len(missing), 32):
                 batch = missing[i:i + 32]
@@ -507,7 +530,7 @@ def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
                 for (nid, _), v in zip(batch, embs):
                     cache[keys[nid]] = [round(x, 5) for x in v]
         except (urllib.error.URLError, OSError, KeyError, TimeoutError) as e:
-            return partial(f"упала на батче ({e})")
+            return partial(f"failed on batch ({e})")
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(cache, f)
@@ -515,7 +538,7 @@ def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
 
 
 def detect_semantic(nodes, vecs, threshold=0.75, top_k=3):
-    """cosine между зонами ≥ threshold, top-k per source. vecs: id → vector."""
+    """cosine between zones ≥ threshold, top-k per source. vecs: id → vector."""
     def l2(v):
         s = sum(x * x for x in v) ** 0.5 or 1.0
         return [x / s for x in v]
@@ -544,10 +567,10 @@ def detect_semantic(nodes, vecs, threshold=0.75, top_k=3):
 
 
 def semantic_layout(vecs):
-    """2D-проекция эмбеддингов — «фундаментальный принцип #1» graph-lab:
-    позиция кодирует cosine-близость, не силы рёбер. У них план был UMAP (v0.6,
-    не дошёл); здесь PCA power-iteration на L2-нормированных векторах (stdlib,
-    детерминированно, ~2s на 324×768). id → (x, y) в [-1, 1]."""
+    """2D projection of embeddings — graph-lab's "fundamental principle #1":
+    position encodes cosine-closeness, not edge strength. Their plan was UMAP (v0.6,
+    never landed); here it's PCA power-iteration on L2-normalized vectors (stdlib,
+    deterministic, ~2s on 324×768). id → (x, y) in [-1, 1]."""
     import math
     ids = sorted(vecs)
     if len(ids) < 3:
@@ -563,7 +586,7 @@ def semantic_layout(vecs):
 
     comps, coords = [], []
     for c in range(2):
-        # детерминированный сид; деф­ляция предыдущей компоненты каждую итерацию
+        # deterministic seed; deflate the previous component every iteration
         w = [math.sin((j + 1) * (c + 1) * 12.9898) for j in range(dim)]
         for _ in range(40):
             for pc in comps:
@@ -588,7 +611,7 @@ def semantic_layout(vecs):
 
 
 def quantize_vecs(vecs):
-    """int8-квантизация для клиентского semantic-поиска (клиент ре-нормализует)."""
+    """int8 quantization for client-side semantic search (the client re-normalizes)."""
     ids = sorted(vecs)
     q = []
     for nid in ids:
@@ -600,7 +623,7 @@ def quantize_vecs(vecs):
 
 
 def run_detectors(nodes, edges, bodies, src, args):
-    """Прогон детекторов в фикс-порядке graph-lab; дедуп против базовых рёбер."""
+    """Run detectors in graph-lab's fixed order; dedup against base edges."""
     seen = {tuple(sorted((e["source"], e["target"]))) for e in edges}
     ran, added = [], []
 
@@ -615,8 +638,8 @@ def run_detectors(nodes, edges, bodies, src, args):
             added.append(e)
 
     merge("shared_ref", detect_shared_ref(nodes, edges))
-    # эмбеддинги нужны и детектору, и --search-vecs, и semantic-раскладке:
-    # `--search-vecs --no-semantic-cross` раньше терял ВСЁ три молча
+    # embeddings are needed by the detector, --search-vecs, AND the semantic layout:
+    # `--search-vecs --no-semantic-cross` used to silently lose ALL three
     if getattr(args, "semantic_cross", True) or getattr(args, "search_vecs", False):
         texts = {n["id"]: (n["label"] + "\n" + n["desc"] + "\n" +
                            bodies.get(n["id"], "")[:1500])
@@ -628,7 +651,7 @@ def run_detectors(nodes, edges, bodies, src, args):
                                                   args.semantic_top_k))
             if getattr(args, "search_vecs", False):
                 args._vecs_payload = quantize_vecs(vecs)
-            # semantic-layout: node.sx/sy для layout-режима «semantic» в шаблоне
+            # semantic layout: node.sx/sy for the "semantic" layout mode in the template
             byid = {n["id"]: n for n in nodes}
             for nid, (sx, sy) in semantic_layout(vecs).items():
                 if nid in byid:
@@ -647,9 +670,9 @@ def run_detectors(nodes, edges, bodies, src, args):
 
 
 def to_browse_data(nodes, edges, bodies, now):
-    """Форма данных ДО-ребрендингового memory-map browse (терминальный модуль).
-    Выведено из atlas-графа → те же id, значит fuse-коннекторы graph⟷browse
-    матчат узлы по id. ghost → type 'missing' (dangling в терминах browse)."""
+    """Data shape for the pre-rebrand memory-map browse (terminal module).
+    Derived from the atlas graph → same ids, so the graph⟷browse fuse connectors
+    match nodes by id. ghost → type 'missing' (dangling in browse's terms)."""
     byid = {n["id"]: n for n in nodes}
     outc = {n["id"]: 0 for n in nodes}
     degc = {n["id"]: 0 for n in nodes}
@@ -661,9 +684,9 @@ def to_browse_data(nodes, edges, bodies, now):
     for n in nodes:
         if n["ghost"]:
             bnodes.append({
-                "id": n["id"], "file": n["label"] + ".md (НЕТ)", "name": n["label"],
+                "id": n["id"], "file": n["label"] + ".md (missing)", "name": n["label"],
                 "type": "missing", "type_inferred": False,
-                "desc": "dangling [[wikilink]] — целевого файла нет",
+                "desc": "dangling [[wikilink]] — target file missing",
                 "light": False, "heavy": False, "orphan": False,
                 "conflict": False, "index": False, "size": 0, "mtime": 0,
                 "age_days": 0, "out": outc[n["id"]], "deg": degc[n["id"]],
@@ -709,7 +732,7 @@ def render(data, out, d3js=None, tpl=None, lang="ru"):
                          "memory-atlas.template.html")
         with open(tpl_path, encoding="utf-8") as f:
             tpl = f.read()
-    # </script> внутри desc разорвал бы инлайн-скрипт — экранируем слэш
+    # </script> inside desc would break the inline script — escape the slash
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     html = tpl.replace("/*__D3__*/", d3js).replace("\"__DATA__\"", payload) \
               .replace("'__LANG__'", "'en'" if lang == "en" else "'ru'")
@@ -725,15 +748,16 @@ def main():
     ap.add_argument("--version", action="version", version=f"memory-atlas {VERSION}")
     ap.add_argument("--src", default=DEFAULT_SRC)
     ap.add_argument("--out", default=DEFAULT_OUT)
-    ap.add_argument("--data", help="готовый graph JSON (файл или '-' = stdin) вместо скана memory")
+    ap.add_argument("--data", help="ready-made graph JSON (file or '-' = stdin) instead of scanning memory")
     ap.add_argument("--demo", action="store_true",
-                    help="встроенный демо-вульт: 2 кластера + скрытый ghost-мост (shared_ref)")
+                    help="built-in demo vault: 2 clusters + hidden ghost bridge (shared_ref)")
     ap.add_argument("--no-open", action="store_true")
-    ap.add_argument("--lang", choices=["ru", "en"], default="ru",
-                    help="стартовый язык UI (toggle в баре меняет и переживает пересборку)")
+    ap.add_argument("--lang", choices=["ru", "en"], default=None,
+                    help="starting UI language; without the flag — by system locale "
+                         "(ru/uk → ru, otherwise en); the toggle in the bar persists across rebuilds")
     ap.add_argument("--self-test", action="store_true")
-    # cross-zone детекторы (имена флагов = graph-lab CLI, включая их асимметрию:
-    # пять --no-X-cross default-on, structural opt-in)
+    # cross-zone detectors (flag names = graph-lab CLI, including their asymmetry:
+    # five --no-X-cross default-on, structural opt-in)
     ap.add_argument("--no-semantic-cross", dest="semantic_cross", action="store_false")
     ap.add_argument("--semantic-threshold", type=float, default=0.75)
     ap.add_argument("--semantic-top-k", type=int, default=3)
@@ -747,14 +771,21 @@ def main():
     ap.add_argument("--session-max-commits", type=int, default=1000)
     ap.add_argument("--structural-cross", action="store_true")
     ap.add_argument("--structural-max-motifs", type=int, default=5000)
-    ap.add_argument("--no-detectors", action="store_true", help="только wikilink-граф")
+    ap.add_argument("--no-detectors", action="store_true", help="wikilink graph only")
     ap.add_argument("--search-vecs", action="store_true",
-                    help="int8-эмбеддинги в DATA (клиентский semantic-поиск)")
+                    help="int8 embeddings in DATA (client-side semantic search)")
     args = ap.parse_args()
 
     if args.self_test:
         run_self_test()
         return
+
+    if args.lang is None:
+        # locale-auto: ru/uk environment starts on ru, everything else on en;
+        # the choice in the UI toggle persists and overrides this default from the second run on
+        env_lang = (os.environ.get("LC_ALL") or os.environ.get("LANG") or
+                    (locale.getlocale()[0] or ""))
+        args.lang = "ru" if env_lang.lower().startswith(("ru", "uk")) else "en"
 
     if args.demo:
         args.src = os.environ.get("ATLAS_DEMO") or \
@@ -765,6 +796,10 @@ def main():
         # mtimes to one instant → co-mod noise). Kill temporal so the demo shows
         # only the honest bridges: shared_ref (ghost) + tag_overlap.
         args.temporal_cross = False
+
+    if not args.data and not args.src:
+        sys.exit("memory-atlas: no vault found — pass --src DIR (a folder of .md notes), "
+                 "or try --demo. Autodetect looks at ~/.claude/projects/*/memory and $ATLAS_SRC.")
 
     if args.data:
         raw = sys.stdin.read() if args.data == "-" else open(args.data, encoding="utf-8").read()
@@ -777,14 +812,14 @@ def main():
         if not nodes:
             print(f"warn: 0 nodes in {args.src} — pass --src /path/to/your/vault "
                   f"(a folder of .md notes)", file=sys.stderr)
-        # browse видит только wikilink-граф (терминальный модуль до-детекторный);
-        # cross-рёбра — только в atlas-граф
+        # browse only sees the wikilink graph (the terminal module predates detectors);
+        # cross-edges go into the atlas graph only
         browse = to_browse_data(nodes, edges, bodies, time.time())
         detectors, cross = ([], []) if args.no_detectors else \
             run_detectors(nodes, edges, bodies, args.src, args)
         zones_payload = zone_anchors(nodes)
-        # foreign вульт получает свой title = свой localStorage-неймспейс (KEYP),
-        # чтобы конфиг/виды демо и реального вульта не текли друг в друга
+        # a foreign vault gets its own title = its own localStorage namespace (KEYP),
+        # so config/views of the demo and the real vault don't leak into each other
         title = "memory-atlas" if zones_payload is ZONES else \
             (os.path.basename(os.path.abspath(args.src)) or "atlas")
         data = {
@@ -798,8 +833,8 @@ def main():
             "nodes": nodes,
             "edges": edges + cross,
             "detectors": detectors,
-            # ДО-ребрендинговый терминальный browse-модуль: своя форма данных
-            # (deg/out/stats/types/bodies), выведена из графа → id матчатся для fuse
+            # pre-rebrand terminal browse module: its own data shape
+            # (deg/out/stats/types/bodies), derived from the graph → ids match for fuse
             "browse": browse,
         }
         if getattr(args, "_vecs_payload", None):
@@ -819,7 +854,7 @@ def main():
 
 
 def open_file(path):
-    # кросс-ОС: `open` — только macOS; целевая машина внешнего юзера неизвестна
+    # cross-OS: `open` is macOS-only; an external user's target machine is unknown
     if sys.platform == "darwin":
         subprocess.run(["open", path], check=False)
     elif os.name == "nt":
@@ -867,7 +902,7 @@ def run_self_test():
             self.assertEqual(body, "no fm here")
 
         def test_frontmatter_top_level_keys(self):
-            # G2: top-level type/tags (Obsidian/эталон-вульт) — раньше терялись (только с отступом)
+            # G2: top-level type/tags (Obsidian/reference-vault) — used to be lost (indented only)
             fm, _ = parse_frontmatter(
                 "---\nname: n\ntype: reference\ntags: [alpha, beta]\nmetadata:\n  state: superseded\n---\nx")
             self.assertEqual(fm["type"], "reference")
@@ -875,13 +910,13 @@ def run_self_test():
             self.assertEqual(fm["state"], "superseded")
 
         def test_frontmatter_yaml_list_tags(self):
-            # G2: Obsidian YAML-список тегов
+            # G2: Obsidian YAML tag list
             fm, _ = parse_frontmatter("---\nname: n\ntags:\n  - one\n  - two\n---\nx")
             self.assertEqual(fm["tags"], ["one", "two"])
 
         def test_foreign_vault_zones_by_folder(self):
-            # чужой вульт (наших индексов нет): зона = top-level папка, не unindexed.
-            # без этого cross-zone детекторы (весь оверлап) молча мертвы у Daniel.
+            # foreign vault (none of our indexes exist): zone = top-level folder, not unindexed.
+            # without this, cross-zone detectors (the whole overlap) go silently dead for Daniel.
             self.w("cooking/a.md", "---\nname: a\n---\n[[ghostx]]")
             self.w("chemistry/b.md", "---\nname: b\n---\n[[ghostx]]")
             self.w("top.md", "---\nname: t\n---\nx")
@@ -892,7 +927,7 @@ def run_self_test():
             self.assertFalse(by["a"]["orphan"])            # foreign → orphan off
 
         def test_zone_anchors_foreign_circle(self):
-            # наш корпус → фикс ZONES (тот же объект); чужой → круг по алфавиту
+            # our own corpus → fixed ZONES (same object); foreign → alphabetical circle
             our = [{"zone": z, "ghost": False} for z in ("light", "work")]
             self.assertIs(zone_anchors(our), ZONES)
             foreign = [{"zone": z, "ghost": False} for z in ("chemistry", "cooking")]
@@ -902,7 +937,7 @@ def run_self_test():
                 self.assertTrue(all(-1 <= v <= 1 for v in xy))
 
         def test_obsidian_dir_excluded(self):
-            # G7: .obsidian/ не жуётся
+            # G7: .obsidian/ is not chewed on
             self.w(".obsidian/workspace.md", "junk")
             self.w("real.md", "x")
             by, _ = self.graph()
@@ -910,7 +945,7 @@ def run_self_test():
             self.assertNotIn("workspace", by)
 
         def test_browse_mtime_real(self):
-            # G10: browse-ноды несут настоящий mtime (был захардкожен 0)
+            # G10: browse nodes carry a real mtime (used to be hardcoded to 0)
             self.w("a.md", "x")
             nodes, edges, bodies = build_graph(self.src)
             br = to_browse_data(nodes, edges, bodies, time.time())
@@ -934,7 +969,7 @@ def run_self_test():
             self.assertEqual(by["alpha"]["zone"], "light")
             self.assertEqual(by["beta"]["zone"], "work")
             self.assertEqual(by["gamma"]["zone"], "unindexed")
-            self.assertEqual(by["delta"]["zone"], "feedback")   # recall-поверхность ≠ unindexed
+            self.assertEqual(by["delta"]["zone"], "feedback")   # recall surface ≠ unindexed
             self.assertEqual(by["core"]["zone"], "glados")
 
         def test_light_index_wins_over_feedback(self):
@@ -989,13 +1024,13 @@ def run_self_test():
             self.assertNotIn("missing", bodies)   # ghosts have no body
 
         def test_browse_flags(self):
-            # light/heavy независимы; нота в обоих индексах = обе True, не orphan
+            # light/heavy are independent; a note in both indexes = both True, not orphan
             self.w("MEMORY.md", "- [a](a.md)")
             self.w("MEMORY-work.md", "- [a](a.md)\n- [[b]]")
-            self.w("a.md", "x")            # в обоих индексах
-            self.w("b.md", "x")            # только heavy
-            self.w("c.md", "x")            # нигде = orphan
-            self.w("glados/g.md", "x")     # subdir → не orphan
+            self.w("a.md", "x")            # in both indexes
+            self.w("b.md", "x")            # heavy only
+            self.w("c.md", "x")            # in neither = orphan
+            self.w("glados/g.md", "x")     # subdir → not orphan
             by, _ = self.graph()
             self.assertTrue(by["a"]["light"] and by["a"]["heavy"] and not by["a"]["orphan"])
             self.assertTrue(by["b"]["heavy"] and not by["b"]["light"])
@@ -1003,7 +1038,7 @@ def run_self_test():
             self.assertFalse(by["g"]["orphan"])
 
         def test_orphan_respects_feedback_index(self):
-            # fb-индексированная нота = indexed (recall-поверхность), НЕ orphan
+            # an fb-indexed note = indexed (recall surface), NOT orphan
             self.w("FEEDBACK_INDEX.md", "- [fb](fb-note.md)")
             self.w("fb-note.md", "x")
             self.w("stray.md", "x")
@@ -1013,7 +1048,7 @@ def run_self_test():
             self.assertTrue(by["stray"]["orphan"])
 
         def test_index_refs_no_ghost(self):
-            # [[MEMORY-work]] / [x](MEMORY.md) — не ghost-долг и не ребро
+            # [[MEMORY-work]] / [x](MEMORY.md) — not ghost debt and not an edge
             self.w("a.md", "see [[MEMORY-work]] and [idx](MEMORY.md) and [[real-ghost]]")
             by, edges = self.graph()
             self.assertNotIn("memory_work", by)
@@ -1027,7 +1062,7 @@ def run_self_test():
             self.assertEqual(len(edges), 1)
             self.assertTrue(by["real"]["ghost"])
 
-        # ---- cross-zone detectors (порт graph-lab; hermetic, без Ollama/git) ----
+        # ---- cross-zone detectors (port of graph-lab; hermetic, no Ollama/git) ----
         def _two_zone_nodes(self):
             return [
                 {"id": "a", "zone": "light", "type": "project", "ghost": False,
@@ -1046,9 +1081,9 @@ def run_self_test():
                   {"source": "c", "target": "g", "kind": "wiki"}]
             out = detect_shared_ref(ns, es)
             pairs = {(e["source"], e["target"]) for e in out}
-            self.assertIn(("a", "b"), pairs)       # разные зоны
+            self.assertIn(("a", "b"), pairs)       # different zones
             self.assertIn(("a", "c"), pairs)
-            self.assertNotIn(("b", "c"), pairs)    # одна зона — не cross
+            self.assertNotIn(("b", "c"), pairs)    # same zone — not cross
 
         def test_detect_tag_overlap(self):
             out = detect_tag_overlap(self._two_zone_nodes())
@@ -1058,15 +1093,15 @@ def run_self_test():
         def test_detect_temporal(self):
             out = detect_temporal(self._two_zone_nodes(), window_s=86400)
             pairs = {tuple(sorted((e["source"], e["target"]))) for e in out}
-            self.assertIn(("a", "b"), pairs)           # 500s ≤ окна
-            self.assertNotIn(("a", "c"), pairs)        # 998000s > окна
+            self.assertIn(("a", "b"), pairs)           # 500s ≤ window
+            self.assertNotIn(("a", "c"), pairs)        # 998000s > window
 
         def test_detect_semantic_stub_vecs(self):
             vecs = {"a": [1.0, 0.0], "b": [0.9, 0.1], "c": [0.0, 1.0]}
             out = detect_semantic(self._two_zone_nodes(), vecs, threshold=0.75, top_k=3)
             pairs = {tuple(sorted((e["source"], e["target"]))) for e in out}
             self.assertIn(("a", "b"), pairs)
-            self.assertNotIn(("a", "c"), pairs)        # ортогональны
+            self.assertNotIn(("a", "c"), pairs)        # orthogonal
 
         def test_detect_structural_optin_shape(self):
             ns = self._two_zone_nodes() + [
@@ -1087,13 +1122,13 @@ def run_self_test():
             self.assertEqual(detect_session(self._two_zone_nodes(), self.src), [])
 
         def test_search_vecs_survive_no_semantic_cross(self):
-            # --search-vecs --no-semantic-cross: vecs+layout живут, детектор молчит
+            # --search-vecs --no-semantic-cross: vecs+layout survive, the detector stays silent
             saved = globals()["fetch_embeddings"]
             globals()["fetch_embeddings"] = lambda texts, **kw: {
                 "a": [1.0, 0.0], "b": [0.9, 0.1], "c": [0.0, 1.0]}
             try:
                 ns = self._two_zone_nodes()
-                for n in ns:   # texts-путь требует label/desc; общая фикстура их не несёт
+                for n in ns:   # the texts path requires label/desc; the shared fixture doesn't carry them
                     n.setdefault("label", n["id"])
                     n.setdefault("desc", "")
                 args = argparse.Namespace(
@@ -1110,7 +1145,7 @@ def run_self_test():
                 globals()["fetch_embeddings"] = saved
 
         def test_semantic_layout_separates_clusters(self):
-            # два кластера в 4D: внутрикластерные дистанции < межкластерных
+            # two clusters in 4D: within-cluster distances < between-cluster distances
             vecs = {"a1": [1, 0.9, 0, 0], "a2": [0.9, 1, 0, 0],
                     "b1": [0, 0, 1, 0.9], "b2": [0, 0, 0.9, 1]}
             pos = semantic_layout(vecs)
@@ -1119,7 +1154,7 @@ def run_self_test():
             d = lambda p, q: math.dist(pos[p], pos[q])
             self.assertLess(d("a1", "a2"), d("a1", "b1"))
             self.assertLess(d("b1", "b2"), d("b2", "a2"))
-            self.assertEqual(pos, semantic_layout(vecs))   # детерминированно
+            self.assertEqual(pos, semantic_layout(vecs))   # deterministic
             self.assertTrue(all(abs(v) <= 1 for p in pos.values() for v in p))
 
         def test_semantic_layout_too_few(self):
@@ -1129,7 +1164,7 @@ def run_self_test():
             q = quantize_vecs({"a": [0.5, -1.0], "b": [2.0, 0.0]})
             self.assertEqual(q["ids"], ["a", "b"])
             self.assertEqual(q["dim"], 2)
-            self.assertEqual(q["q"][0], [64, -127])    # 0.5/1.0*127 округлённо
+            self.assertEqual(q["q"][0], [64, -127])    # 0.5/1.0*127 rounded
 
         def test_mtime_emitted(self):
             self.w("a.md", "x")
@@ -1163,7 +1198,7 @@ def run_self_test():
             self.assertNotIn("/*__D3__*/", html)
 
         def test_i18n_lang_placeholder(self):
-            # --lang прошивает стартовый язык; плейсхолдер не должен пережить render
+            # --lang bakes in the starting language; the placeholder must not survive render
             data = {"title": "t", "zones": {}, "nodes": [], "edges": []}
             tpl = "<script>/*__D3__*/</script><script>const L='__LANG__';const D=\"__DATA__\";</script>"
             out = os.path.join(self.src, "l.html")
@@ -1171,9 +1206,9 @@ def run_self_test():
             self.assertIn("const L='ru'", render(data, out, d3js="/*d3*/", tpl=tpl))
 
         def test_i18n_dict_covers_static_markup(self):
-            # drift-guard: каждая кириллическая строка статической разметки
-            # (data-hint/title/placeholder + текст-ноды) обязана иметь EN-перевод,
-            # иначе EN-режим покажет RU-дыру. Новую строку в разметке = новая пара в i18nEN.
+            # drift-guard: every Cyrillic string in the static markup
+            # (data-hint/title/placeholder + text nodes) must have an EN translation,
+            # otherwise EN mode shows an RU hole. New markup string = new pair in i18nEN.
             tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                     "memory-atlas.template.html")
             with open(tpl_path, encoding="utf-8") as f:
@@ -1184,7 +1219,7 @@ def run_self_test():
             cyr = re.compile(r"[А-Яа-яЁё]")
             markup = tpl[:tpl.index('<script type="application/json" id="i18nEN">')]
             markup = re.sub(r"<style>.*?</style>", "", markup, flags=re.S)
-            norm = lambda s: re.sub(r"\s+", " ", s.strip())  # клиентский walker нормализует так же
+            norm = lambda s: re.sub(r"\s+", " ", s.strip())  # the client-side walker normalizes the same way
             missing = set()
             for attr, val in re.findall(r'(data-hint|title|placeholder)="([^"]*)"', markup):
                 if cyr.search(val) and norm(val) not in en:

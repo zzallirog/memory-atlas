@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.8", "3.12"]
+        exclude:
+          # macos-latest is arm64 — no 3.8 builds published
+          - os: macos-latest
+            python: "3.8"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: self-test
+        run: python memory-atlas --self-test
+      - name: build demo atlas
+        run: python memory-atlas --demo --no-open --out atlas-demo.html
+      - name: build .pyz and run it
+        run: |
+          python installer/build_pyz.py
+          python dist/memory-atlas.pyz --demo --no-open --out atlas-demo-pyz.html
