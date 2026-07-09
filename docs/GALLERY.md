@@ -102,6 +102,45 @@ apparently needs.
 
 `?layout=grid&color=zone`
 
+## Cold case — the theories light up on their own
+
+![casefile — petals layout, community color](shots/gallery/casefile-theories.png)
+
+A retired detective's 1998 file: `suspects/`, `evidence/`, `leads/`. Each note is tagged
+with the theory it serves — partner, drifter or family — but the **color** here isn't the
+tag, it's the **community detector** run blind on the link graph. The clusters it finds cut
+straight *across* the three zone-petals: a suspect, the exhibit that implicates them and the
+lead that chases it share a color even though they live in different folders. Three ghosts
+(`the-second-witness`, `pawnshop-ledger`, `coroner-photos-roll-2`) are cited from every
+theory and never written — the case's open ends.
+
+`?state=eyJ2IjogMSwgImxheW91dCI6ICJwZXRhbHMiLCAiY29sb3IiOiAiY2x1c3RlciJ9`  (petals · color = cluster)
+
+## Product decisions — colored by what a note *is*
+
+![product — force layout, type color](shots/gallery/product-types.png)
+
+A B2B SaaS decision log: `decisions/`, `interviews/`, `features/`. These notes carry a
+`type:` in their frontmatter — `decision`, `insight`, `risk`, `spec`, `metric` — and setting
+**color to type** paints the graph by what each note is rather than where it sits: the
+churned-customer interviews (`risk`) separate from the rest, the instrumented features
+(`metric`) from the plain specs. The dashed ghosts are the analyses everyone cites and nobody
+ran — `pricing-experiment-results`, `churn-cohort-analysis` — decision debt, drawn.
+
+`?state=eyJ2IjogMSwgImxheW91dCI6ICJmb3JjZSIsICJjb2xvciI6ICJ0eXBlIn0=`  (force · color = type)
+
+## Genealogy — the matriarch everything routes through
+
+![family — radial layout, one dominant hub](shots/gallery/family-hub.png)
+
+Four generations of the Voss / Lindqvist line: `people/`, `records/`, `brickwalls/`. The
+**radial** layout pulls the highest-degree node to dead center — and here that's
+`magdalena-voss-1861`, cited by nineteen other notes: her children, the records that name
+her, the brick walls that hinge on her. The unwritten sources sit as dim ghosts mid-graph
+(`parish-register-1871`, `gretas-diary`) — the questions the tree still can't answer.
+
+`?layout=radial&color=zone`
+
 ---
 
 Nine layouts, task presets, pins, saved views and the rest of the controls are described
