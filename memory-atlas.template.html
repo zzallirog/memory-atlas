@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.6.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.6.1"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -3009,6 +3009,12 @@ function paintFrame(g, opts) {
   if (showHulls() && !only) {
     const zoneLblBoxes = [];   // de-conflict zone labels: overlap → label is nudged up
     const ringMode = layoutName === 'ring';   // ring arc: the hull chord covers the center — don't fill it
+    // PERF (v2.6.1): the petal rim glow uses canvas shadowBlur — the single most expensive
+    // primitive in the frame. During drag/morph the sim ticks every frame and re-rasterizes
+    // that shadow per zone (60→low fps on the plain, non-focus path — the focus path already
+    // caches via blurCanvas). Skip the glow while the graph is MOVING: petals stay filled +
+    // stroked, the soft rim returns the instant it settles. Same lag-during-motion contract as BG_MS.
+    const moving = sim.alpha() > 0.02 || magActive;
     for (const z of zoneOrder) {
       // B21: ghost phantoms don't stretch the zone outline — hull over written notes only
       const pts = nodes.filter(n => n.zone === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
@@ -3042,9 +3048,9 @@ function paintFrame(g, opts) {
         g.fillStyle = grad;
         g.strokeStyle = hexA(zc, muted ? 0.22 : 0.34);
         g.lineWidth = 1.2/transform.k;
-        if (!muted) { g.save(); g.shadowBlur = 16; g.shadowColor = hexA(zc, 0.45); }
+        if (!muted && !moving) { g.save(); g.shadowBlur = 16; g.shadowColor = hexA(zc, 0.45); }
         g.fill(); g.stroke();
-        if (!muted) g.restore();
+        if (!muted && !moving) g.restore();
       } else {
         // ring petal: a hull would chord straight across the center — draw the zone as an
         // annular band along its arc instead (same gradient language as the petals)
