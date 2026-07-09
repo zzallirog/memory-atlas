@@ -4,4 +4,5 @@ description: Pirate sovereign of the coast; collects levies, information, and fa
 tags: [faction-coast]
 ---
 Rules [[ashfall-harbor]] without ever naming herself its ruler. Sponsor and
-chief enforcer of the [[smugglers-truce]].
+chief enforcer of the [[smugglers-truce]]. Takes a cut of every stall in
+[[saltglass-market]] too, though nobody calls it a tax.

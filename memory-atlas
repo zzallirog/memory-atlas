@@ -53,7 +53,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.5.0"   # ✦ orient: best-fit rotation over the current layout (viewport-fill, isometry-safe); + gallery vaults & shots, prior refine pass (--data validator, session --relative, i18n toasts, TPL handshake)
+VERSION = "2.6.0"   # petal pass: smooth gradient zone petals + ring arc petals, adaptive ring, petals-layout flower, wiki particles, motion persistence, builtin view, louvain blobs cut, dense gallery
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
