@@ -728,7 +728,7 @@
     <div class="toggles">
       <div class="tg on" id="hulls" data-hint="контуры зон памяти на подложке">hulls</div>
       <div class="tg on" id="ghosts" data-hint="пунктирные ноды = [[ссылка]] без файла — «стоит написать»">ghosts</div>
-      <div class="tg on" id="edgesOn" data-hint="все рёбра; off = только у выделенной/пинов/hover (клавиша 9)">edges</div>
+      <div class="tg" id="edgesOn" data-hint="все рёбра; off = только у выделенной/пинов/hover (клавиша 9)">edges</div>
     </div>
     <div class="sec">моушн</div>
     <div class="toggles">
@@ -1198,7 +1198,7 @@ $('focusMode').addEventListener('change', () => {
   requestDraw();
 });
 const toggles = { hulls: true, ghosts: true, labels: true,
-  edgesOn: true, particles: false, magnet: false, gestures: false,
+  edgesOn: false, particles: false, magnet: false, gestures: false,
   collide: true, softFade: true, lockZoom: false };
 // persisted knobs (port of graph-lab:config:v1) — restore BEFORE the first draw
 // 🎥 don't auto-start (webcam); magnet/particles restore with the rest of the config —
