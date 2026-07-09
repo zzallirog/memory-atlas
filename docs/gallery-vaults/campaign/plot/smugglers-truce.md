@@ -5,3 +5,4 @@ tags: [arc-current]
 ---
 Brokered by the [[salt-queen]] at [[ashfall-harbor]]. Its terms are recorded in
 [[the-midnight-ledger]] — and a rumored duplicate sits in [[the-sunken-library]].
+[[scrivener-doe]] keeps the only copy anyone trusts.

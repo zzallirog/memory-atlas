@@ -3,4 +3,4 @@ name: kitchen-words
 description: Pantry and market nouns — enough to shop and cook.
 tags: [nouns, a1]
 ---
-il pane, la farina, l'aglio, il basilico. Used live in [[at-the-market]].
+il pane, la farina, l'aglio, il basilico. Used live in [[at-the-market]]. Watch for [[false-friends]]: peperoni means bell peppers, not spicy sausage.
