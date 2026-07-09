@@ -5,7 +5,8 @@ Topology: emerge (D3-force on canvas, cluster colors, hulls, live-search)
 + Understand-Anything (deterministic [[wikilinks]] + frontmatter parser).
 No LLM, no server. light/work zones come from membership in MEMORY.md / MEMORY-work.md.
 
-Usage: memory-atlas [--src DIR] [--out FILE] [--no-open]
+Usage: memory-atlas [--src DIR] [--out FILE] [--no-open] [--lang ru|en]
+       memory-atlas --demo                     # bundled synthetic demo vault
        memory-atlas --data graph.json|-        # render an arbitrary graph (see DATA CONTRACT)
        memory-atlas --self-test
 
@@ -52,7 +53,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.4.0"   # public-release pass: EN comments, generic path autodetect (no hardcoded users), Windows toolchain (LOCALAPPDATA, python installer, CI matrix), locale-auto UI lang, pin cards with note preview + view capture
+VERSION = "2.5.0"   # ✦ orient: best-fit rotation over the current layout (viewport-fill, isometry-safe); + gallery vaults & shots, prior refine pass (--data validator, session --relative, i18n toasts, TPL handshake)
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -414,11 +415,14 @@ def detect_temporal(nodes, window_s=86400.0, top_k=5):
 
 def detect_session(nodes, src, max_commits=1000):
     """git log co-touched: files from different zones in the same commit. Commits with >30 files
-    are skipped (snapshot noise, not a session signal). No git → silent skip."""
+    are skipped (snapshot noise, not a session signal). No git → silent skip.
+    --relative: node paths are relative to src, but a vault living in a SUBDIR of a repo
+    (demo/, an Obsidian vault inside a bigger repo) gets repo-root-relative paths from
+    git log — every path missed node_by_rel and the detector went silently dead."""
     node_by_rel = {n["path"]: n for n in nodes if n.get("path")}
     try:
         r = subprocess.run(
-            ["git", "-C", src, "log", "--name-only", "--no-renames",
+            ["git", "-C", src, "log", "--name-only", "--no-renames", "--relative",
              f"-{max_commits}", "--pretty=format:@%h"],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired):
@@ -620,7 +624,9 @@ def quantize_vecs(vecs):
         mx = max(abs(x) for x in v) or 1.0
         q.append([int(round(x / mx * 127)) for x in v])
     dim = len(vecs[ids[0]]) if ids else 0
-    return {"model": EMB_MODEL, "dim": dim, "ids": ids, "q": q}
+    # url: the client-side search queries the SAME Ollama the build used —
+    # the template used to hardcode 127.0.0.1:11434 and ignore ATLAS_OLLAMA
+    return {"model": EMB_MODEL, "dim": dim, "ids": ids, "q": q, "url": OLLAMA}
 
 
 def run_detectors(nodes, edges, bodies, src, args):
@@ -720,6 +726,31 @@ def to_browse_data(nodes, edges, bodies, now):
             "stats": stats, "types": types, "generated": int(now)}
 
 
+def validate_data(data):
+    """--data contract check: a broken external-builder graph used to render a dead
+    page (JS crash, no data-ready) with exit 0. Fail loudly at build time instead."""
+    if not isinstance(data, dict) or not isinstance(data.get("nodes"), list):
+        sys.exit("memory-atlas: --data: expected a JSON object with a nodes[] list "
+                 "(see DATA CONTRACT in the generator docstring)")
+    ids = set()
+    for i, n in enumerate(data["nodes"]):
+        if not isinstance(n, dict) or not n.get("id"):
+            sys.exit(f"memory-atlas: --data: nodes[{i}] missing 'id'")
+        if n["id"] in ids:
+            sys.exit(f"memory-atlas: --data: duplicate node id '{n['id']}'")
+        ids.add(n["id"])
+    edges = data.get("edges", [])
+    if not isinstance(edges, list):
+        sys.exit("memory-atlas: --data: edges must be a list")
+    for i, e in enumerate(edges):
+        if not isinstance(e, dict):
+            sys.exit(f"memory-atlas: --data: edges[{i}] is not an object")
+        for end in ("source", "target"):
+            if e.get(end) not in ids:
+                sys.exit(f"memory-atlas: --data: edges[{i}].{end} = "
+                         f"{e.get(end)!r} references no node")
+
+
 def render(data, out, d3js=None, tpl=None, lang="ru"):
     if d3js is None:
         if not os.path.exists(D3_PATH):
@@ -733,6 +764,12 @@ def render(data, out, d3js=None, tpl=None, lang="ru"):
                          "memory-atlas.template.html")
         with open(tpl_path, encoding="utf-8") as f:
             tpl = f.read()
+        # G5 handshake: generator and template are deployed as a symlink PAIR across
+        # hosts — one going stale is silent garbage. Warn, don't fail (output still renders).
+        if f'name="atlas-tpl" content="{VERSION}"' not in tpl:
+            m = re.search(r'name="atlas-tpl" content="([^"]*)"', tpl)
+            print(f"warn: template version {'skew: ' + m.group(1) if m else 'marker missing'}"
+                  f" vs generator {VERSION} — stale symlink pair?", file=sys.stderr)
     # </script> inside desc would break the inline script — escape the slash
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     html = tpl.replace("/*__D3__*/", d3js).replace("\"__DATA__\"", payload) \
@@ -794,9 +831,12 @@ def main():
         if args.out == DEFAULT_OUT:
             args.out = os.path.abspath("atlas-demo.html")
         # bundled demo has no meaningful edit-timeline (zip extraction flattens
-        # mtimes to one instant → co-mod noise). Kill temporal so the demo shows
+        # mtimes to one instant → co-mod noise). Same for git: a repo-clone demo
+        # sees OUR packaging commits (12+ files each) as fake "sessions" — 59 noise
+        # edges — while the pyz demo (no git) sees none. Kill both so the demo shows
         # only the honest bridges: shared_ref (ghost) + tag_overlap.
         args.temporal_cross = False
+        args.session_cross = False
 
     if not args.data and not args.src:
         sys.exit("memory-atlas: no vault found — pass --src DIR (a folder of .md notes), "
@@ -804,7 +844,11 @@ def main():
 
     if args.data:
         raw = sys.stdin.read() if args.data == "-" else open(args.data, encoding="utf-8").read()
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            sys.exit(f"memory-atlas: --data: invalid JSON ({e})")
+        validate_data(data)
         data.setdefault("title", "atlas")
         data.setdefault("generated", time.strftime("%Y-%m-%d %H:%M"))
         data.setdefault("version", VERSION)
@@ -1122,6 +1166,25 @@ def run_self_test():
         def test_detect_session_no_git_silent(self):
             self.assertEqual(detect_session(self._two_zone_nodes(), self.src), [])
 
+        def test_detect_session_vault_in_repo_subdir(self):
+            # vault = SUBDIR of a git repo (demo/, Obsidian-in-monorepo): git log paths
+            # are repo-root-relative — without --relative the detector was silently dead
+            def git(*a):
+                subprocess.run(["git", "-C", self.src, "-c", "user.email=t@t",
+                                "-c", "user.name=t", *a],
+                               capture_output=True, check=True)
+            try:
+                git("init", "-q")
+            except (OSError, subprocess.CalledProcessError):
+                self.skipTest("git unavailable")
+            self.w("vault/lightz/a.md", "x")
+            self.w("vault/workz/b.md", "y")
+            git("add", "."); git("commit", "-q", "-m", "co-touch")
+            ns = [{"id": "a", "zone": "lightz", "ghost": False, "path": "lightz/a.md"},
+                  {"id": "b", "zone": "workz", "ghost": False, "path": "workz/b.md"}]
+            out = detect_session(ns, os.path.join(self.src, "vault"))
+            self.assertEqual([(e["source"], e["target"]) for e in out], [("a", "b")])
+
         def test_search_vecs_survive_no_semantic_cross(self):
             # --search-vecs --no-semantic-cross: vecs+layout survive, the detector stays silent
             saved = globals()["fetch_embeddings"]
@@ -1160,6 +1223,27 @@ def run_self_test():
 
         def test_semantic_layout_too_few(self):
             self.assertEqual(semantic_layout({"a": [1, 0]}), {})
+
+        def test_tpl_version_handshake(self):
+            # G5 discipline guard: template marker must be bumped WITH the generator VERSION
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                head = f.read(2000)
+            self.assertIn(f'name="atlas-tpl" content="{VERSION}"', head,
+                          "bump the atlas-tpl meta together with VERSION")
+
+        def test_validate_data_contract(self):
+            # G4: broken --data used to render a dead page with exit 0
+            ok = {"nodes": [{"id": "a"}, {"id": "b"}],
+                  "edges": [{"source": "a", "target": "b"}]}
+            validate_data(ok)   # must not raise
+            for bad in ({"nodes": "nope"},
+                        {"nodes": [{"label": "no-id"}]},
+                        {"nodes": [{"id": "a"}, {"id": "a"}]},
+                        {"nodes": [{"id": "a"}], "edges": [{"source": "a", "target": "GONE"}]}):
+                with self.assertRaises(SystemExit):
+                    validate_data(bad)
 
         def test_quantize_vecs_roundtrip(self):
             q = quantize_vecs({"a": [0.5, -1.0], "b": [2.0, 0.0]})

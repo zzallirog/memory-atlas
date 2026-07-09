@@ -11,16 +11,10 @@ note, overlapping tags, co-edits) on top of your explicit `[[wikilinks]]`.
 - A modern browser (the output opens itself).
 - Ollama is **optional** — see "Semantic bridges" below. You don't need it.
 
-Two equivalent ways to run every command below:
-
-- from a clone of this repo: `./memory-atlas …` (or `python3 memory-atlas …`);
-- from the single-file bundle: `python3 dist/memory-atlas.pyz …` — copy that
-  one file anywhere, nothing else needed.
-
 ## 1. See the demo first
 
 ```
-./memory-atlas --demo
+python3 memory-atlas.pyz --demo
 ```
 
 A browser opens on a tiny synthetic vault: a **cooking** cluster and a
@@ -41,7 +35,7 @@ choice is remembered and survives rebuilds.
 ## 2. Point it at your own vault
 
 ```
-./memory-atlas --src ~/path/to/your/vault
+python3 memory-atlas.pyz --src ~/path/to/your/vault
 ```
 
 - Each **top-level folder** in the vault becomes a colored **zone**. The
@@ -58,7 +52,7 @@ choice is remembered and survives rebuilds.
 Start in your language:
 
 ```
-./memory-atlas --src ~/vault --lang ru     # or --lang en (default)
+python3 memory-atlas.pyz --src ~/vault --lang ru     # or --lang en (default)
 ```
 
 ## 3. Rebuild after editing notes
@@ -73,7 +67,7 @@ If you install [Ollama](https://ollama.com) and pull an embedding model:
 
 ```
 ollama pull nomic-embed-text
-./memory-atlas --src ~/vault
+python3 memory-atlas.pyz --src ~/vault
 ```
 
 …a fifth detector adds **meaning** bridges (notes that read as similar even
@@ -86,7 +80,7 @@ carries on — every other bridge still works.
 |------|------|
 | `--demo` | build the bundled demo vault |
 | `--src DIR` | your vault |
-| `--out FILE` | where to write the HTML (default: `./atlas-demo.html` for `--demo`, else the atlas cache dir — the build prints the path) |
+| `--out FILE` | where to write the HTML (default: next to the command) |
 | `--lang ru\|en` | starting UI language |
 | `--no-open` | don't auto-open the browser |
 | `--no-detectors` | wikilink graph only, fastest |
