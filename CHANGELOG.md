@@ -1,5 +1,64 @@
 # Changelog
 
+## 2.10.0
+
+**Reading, not just navigating.** The complaint this release answers: *"I can see the
+graph, but I can't read my files."*
+
+- **GROUP BY axis.** A new `group` select slices every grouping layout — `pack · ring ·
+  petals · radial · grid · zones` and the three new views — by `zone / root / cluster /
+  type / age`. Hull outlines, hull titles and force link distances follow the axis.
+  Persists, travels in saved views and `?group=` deep links.
+- **Three reading views**, where text is the first-class element:
+  - `spine · list+arc` — the strongest notes of every group as a central readable list
+    with section headers, the rest on a surrounding arc. Task preset **reading · list**.
+  - `facets · panels` — group values as labeled perimeter mini-panels, the long tail in
+    the center disc inside its group's wedge.
+  - `dendro · tree` — a radial dendrogram (group ⊃ cluster ⊃ note), every leaf labeled
+    outward from the rim.
+- **Cards carry prose.** Node cards arrive earlier on the zoom ramp (K≥1.5) and show the
+  note's own body text: word-wrapped lines, each a touch quieter, the last dissolving
+  into transparency — an excerpt, not a chopped string. Ambient label budget ×2.5.
+- List rows are never budget-culled (they are the reading surface); row counts are
+  derived from screen physics so the fit-zoom pitch stays readable.
+- New: [docs/VIEWS.md](docs/VIEWS.md) — how layouts × grouping × color compose.
+
+## 2.9.0
+
+**Provenance axis.** New pipeline module `memory-atlas-provenance` (the same external-
+builder pattern as `--data`: the core stays kind-blind):
+
+    memory-atlas --src ... --dump-data - | memory-atlas-provenance | memory-atlas --data - --out vault.html
+
+- Git history → `moved_from` edges with arrowheads (ghost of the old name → the live
+  note, rename chains collapse to the live end), `became` edges (same-commit
+  delete+add merge/split heuristic, gated to small commits), `prov.gone` /
+  `prov.archived` on ghosts whose file *used to exist* — true forgottenness vs
+  never-written.
+- Session touches → `usage`, `last_touch_days`, and a `forgotten ∈ [0,1]` metric per
+  note (recency × engagement, mtime fallback).
+- DATA CONTRACT v2.9: builders declare `edge_styles` (color/dash/arrow per kind) and
+  `node_metrics` — the template renders styles, colorMode options and a threshold lens
+  (legend click: *forgotten ≥ 0.6*) from data alone.
+- Node panel gains a provenance block (renamed from/to, deleted, archived); ghost chips
+  distinguish "never written" from "existed — deleted/archived".
+
+## 2.8.0
+
+- **Multi-root vaults**: repeatable `--src [name=]dir` — memory + wiki + snippets in one
+  graph, cross-root wikilink resolve, per-root zone namespaces.
+- `--dump-data -` — pure DATA JSON on stdout, the source end of the pipeline for
+  external builders.
+- `temporal_proximity` capped to each node's top-2 partners (was: n² haze on
+  co-edited corpora).
+
+## 2.7.0
+
+- Edges off by default — the full connected-link overview tanked FPS; the layer is one
+  keystroke (`9`) away.
+- Earned zone-overlap on spatial layouts: petals converge where cross-zone bridges
+  exist, colours mix in OKLab.
+
 ## 2.6.0
 
 **Petals.** Zone hulls are now drawn as petals: a smooth closed curve with a radial
