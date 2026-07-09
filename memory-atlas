@@ -68,7 +68,16 @@ def _resolve_default_src():
 DEFAULT_SRC = _resolve_default_src()
 DEFAULT_OUT = os.path.expanduser("~/.mac-claw/atlas/memory-atlas.html")
 # env-оверрайды — путь portable-дистрибутива (.pyz кладёт ресурсы во временную папку)
-D3_PATH = os.environ.get("ATLAS_D3") or os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")
+# d3-резолв: env → vendor/ рядом с генератором (клон репо работает из коробки) → локальный кэш
+def _resolve_d3():
+    cands = [os.environ.get("ATLAS_D3"),
+             os.path.join(os.path.dirname(os.path.realpath(__file__)), "vendor", "d3.v7.min.js"),
+             os.path.expanduser("~/.mac-claw/atlas/d3.v7.min.js")]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return cands[-1]
+D3_PATH = _resolve_d3()
 EXCLUDE_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
                 ".obsidian", ".trash", "node_modules"}   # G7: чужие вульты (Obsidian и пр.)
 INDEX_FILES = {"MEMORY.md", "MEMORY-work.md", "FEEDBACK_INDEX.md"}
@@ -810,7 +819,7 @@ def main():
 
 
 def open_file(path):
-    # кросс-ОС: `open` — только macOS; Daniel-машина неизвестна (§1 installer-handoff)
+    # кросс-ОС: `open` — только macOS; целевая машина внешнего юзера неизвестна
     if sys.platform == "darwin":
         subprocess.run(["open", path], check=False)
     elif os.name == "nt":

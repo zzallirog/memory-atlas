@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Package memory-atlas as a single self-contained .pyz (stdlib only, zero deps).
-# Produces dist/memory-atlas.pyz — one file Daniel can run with `python3 memory-atlas.pyz`.
+# Produces dist/memory-atlas.pyz — one file anyone can run with `python3 memory-atlas.pyz`.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="$(mktemp -d)"
@@ -12,7 +12,8 @@ cp "$ROOT/installer/__main__.py" "$STAGE/__main__.py"
 
 # bundled resources (paths match __main__.py's extract prefixes)
 cp "$ROOT/memory-atlas.template.html" "$STAGE/template.html"
-D3="${ATLAS_D3:-$HOME/.mac-claw/atlas/d3.v7.min.js}"
+D3="${ATLAS_D3:-$ROOT/vendor/d3.v7.min.js}"
+[ -f "$D3" ] || D3="$HOME/.mac-claw/atlas/d3.v7.min.js"
 [ -f "$D3" ] || { echo "d3 cache missing: $D3" >&2; exit 1; }
 cp "$D3" "$STAGE/d3.v7.min.js"
 cp -R "$ROOT/demo" "$STAGE/demo"
