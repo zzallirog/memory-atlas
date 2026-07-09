@@ -1,0 +1,1239 @@
+#!/usr/bin/env python3
+"""memory-atlas — graph of the memory layer as a single self-contained HTML.
+
+Topology: emerge (D3-force on canvas, cluster colors, hulls, live-search)
++ Understand-Anything (deterministic [[wikilinks]] + frontmatter parser).
+No LLM, no server. light/work zones come from membership in MEMORY.md / MEMORY-work.md.
+
+Usage: memory-atlas [--src DIR] [--out FILE] [--no-open]
+       memory-atlas --data graph.json|-        # render an arbitrary graph (see DATA CONTRACT)
+       memory-atlas --self-test
+
+Cross-zone detectors (port of graph-lab multi-canvas: zones = canvases):
+  shared_ref            always on — two zones reference the same ghost
+  semantic               cosine of embeddings (Ollama loopback, sha-cache)   --no-semantic-cross
+  tag_overlap            Jaccard of working tags                            --no-tag-cross
+  temporal_proximity     co-modification window 24h                        --no-temporal-cross
+  session_co_occurrence  git log co-touched                                 --no-session-cross
+  structural_homology    chain-3 motifs (research-tier)                     --structural-cross (opt-in)
+Thresholds/top-k — flags with graph-lab defaults (0.75/3 · 0.5/3 · 86400/5 · 1000 · 5000).
+--search-vecs — embed int8 embeddings into DATA for client-side semantic search
+(works only if OLLAMA_ORIGINS allows file:// — otherwise the client silently degrades).
+
+DATA CONTRACT (for --data and external builders, e.g. memory-atlas-bastra):
+{
+  "title": str,                    # wordmark in the HUD
+  "generated": str, "src": str,
+  "host": str,                     # opt.; who built it (browse header + dash-health)
+  "zones": {name: [ax, ay]},       # zone anchors in [-1..1]; order = legend order
+  "heat": {"label": str, "high": str, "low": str},   # heat-mode caption
+  "nodes": [{id,label,desc,type,zone,path,bytes,age_days,mtime?,heat,ghost,light,heavy,orphan,conflict}],
+  "edges": [{source,target,kind,w?,score?}],   # kind → EDGE_STYLES in the template; unknown kind = default style
+  "detectors": [str],              # opt.; which cross-detectors ran (for the status line)
+  "vecs": {model,dim,ids,q},       # opt.; int8 embeddings for client-side semantic search
+  "browse": {nodes,edges,bodies,stats,types,generated}   # opt.; terminal browse module
+}                                    # no browse → browse tab hidden (e.g. --data builders)
+node.heat ∈ [0,1], 1 = bright (fresh/hot — polarity is up to the builder).
+"""
+import argparse
+import bisect
+import hashlib
+import itertools
+import math
+import json
+import glob
+import locale
+import os
+import platform
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+VERSION = "2.4.0"   # public-release pass: EN comments, generic path autodetect (no hardcoded users), Windows toolchain (LOCALAPPDATA, python installer, CI matrix), locale-auto UI lang, pin cards with note preview + view capture
+def _data_home():
+    # atlas working folder (out/caches): env → legacy path, if it already exists
+    # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
+    if os.environ.get("ATLAS_HOME"):
+        return os.path.expanduser(os.environ["ATLAS_HOME"])
+    legacy = os.path.expanduser("~/.mac-claw/atlas")
+    if os.path.isdir(legacy):
+        return legacy
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+        return os.path.join(base, "memory-atlas")
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(base, "memory-atlas")
+
+
+DATA_HOME = _data_home()
+
+
+def _resolve_default_src():
+    # G1-generic: ATLAS_SRC → any ~/.claude/projects/*/memory with .md files,
+    # most populated first (fixes the W5 bug: an empty host-twin gave 0 nodes).
+    # Nothing found → None, main() will ask for explicit --src.
+    if os.environ.get("ATLAS_SRC"):
+        return os.path.expanduser(os.environ["ATLAS_SRC"])
+    scored = []
+    for c in glob.glob(os.path.expanduser("~/.claude/projects/*/memory")):
+        try:
+            n = sum(1 for f in os.listdir(c) if f.endswith(".md"))
+        except OSError:
+            continue
+        if n:
+            scored.append((n, c))
+    return max(scored)[1] if scored else None
+
+
+DEFAULT_SRC = _resolve_default_src()
+DEFAULT_OUT = os.path.join(DATA_HOME, "memory-atlas.html")
+# env overrides — path for the portable distribution (.pyz drops resources into a temp folder)
+# d3 resolution: env → vendor/ next to the generator (a repo clone works out of the box) → data-home cache
+def _resolve_d3():
+    cands = [os.environ.get("ATLAS_D3"),
+             os.path.join(os.path.dirname(os.path.realpath(__file__)), "vendor", "d3.v7.min.js"),
+             os.path.join(DATA_HOME, "d3.v7.min.js")]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return cands[-1]
+D3_PATH = _resolve_d3()
+EXCLUDE_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
+                ".obsidian", ".trash", "node_modules"}   # G7: foreign vaults (Obsidian etc.)
+INDEX_FILES = {"MEMORY.md", "MEMORY-work.md", "FEEDBACK_INDEX.md"}
+ZONES = {"light": [-0.55, 0.05], "work": [0.75, -0.15], "glados": [-0.1, -0.75],
+         "bastra": [0.65, 0.65], "feedback": [-0.2, 0.6], "unindexed": [-0.85, 0.8]}
+
+def zone_anchors(nodes):
+    """Zone anchors [-1..1]. Our own corpus = fixed ZONES; foreign = alphabetical circle.
+    >8 zones — legend colors the first 8, the rest OTHER-grey (contract B22)."""
+    zs = sorted({n["zone"] for n in nodes})
+    if set(zs) <= set(ZONES):
+        return ZONES
+    step = 2 * math.pi / max(1, len(zs))
+    return {z: [round(0.72 * math.cos(i * step - math.pi / 2), 3),
+                round(0.72 * math.sin(i * step - math.pi / 2), 3)]
+            for i, z in enumerate(zs)}
+
+
+FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
+# [[target]] and [[target|alias]] — take target up to |
+WIKILINK_RE = re.compile(r"\[\[([^\]|#\n]+?)(?:\|[^\]\n]*)?\]\]")
+MDLINK_RE = re.compile(r"\]\(([^)#\s]+?\.md)\)")
+
+
+def norm(key):
+    k = key.strip().lower().replace("-", "_")
+    return k[:-3] if k.endswith(".md") else k   # str.removesuffix needs 3.9; floor is 3.8
+
+
+def parse_frontmatter(text):
+    text = text.lstrip("﻿")
+    m = FM_RE.match(text)
+    fm = {"name": None, "description": "", "type": "",
+          "part_of": "", "tier": "", "session": "", "state": "", "tags": []}
+    if not m:
+        return fm, text
+    block = m.group(1)
+    # G2: keys at BOTH levels (^\s*) — our nested format AND top-level Obsidian/reference-vault
+    for pat, key in ((r"^name:\s*(.+)$", "name"),
+                     (r"^description:\s*(.+)$", "description"),
+                     (r"^\s*type:\s*(.+)$", "type"),
+                     (r"^\s*part_of:\s*(.+)$", "part_of"),
+                     (r"^\s*tier:\s*(.+)$", "tier"),
+                     (r"^\s*state:\s*(.+)$", "state"),
+                     (r"^\s*originSessionId:\s*(.+)$", "session")):
+        mm = re.search(pat, block, re.M)
+        if mm:
+            fm[key] = mm.group(1).strip().strip("\"'")
+    # tags: inline `[a,b]`/`a,b` OR a YAML list of `- item` lines (Obsidian); top-level too
+    tm = re.search(r"^\s*tags:[^\S\n]*(.*)$", block, re.M)
+    if tm:
+        inline = tm.group(1).strip()
+        if inline and inline not in ("[]", "|", ">"):
+            fm["tags"] = [t.strip().strip("\"'[]") for t in inline.split(",")
+                          if t.strip().strip("[] ")]
+        else:   # value on following lines: `  - tag`
+            lst = []
+            for ln in block[tm.end():].splitlines():
+                lm = re.match(r"^\s*-\s*(.+)$", ln)
+                if lm:
+                    lst.append(lm.group(1).strip().strip("\"'"))
+                elif ln.strip() and re.match(r"^\S", ln):
+                    break
+            fm["tags"] = lst
+    return fm, text[m.end():]
+
+
+def scan(src):
+    files = []
+    for root, dirs, names in os.walk(src):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        for n in names:
+            if n.endswith(".md"):
+                files.append(os.path.join(root, n))
+    return sorted(files)
+
+
+def index_members(src, index_file):
+    """Stems of notes referenced by the index file."""
+    path = os.path.join(src, index_file)
+    if not os.path.exists(path):
+        return set()
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    stems = {norm(os.path.basename(t)) for t in MDLINK_RE.findall(text)
+             if not t.startswith("http")}
+    stems |= {norm(t) for t in WIKILINK_RE.findall(text)}
+    return stems
+
+
+def build_graph(src):
+    now = time.time()
+    light_idx = index_members(src, "MEMORY.md")
+    work_idx = index_members(src, "MEMORY-work.md")
+    # FEEDBACK_INDEX is also a recall surface: its membership is NOT unindexed
+    # (otherwise 81 feedback notes poison the gap-audit input with a false "never-indexed")
+    fb_idx = index_members(src, "FEEDBACK_INDEX.md")
+    # foreign vault (none of our indexes exist — Obsidian etc.): zone = top-level folder.
+    # Without this, everything collapses into unindexed = one zone, and the cross-zone
+    # detectors (the whole overlap layer, the value-prop for a foreign vault) go silently dead.
+    foreign = not (light_idx or work_idx or fb_idx)
+
+    nodes, lookup = [], {}
+    bodies = {}
+    for path in scan(src):
+        base = os.path.basename(path)
+        if base in INDEX_FILES:
+            continue
+        rel = os.path.relpath(path, src)
+        stem = norm(base)
+        if stem in bodies:
+            # stem collision (a-b.md vs a_b.md) — the second file gets a suffix,
+            # otherwise two nodes share an id and edges silently merge
+            print(f"warn: stem collision '{stem}' ({rel}) — suffixed", file=sys.stderr)
+            i = 2
+            while f"{stem}~{i}" in bodies:
+                i += 1
+            stem = f"{stem}~{i}"
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        fm, body = parse_frontmatter(text)
+        st = os.stat(path)
+
+        top = rel.split(os.sep)[0] if os.sep in rel else ""
+        if foreign:
+            zone = top or "notes"
+        elif top == "glados":
+            zone = "glados"
+        elif top == "bastra":
+            zone = "bastra"
+        elif stem in light_idx:
+            zone = "light"
+        elif stem in work_idx:
+            zone = "work"
+        elif stem in fb_idx:
+            zone = "feedback"
+        else:
+            zone = "unindexed"
+
+        # browse module: light/heavy are INDEPENDENT booleans (a note can be in both
+        # indexes); zone collapses them, so we emit the flags separately.
+        in_light = stem in light_idx
+        in_heavy = stem in work_idx
+        # FEEDBACK_INDEX is a recall surface: its membership suppresses orphan just
+        # like light/work (otherwise 81 fb-notes become false orphans — twin of the "81 unindexed" bug)
+        in_fb = stem in fb_idx
+        node = {
+            "id": stem,
+            "label": fm["name"] or stem,
+            "desc": fm["description"][:400],
+            "type": fm["type"] or "?",
+            "zone": zone,
+            "path": rel,
+            "bytes": st.st_size,
+            "age_days": round((now - st.st_mtime) / 86400, 1),
+            "mtime": int(st.st_mtime),
+            "ghost": False,
+            "light": in_light,
+            "heavy": in_heavy,
+            "orphan": not foreign and not in_light and not in_heavy and not in_fb and not top,
+            "conflict": "sync-conflict" in base,
+            # working tags: part_of (child) + tier + manual tags; session for the fire-hook
+            "part_of": fm["part_of"],
+            "tier": fm["tier"],
+            "session": fm["session"],
+            "state": fm["state"],           # G2: metadata.state (superseded/transition) → STATE layer
+            "tags": fm["tags"],
+        }
+        nodes.append(node)
+        bodies[stem] = body
+        lookup.setdefault(stem, stem)
+        if fm["name"]:
+            lookup.setdefault(norm(fm["name"]), stem)
+
+    edges, seen = [], set()
+    ghosts = {}
+    # links to index files ([[MEMORY-work]], [x](MEMORY.md)) — not ghost debt:
+    # indexes are excluded from nodes deliberately, "should be written" doesn't apply to them
+    index_stems = {norm(f) for f in INDEX_FILES}
+
+    def add_edge(a, b, kind):
+        if a == b:
+            return
+        k = (a, b)
+        if k in seen:
+            return
+        seen.add(k)
+        edges.append({"source": a, "target": b, "kind": kind})
+
+    for node in list(nodes):
+        stem = node["id"]
+        body = bodies[stem]
+        targets = [(norm(t), "wiki") for t in WIKILINK_RE.findall(body)]
+        targets += [(norm(os.path.basename(t)), "md")
+                    for t in MDLINK_RE.findall(body)
+                    if not t.startswith("http")]
+        for tkey, kind in targets:
+            if tkey in lookup:
+                add_edge(stem, lookup[tkey], kind)
+            else:
+                if tkey in index_stems:
+                    continue
+                if tkey not in ghosts:
+                    ghosts[tkey] = {
+                        "id": tkey, "label": tkey, "desc": "",
+                        "type": "ghost", "zone": node["zone"], "path": "",
+                        "bytes": 0, "age_days": 0, "ghost": True,
+                        "light": False, "heavy": False, "orphan": False, "conflict": False,
+                    }
+                add_edge(stem, tkey, kind)
+    nodes.extend(ghosts.values())
+
+    # heat ∈ [0,1]: 1 = fresh (age 0), 0 = oldest
+    max_age = max((n["age_days"] for n in nodes if not n["ghost"]), default=1) or 1
+    for n in nodes:
+        n["heat"] = 0.0 if n["ghost"] else round(1 - n["age_days"] / max_age, 3)
+    return nodes, edges, bodies
+
+
+# ------------------------------------------------- cross-zone detectors
+# Port of graph-lab lib/detectors/* onto the atlas model: "graph" = zone, cross-edges
+# connect zones. All pure functions (semantic takes ready-made vectors),
+# session_co_occurrence is the only one with I/O (git log). Dedup against existing
+# edges happens on the caller's side (_merge_cross).
+
+def _by_zone(nodes):
+    zs = {}
+    for n in nodes:
+        if not n.get("ghost"):
+            zs.setdefault(n["zone"], []).append(n)
+    return zs
+
+
+def detect_shared_ref(nodes, edges):
+    """Nodes from DIFFERENT zones reference the same ghost → an edge between them.
+    Hubs (a ghost with >6 referrers) are skipped — quadratic noise, not signal."""
+    ghost_ids = {n["id"] for n in nodes if n.get("ghost")}
+    zone_of = {n["id"]: n["zone"] for n in nodes}
+    refs = {}
+    for e in edges:
+        if e["target"] in ghost_ids and not e.get("cross"):
+            refs.setdefault(e["target"], []).append(e["source"])
+    out = []
+    for ghost, srcs in sorted(refs.items()):
+        if len(srcs) > 6:
+            continue
+        for a, b in itertools.combinations(sorted(set(srcs)), 2):
+            if zone_of.get(a) != zone_of.get(b):
+                out.append({"source": a, "target": b, "kind": "shared_ref", "ref": ghost})
+    return out
+
+
+def detect_tag_overlap(nodes, threshold=0.5, top_k=3):
+    """Jaccard over working tags (tags + part_of + tier) between zones."""
+    def tagset(n):
+        s = {t.lower() for t in n.get("tags", []) if len(t) >= 2}
+        if n.get("part_of"):
+            s.add("part:" + n["part_of"].lower())
+        if n.get("tier") not in (None, ""):
+            s.add("tier:" + str(n["tier"]))
+        return s
+    tagged = [(n, tagset(n)) for n in nodes if not n.get("ghost")]
+    tagged = [(n, s) for n, s in tagged if s]
+    out = []
+    for n, s in tagged:
+        cands = []
+        for m, t in tagged:
+            if m["zone"] == n["zone"] or m["id"] <= n["id"]:
+                continue
+            u = s | t
+            if len(u) < 2:
+                continue
+            j = len(s & t) / len(u)
+            if j >= threshold:
+                cands.append((j, m["id"]))
+        for j, mid in sorted(cands, reverse=True)[:top_k]:
+            out.append({"source": n["id"], "target": mid, "kind": "tag_overlap",
+                        "score": round(j, 2)})
+    return out
+
+
+def detect_temporal(nodes, window_s=86400.0, top_k=5):
+    """Co-modification: nearest-by-mtime neighbors in OTHER zones, window 24h."""
+    zs = _by_zone(nodes)
+    sorted_z = {z: sorted((n.get("mtime", 0), n["id"]) for n in ns if n.get("mtime"))
+                for z, ns in zs.items()}
+    out, seen = [], set()
+    for z, ns in sorted(zs.items()):
+        for n in ns:
+            mt = n.get("mtime")
+            if not mt:
+                continue
+            cands = []
+            for oz, arr in sorted_z.items():
+                if oz == z or not arr:
+                    continue
+                i = bisect.bisect_left(arr, (mt,))
+                for j in range(max(0, i - top_k), min(len(arr), i + top_k)):
+                    d = abs(arr[j][0] - mt)
+                    if d <= window_s:
+                        cands.append((d, arr[j][1]))
+            for d, mid in sorted(cands)[:top_k]:
+                key = tuple(sorted((n["id"], mid)))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({"source": n["id"], "target": mid,
+                            "kind": "temporal_proximity", "delta": round(d, 1)})
+    return out
+
+
+def detect_session(nodes, src, max_commits=1000):
+    """git log co-touched: files from different zones in the same commit. Commits with >30 files
+    are skipped (snapshot noise, not a session signal). No git → silent skip."""
+    node_by_rel = {n["path"]: n for n in nodes if n.get("path")}
+    try:
+        r = subprocess.run(
+            ["git", "-C", src, "log", "--name-only", "--no-renames",
+             f"-{max_commits}", "--pretty=format:@%h"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if r.returncode != 0:
+        return []
+    weights = {}
+    files = []
+
+    def flush():
+        touched = [node_by_rel[f] for f in files if f in node_by_rel]
+        if 2 <= len(touched) <= 30:
+            for a, b in itertools.combinations(touched, 2):
+                if a["zone"] != b["zone"]:
+                    key = tuple(sorted((a["id"], b["id"])))
+                    weights[key] = weights.get(key, 0) + 1
+        files.clear()
+
+    for line in r.stdout.splitlines():
+        if line.startswith("@"):
+            flush()
+        elif line.strip():
+            files.append(line.strip())
+    flush()
+    return [{"source": a, "target": b, "kind": "session_co_occurrence", "w": w}
+            for (a, b), w in sorted(weights.items())]
+
+
+def detect_structural(nodes, edges, max_motifs=5000):
+    """chain-3 motifs a→b→c, center's signature is (type, in, out); matched across zones.
+    Research-tier, opt-in: same shape ≠ same meaning (graph-lab contract P8)."""
+    real = {n["id"]: n for n in nodes if not n.get("ghost")}
+    outs, ins = {}, {}
+    for e in edges:
+        if e["source"] in real and e["target"] in real and not e.get("cross"):
+            outs.setdefault(e["source"], []).append(e["target"])
+            ins.setdefault(e["target"], []).append(e["source"])
+    sig_map = {}
+    count = 0
+    for b in sorted(real):
+        for a in sorted(ins.get(b, [])):
+            for c in sorted(outs.get(b, [])):
+                if a == c or count >= max_motifs:
+                    continue
+                count += 1
+                nb = real[b]
+                sig = (nb["type"], len(ins.get(b, [])), len(outs.get(b, [])))
+                sig_map.setdefault(sig, []).append((a, b, c))
+    out = []
+    for sig, motifs in sorted(sig_map.items()):
+        if len(motifs) < 2:
+            continue
+        for m1, m2 in itertools.combinations(motifs[:12], 2):
+            if real[m1[1]]["zone"] == real[m2[1]]["zone"]:
+                continue
+            for pos in range(3):
+                if m1[pos] != m2[pos]:
+                    out.append({"source": m1[pos], "target": m2[pos],
+                                "kind": "structural_homology", "position": pos})
+    return out
+
+
+# semantic: embeddings via Ollama loopback (Mac: embeddinggemma/nomic), sha-cache.
+EMB_MODEL = "nomic-embed-text"
+EMB_CACHE = os.environ.get("ATLAS_EMB_CACHE") or os.path.join(DATA_HOME, "emb-cache.json")
+OLLAMA = os.environ.get("ATLAS_OLLAMA") or "http://127.0.0.1:11434"
+
+
+def _ollama_up(timeout=3):
+    """Quick health-check, 3s cap (graph-lab lib/ollama.is_available contract)."""
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/version", timeout=timeout):
+            return True
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return False
+
+
+def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
+    """id → vec. Cache keyed on sha256(text). Ollama unavailable/stuck →
+    PARTIAL result from the cache (whatever's there), not all-or-nothing; empty → None."""
+    cache = {}
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, encoding="utf-8") as f:
+                cache = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            cache = {}
+    keys = {nid: hashlib.sha256((model + "\0" + t).encode()).hexdigest()
+            for nid, t in texts_by_id.items()}
+    missing = [(nid, t) for nid, t in texts_by_id.items() if keys[nid] not in cache]
+
+    def partial(reason):
+        got = {nid: cache[k] for nid, k in keys.items() if k in cache}
+        print(f"warn: Ollama {reason} — semantic from cache: {len(got)}/{len(keys)}, "
+              f"{len(keys) - len(got)} notes without a vector", file=sys.stderr)
+        return got or None
+
+    if missing:
+        if not _ollama_up():
+            return partial("unavailable (health-check)")
+        try:
+            for i in range(0, len(missing), 32):
+                batch = missing[i:i + 32]
+                req = urllib.request.Request(
+                    OLLAMA + "/api/embed",
+                    json.dumps({"model": model, "input": [t for _, t in batch]}).encode(),
+                    {"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    embs = json.load(resp)["embeddings"]
+                for (nid, _), v in zip(batch, embs):
+                    cache[keys[nid]] = [round(x, 5) for x in v]
+        except (urllib.error.URLError, OSError, KeyError, TimeoutError) as e:
+            return partial(f"failed on batch ({e})")
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    return {nid: cache[k] for nid, k in keys.items()}
+
+
+def detect_semantic(nodes, vecs, threshold=0.75, top_k=3):
+    """cosine between zones ≥ threshold, top-k per source. vecs: id → vector."""
+    def l2(v):
+        s = sum(x * x for x in v) ** 0.5 or 1.0
+        return [x / s for x in v]
+    normed = {n["id"]: l2(vecs[n["id"]]) for n in nodes
+              if not n.get("ghost") and n["id"] in vecs}
+    zone_of = {n["id"]: n["zone"] for n in nodes}
+    ids = sorted(normed)
+    out, seen = [], set()
+    for a in ids:
+        va = normed[a]
+        cands = []
+        for b in ids:
+            if b == a or zone_of[a] == zone_of[b]:
+                continue
+            score = sum(x * y for x, y in zip(va, normed[b]))
+            if score >= threshold:
+                cands.append((score, b))
+        for score, b in sorted(cands, reverse=True)[:top_k]:
+            key = tuple(sorted((a, b)))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"source": a, "target": b, "kind": "semantic",
+                        "score": round(score, 2)})
+    return out
+
+
+def semantic_layout(vecs):
+    """2D projection of embeddings — graph-lab's "fundamental principle #1":
+    position encodes cosine-closeness, not edge strength. Their plan was UMAP (v0.6,
+    never landed); here it's PCA power-iteration on L2-normalized vectors (stdlib,
+    deterministic, ~2s on 324×768). id → (x, y) in [-1, 1]."""
+    import math
+    ids = sorted(vecs)
+    if len(ids) < 3:
+        return {}
+    X = []
+    for nid in ids:
+        v = vecs[nid]
+        s = math.sqrt(sum(x * x for x in v)) or 1.0
+        X.append([x / s for x in v])
+    n, dim = len(X), len(X[0])
+    mean = [sum(row[j] for row in X) / n for j in range(dim)]
+    X = [[row[j] - mean[j] for j in range(dim)] for row in X]
+
+    comps, coords = [], []
+    for c in range(2):
+        # deterministic seed; deflate the previous component every iteration
+        w = [math.sin((j + 1) * (c + 1) * 12.9898) for j in range(dim)]
+        for _ in range(40):
+            for pc in comps:
+                d = sum(a * b for a, b in zip(w, pc))
+                w = [a - d * b for a, b in zip(w, pc)]
+            t = [sum(a * b for a, b in zip(row, w)) for row in X]      # X·w
+            w2 = [0.0] * dim
+            for ti, row in zip(t, X):                                   # Xᵀ·t
+                for j, rj in enumerate(row):
+                    w2[j] += ti * rj
+            s = math.sqrt(sum(a * a for a in w2)) or 1.0
+            w = [a / s for a in w2]
+        comps.append(w)
+        coords.append([sum(a * b for a, b in zip(row, w)) for row in X])
+    out = {}
+    for axis in range(2):
+        mx = max(abs(v) for v in coords[axis]) or 1.0
+        coords[axis] = [v / mx for v in coords[axis]]
+    for i, nid in enumerate(ids):
+        out[nid] = (round(coords[0][i], 4), round(coords[1][i], 4))
+    return out
+
+
+def quantize_vecs(vecs):
+    """int8 quantization for client-side semantic search (the client re-normalizes)."""
+    ids = sorted(vecs)
+    q = []
+    for nid in ids:
+        v = vecs[nid]
+        mx = max(abs(x) for x in v) or 1.0
+        q.append([int(round(x / mx * 127)) for x in v])
+    dim = len(vecs[ids[0]]) if ids else 0
+    return {"model": EMB_MODEL, "dim": dim, "ids": ids, "q": q}
+
+
+def run_detectors(nodes, edges, bodies, src, args):
+    """Run detectors in graph-lab's fixed order; dedup against base edges."""
+    seen = {tuple(sorted((e["source"], e["target"]))) for e in edges}
+    ran, added = [], []
+
+    def merge(name, cross):
+        ran.append(name)
+        for e in cross:
+            key = tuple(sorted((e["source"], e["target"])))
+            if key in seen:
+                continue
+            seen.add(key)
+            e["cross"] = True
+            added.append(e)
+
+    merge("shared_ref", detect_shared_ref(nodes, edges))
+    # embeddings are needed by the detector, --search-vecs, AND the semantic layout:
+    # `--search-vecs --no-semantic-cross` used to silently lose ALL three
+    if getattr(args, "semantic_cross", True) or getattr(args, "search_vecs", False):
+        texts = {n["id"]: (n["label"] + "\n" + n["desc"] + "\n" +
+                           bodies.get(n["id"], "")[:1500])
+                 for n in nodes if not n.get("ghost")}
+        vecs = fetch_embeddings(texts)
+        if vecs:
+            if getattr(args, "semantic_cross", True):
+                merge("semantic", detect_semantic(nodes, vecs, args.semantic_threshold,
+                                                  args.semantic_top_k))
+            if getattr(args, "search_vecs", False):
+                args._vecs_payload = quantize_vecs(vecs)
+            # semantic layout: node.sx/sy for the "semantic" layout mode in the template
+            byid = {n["id"]: n for n in nodes}
+            for nid, (sx, sy) in semantic_layout(vecs).items():
+                if nid in byid:
+                    byid[nid]["sx"], byid[nid]["sy"] = sx, sy
+    if getattr(args, "tag_cross", True):
+        merge("tag_overlap", detect_tag_overlap(nodes, args.tag_threshold, args.tag_top_k))
+    if getattr(args, "temporal_cross", True):
+        merge("temporal_proximity", detect_temporal(nodes, args.temporal_window_s,
+                                                    args.temporal_top_k))
+    if getattr(args, "session_cross", True):
+        merge("session_co_occurrence", detect_session(nodes, src, args.session_max_commits))
+    if getattr(args, "structural_cross", False):
+        merge("structural_homology", detect_structural(nodes, edges,
+                                                       args.structural_max_motifs))
+    return ran, added
+
+
+def to_browse_data(nodes, edges, bodies, now):
+    """Data shape for the pre-rebrand memory-map browse (terminal module).
+    Derived from the atlas graph → same ids, so the graph⟷browse fuse connectors
+    match nodes by id. ghost → type 'missing' (dangling in browse's terms)."""
+    byid = {n["id"]: n for n in nodes}
+    outc = {n["id"]: 0 for n in nodes}
+    degc = {n["id"]: 0 for n in nodes}
+    for e in edges:
+        outc[e["source"]] += 1
+        degc[e["source"]] += 1
+        degc[e["target"]] += 1
+    bnodes = []
+    for n in nodes:
+        if n["ghost"]:
+            bnodes.append({
+                "id": n["id"], "file": n["label"] + ".md (missing)", "name": n["label"],
+                "type": "missing", "type_inferred": False,
+                "desc": "dangling [[wikilink]] — target file missing",
+                "light": False, "heavy": False, "orphan": False,
+                "conflict": False, "index": False, "size": 0, "mtime": 0,
+                "age_days": 0, "out": outc[n["id"]], "deg": degc[n["id"]],
+            })
+        else:
+            bnodes.append({
+                "id": n["id"], "file": n["path"], "name": n["label"],
+                "type": n["type"], "type_inferred": False, "desc": n["desc"],
+                "light": n["light"], "heavy": n["heavy"], "orphan": n["orphan"],
+                "conflict": n["conflict"], "index": False,
+                "size": n["bytes"], "mtime": n["mtime"], "age_days": n["age_days"],
+                "out": outc[n["id"]], "deg": degc[n["id"]],
+            })
+    bedges = [{"s": e["source"], "t": e["target"], "missing": byid[e["target"]]["ghost"]}
+              for e in edges]
+    stats = {
+        "total": sum(1 for n in bnodes if n["type"] != "missing"),
+        "light": sum(1 for n in bnodes if n["light"]),
+        "heavy": sum(1 for n in bnodes if n["heavy"]),
+        "orphan": sum(1 for n in bnodes if n["orphan"]),
+        "dangling": sum(1 for n in bnodes if n["type"] == "missing"),
+        "conflict": sum(1 for n in bnodes if n["conflict"]),
+        "edges": len(bedges),
+    }
+    types = {}
+    for n in bnodes:
+        if n["type"] != "missing":
+            types[n["type"]] = types.get(n["type"], 0) + 1
+    return {"nodes": bnodes, "edges": bedges, "bodies": bodies,
+            "stats": stats, "types": types, "generated": int(now)}
+
+
+def render(data, out, d3js=None, tpl=None, lang="ru"):
+    if d3js is None:
+        if not os.path.exists(D3_PATH):
+            sys.exit(f"memory-atlas: d3 cache missing: {D3_PATH}\n"
+                     f"  curl -Lo '{D3_PATH}' https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js")
+        with open(D3_PATH, encoding="utf-8") as f:
+            d3js = f.read()
+    if tpl is None:
+        tpl_path = os.environ.get("ATLAS_TEMPLATE") or \
+            os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                         "memory-atlas.template.html")
+        with open(tpl_path, encoding="utf-8") as f:
+            tpl = f.read()
+    # </script> inside desc would break the inline script — escape the slash
+    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    html = tpl.replace("/*__D3__*/", d3js).replace("\"__DATA__\"", payload) \
+              .replace("'__LANG__'", "'en'" if lang == "en" else "'ru'")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    return html
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--version", action="version", version=f"memory-atlas {VERSION}")
+    ap.add_argument("--src", default=DEFAULT_SRC)
+    ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument("--data", help="ready-made graph JSON (file or '-' = stdin) instead of scanning memory")
+    ap.add_argument("--demo", action="store_true",
+                    help="built-in demo vault: 2 clusters + hidden ghost bridge (shared_ref)")
+    ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--lang", choices=["ru", "en"], default=None,
+                    help="starting UI language; without the flag — by system locale "
+                         "(ru/uk → ru, otherwise en); the toggle in the bar persists across rebuilds")
+    ap.add_argument("--self-test", action="store_true")
+    # cross-zone detectors (flag names = graph-lab CLI, including their asymmetry:
+    # five --no-X-cross default-on, structural opt-in)
+    ap.add_argument("--no-semantic-cross", dest="semantic_cross", action="store_false")
+    ap.add_argument("--semantic-threshold", type=float, default=0.75)
+    ap.add_argument("--semantic-top-k", type=int, default=3)
+    ap.add_argument("--no-tag-cross", dest="tag_cross", action="store_false")
+    ap.add_argument("--tag-threshold", type=float, default=0.5)
+    ap.add_argument("--tag-top-k", type=int, default=3)
+    ap.add_argument("--no-temporal-cross", dest="temporal_cross", action="store_false")
+    ap.add_argument("--temporal-window-s", type=float, default=86400.0)
+    ap.add_argument("--temporal-top-k", type=int, default=5)
+    ap.add_argument("--no-session-cross", dest="session_cross", action="store_false")
+    ap.add_argument("--session-max-commits", type=int, default=1000)
+    ap.add_argument("--structural-cross", action="store_true")
+    ap.add_argument("--structural-max-motifs", type=int, default=5000)
+    ap.add_argument("--no-detectors", action="store_true", help="wikilink graph only")
+    ap.add_argument("--search-vecs", action="store_true",
+                    help="int8 embeddings in DATA (client-side semantic search)")
+    args = ap.parse_args()
+
+    if args.self_test:
+        run_self_test()
+        return
+
+    if args.lang is None:
+        # locale-auto: ru/uk environment starts on ru, everything else on en;
+        # the choice in the UI toggle persists and overrides this default from the second run on
+        env_lang = (os.environ.get("LC_ALL") or os.environ.get("LANG") or
+                    (locale.getlocale()[0] or ""))
+        args.lang = "ru" if env_lang.lower().startswith(("ru", "uk")) else "en"
+
+    if args.demo:
+        args.src = os.environ.get("ATLAS_DEMO") or \
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), "demo")
+        if args.out == DEFAULT_OUT:
+            args.out = os.path.abspath("atlas-demo.html")
+        # bundled demo has no meaningful edit-timeline (zip extraction flattens
+        # mtimes to one instant → co-mod noise). Kill temporal so the demo shows
+        # only the honest bridges: shared_ref (ghost) + tag_overlap.
+        args.temporal_cross = False
+
+    if not args.data and not args.src:
+        sys.exit("memory-atlas: no vault found — pass --src DIR (a folder of .md notes), "
+                 "or try --demo. Autodetect looks at ~/.claude/projects/*/memory and $ATLAS_SRC.")
+
+    if args.data:
+        raw = sys.stdin.read() if args.data == "-" else open(args.data, encoding="utf-8").read()
+        data = json.loads(raw)
+        data.setdefault("title", "atlas")
+        data.setdefault("generated", time.strftime("%Y-%m-%d %H:%M"))
+        data.setdefault("version", VERSION)
+    else:
+        nodes, edges, bodies = build_graph(args.src)
+        if not nodes:
+            print(f"warn: 0 nodes in {args.src} — pass --src /path/to/your/vault "
+                  f"(a folder of .md notes)", file=sys.stderr)
+        # browse only sees the wikilink graph (the terminal module predates detectors);
+        # cross-edges go into the atlas graph only
+        browse = to_browse_data(nodes, edges, bodies, time.time())
+        detectors, cross = ([], []) if args.no_detectors else \
+            run_detectors(nodes, edges, bodies, args.src, args)
+        zones_payload = zone_anchors(nodes)
+        # a foreign vault gets its own title = its own localStorage namespace (KEYP),
+        # so config/views of the demo and the real vault don't leak into each other
+        title = "memory-atlas" if zones_payload is ZONES else \
+            (os.path.basename(os.path.abspath(args.src)) or "atlas")
+        data = {
+            "title": title,
+            "version": VERSION,
+            "generated": time.strftime("%Y-%m-%d %H:%M"),
+            "host": platform.node(),
+            "src": args.src,
+            "zones": zones_payload,
+            "heat": {"label": "freshness", "high": "fresh", "low": "stale"},
+            "nodes": nodes,
+            "edges": edges + cross,
+            "detectors": detectors,
+            # pre-rebrand terminal browse module: its own data shape
+            # (deg/out/stats/types/bodies), derived from the graph → ids match for fuse
+            "browse": browse,
+        }
+        if getattr(args, "_vecs_payload", None):
+            data["vecs"] = args._vecs_payload
+        if cross:
+            by_kind = {}
+            for e in cross:
+                by_kind[e["kind"]] = by_kind.get(e["kind"], 0) + 1
+            print("cross: " + " ".join(f"{k}={v}" for k, v in sorted(by_kind.items())))
+
+    render(data, args.out, lang=args.lang)
+    ghosts = sum(1 for n in data["nodes"] if n.get("ghost"))
+    print(f"nodes={len(data['nodes'])} (ghosts={ghosts}) edges={len(data['edges'])}")
+    print(f"out: {args.out}")
+    if not args.no_open:
+        open_file(args.out)
+
+
+def open_file(path):
+    # cross-OS: `open` is macOS-only; an external user's target machine is unknown
+    if sys.platform == "darwin":
+        subprocess.run(["open", path], check=False)
+    elif os.name == "nt":
+        os.startfile(path)  # noqa: E1101  (Windows-only API)
+    else:
+        subprocess.run(["xdg-open", path], check=False)
+
+
+# ---------------------------------------------------------------- self-test
+def run_self_test():
+    import tempfile
+    import unittest
+
+    class T(unittest.TestCase):
+        def setUp(self):
+            self.dir = tempfile.TemporaryDirectory()
+            self.src = self.dir.name
+
+        def tearDown(self):
+            self.dir.cleanup()
+
+        def w(self, rel, text):
+            p = os.path.join(self.src, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(text)
+
+        def graph(self):
+            nodes, edges, _ = build_graph(self.src)
+            return {n["id"]: n for n in nodes}, edges
+
+        def test_frontmatter(self):
+            fm, body = parse_frontmatter(
+                "---\nname: a-note\ndescription: \"hi: there\"\nmetadata:\n  type: project\n---\nbody")
+            self.assertEqual(fm["name"], "a-note")
+            self.assertEqual(fm["description"], "hi: there")
+            self.assertEqual(fm["type"], "project")
+            self.assertEqual(body, "body")
+
+        def test_frontmatter_bom_and_missing(self):
+            fm, _ = parse_frontmatter("﻿---\nname: x\n---\nb")
+            self.assertEqual(fm["name"], "x")
+            fm, body = parse_frontmatter("no fm here")
+            self.assertIsNone(fm["name"])
+            self.assertEqual(body, "no fm here")
+
+        def test_frontmatter_top_level_keys(self):
+            # G2: top-level type/tags (Obsidian/reference-vault) — used to be lost (indented only)
+            fm, _ = parse_frontmatter(
+                "---\nname: n\ntype: reference\ntags: [alpha, beta]\nmetadata:\n  state: superseded\n---\nx")
+            self.assertEqual(fm["type"], "reference")
+            self.assertEqual(fm["tags"], ["alpha", "beta"])
+            self.assertEqual(fm["state"], "superseded")
+
+        def test_frontmatter_yaml_list_tags(self):
+            # G2: Obsidian YAML tag list
+            fm, _ = parse_frontmatter("---\nname: n\ntags:\n  - one\n  - two\n---\nx")
+            self.assertEqual(fm["tags"], ["one", "two"])
+
+        def test_foreign_vault_zones_by_folder(self):
+            # foreign vault (none of our indexes exist): zone = top-level folder, not unindexed.
+            # without this, cross-zone detectors (the whole overlap) go silently dead for Daniel.
+            self.w("cooking/a.md", "---\nname: a\n---\n[[ghostx]]")
+            self.w("chemistry/b.md", "---\nname: b\n---\n[[ghostx]]")
+            self.w("top.md", "---\nname: t\n---\nx")
+            by, _ = self.graph()
+            self.assertEqual(by["a"]["zone"], "cooking")
+            self.assertEqual(by["b"]["zone"], "chemistry")
+            self.assertEqual(by["top"]["zone"], "notes")   # root-level fallback
+            self.assertFalse(by["a"]["orphan"])            # foreign → orphan off
+
+        def test_zone_anchors_foreign_circle(self):
+            # our own corpus → fixed ZONES (same object); foreign → alphabetical circle
+            our = [{"zone": z, "ghost": False} for z in ("light", "work")]
+            self.assertIs(zone_anchors(our), ZONES)
+            foreign = [{"zone": z, "ghost": False} for z in ("chemistry", "cooking")]
+            an = zone_anchors(foreign)
+            self.assertEqual(set(an), {"chemistry", "cooking"})
+            for xy in an.values():
+                self.assertTrue(all(-1 <= v <= 1 for v in xy))
+
+        def test_obsidian_dir_excluded(self):
+            # G7: .obsidian/ is not chewed on
+            self.w(".obsidian/workspace.md", "junk")
+            self.w("real.md", "x")
+            by, _ = self.graph()
+            self.assertIn("real", by)
+            self.assertNotIn("workspace", by)
+
+        def test_browse_mtime_real(self):
+            # G10: browse nodes carry a real mtime (used to be hardcoded to 0)
+            self.w("a.md", "x")
+            nodes, edges, bodies = build_graph(self.src)
+            br = to_browse_data(nodes, edges, bodies, time.time())
+            m = {n["id"]: n for n in br["nodes"]}
+            self.assertGreater(m["a"]["mtime"], 0)
+
+        def test_wikilink_alias_and_pipe(self):
+            self.assertEqual(WIKILINK_RE.findall("[[a-b]] [[c|alias text]] [[d#sec]]"),
+                             ["a-b", "c"])
+
+        def test_zones_and_membership(self):
+            self.w("MEMORY.md", "- [A](alpha.md)")
+            self.w("MEMORY-work.md", "- [[beta]]")
+            self.w("FEEDBACK_INDEX.md", "- [fb](delta.md)")
+            self.w("alpha.md", "x")
+            self.w("beta.md", "x")
+            self.w("gamma.md", "x")
+            self.w("delta.md", "x")
+            self.w("glados/core.md", "x")
+            by, _ = self.graph()
+            self.assertEqual(by["alpha"]["zone"], "light")
+            self.assertEqual(by["beta"]["zone"], "work")
+            self.assertEqual(by["gamma"]["zone"], "unindexed")
+            self.assertEqual(by["delta"]["zone"], "feedback")   # recall surface ≠ unindexed
+            self.assertEqual(by["core"]["zone"], "glados")
+
+        def test_light_index_wins_over_feedback(self):
+            self.w("MEMORY.md", "- [a](a.md)")
+            self.w("FEEDBACK_INDEX.md", "- [a](a.md)")
+            self.w("a.md", "x")
+            by, _ = self.graph()
+            self.assertEqual(by["a"]["zone"], "light")
+
+        def test_edges_ghosts_dedup(self):
+            self.w("a.md", "---\nname: a\n---\n[[b]] [[b]] [[missing-note]] [x](b.md) [[a]]")
+            self.w("b.md", "link back [[a]]")
+            by, edges = self.graph()
+            self.assertTrue(by["missing_note"]["ghost"])
+            kinds = {(e["source"], e["target"]) for e in edges}
+            self.assertIn(("a", "b"), kinds)
+            self.assertIn(("b", "a"), kinds)
+            self.assertIn(("a", "missing_note"), kinds)
+            self.assertNotIn(("a", "a"), kinds)          # self-link skipped
+            self.assertEqual(len(edges), len(kinds))     # deduped
+
+        def test_name_alias_resolves(self):
+            self.w("file-one.md", "---\nname: pretty-name\n---\nx")
+            self.w("two.md", "see [[pretty-name]]")
+            by, edges = self.graph()
+            self.assertIn(("two", "file_one"), {(e["source"], e["target"]) for e in edges})
+            self.assertFalse(any(n["ghost"] for n in by.values()))
+
+        def test_index_files_not_nodes(self):
+            self.w("MEMORY.md", "- [a](a.md)")
+            self.w("a.md", "x")
+            by, _ = self.graph()
+            self.assertNotIn("memory", by)
+
+        def test_stem_collision_suffixed(self):
+            self.w("a-b.md", "x")
+            self.w("a_b.md", "y")
+            by, _ = self.graph()
+            self.assertIn("a_b", by)
+            self.assertIn("a_b~2", by)
+
+        def test_heat_range(self):
+            self.w("a.md", "x")
+            by, _ = self.graph()
+            self.assertTrue(0 <= by["a"]["heat"] <= 1)
+
+        def test_bodies_returned(self):
+            self.w("a.md", "---\nname: a\n---\nbody text [[b]]")
+            self.w("b.md", "x")
+            nodes, _, bodies = build_graph(self.src)
+            self.assertIn("body text", bodies["a"])
+            self.assertNotIn("missing", bodies)   # ghosts have no body
+
+        def test_browse_flags(self):
+            # light/heavy are independent; a note in both indexes = both True, not orphan
+            self.w("MEMORY.md", "- [a](a.md)")
+            self.w("MEMORY-work.md", "- [a](a.md)\n- [[b]]")
+            self.w("a.md", "x")            # in both indexes
+            self.w("b.md", "x")            # heavy only
+            self.w("c.md", "x")            # in neither = orphan
+            self.w("glados/g.md", "x")     # subdir → not orphan
+            by, _ = self.graph()
+            self.assertTrue(by["a"]["light"] and by["a"]["heavy"] and not by["a"]["orphan"])
+            self.assertTrue(by["b"]["heavy"] and not by["b"]["light"])
+            self.assertTrue(by["c"]["orphan"])
+            self.assertFalse(by["g"]["orphan"])
+
+        def test_orphan_respects_feedback_index(self):
+            # an fb-indexed note = indexed (recall surface), NOT orphan
+            self.w("FEEDBACK_INDEX.md", "- [fb](fb-note.md)")
+            self.w("fb-note.md", "x")
+            self.w("stray.md", "x")
+            by, _ = self.graph()
+            self.assertEqual(by["fb_note"]["zone"], "feedback")
+            self.assertFalse(by["fb_note"]["orphan"])
+            self.assertTrue(by["stray"]["orphan"])
+
+        def test_index_refs_no_ghost(self):
+            # [[MEMORY-work]] / [x](MEMORY.md) — not ghost debt and not an edge
+            self.w("a.md", "see [[MEMORY-work]] and [idx](MEMORY.md) and [[real-ghost]]")
+            by, edges = self.graph()
+            self.assertNotIn("memory_work", by)
+            self.assertNotIn("memory", by)
+            self.assertTrue(by["real_ghost"]["ghost"])
+            self.assertEqual(len(edges), 1)
+
+        def test_http_mdlink_excluded(self):
+            self.w("a.md", "[ext](https://x.com/y.md) [[real]]")
+            by, edges = self.graph()
+            self.assertEqual(len(edges), 1)
+            self.assertTrue(by["real"]["ghost"])
+
+        # ---- cross-zone detectors (port of graph-lab; hermetic, no Ollama/git) ----
+        def _two_zone_nodes(self):
+            return [
+                {"id": "a", "zone": "light", "type": "project", "ghost": False,
+                 "tags": ["xx", "yy"], "part_of": "", "tier": "", "mtime": 1000, "path": "a.md"},
+                {"id": "b", "zone": "work", "type": "project", "ghost": False,
+                 "tags": ["xx", "yy"], "part_of": "", "tier": "", "mtime": 1500, "path": "b.md"},
+                {"id": "c", "zone": "work", "type": "user", "ghost": False,
+                 "tags": [], "part_of": "", "tier": "", "mtime": 999000, "path": "c.md"},
+                {"id": "g", "zone": "light", "type": "ghost", "ghost": True},
+            ]
+
+        def test_detect_shared_ref(self):
+            ns = self._two_zone_nodes()
+            es = [{"source": "a", "target": "g", "kind": "wiki"},
+                  {"source": "b", "target": "g", "kind": "wiki"},
+                  {"source": "c", "target": "g", "kind": "wiki"}]
+            out = detect_shared_ref(ns, es)
+            pairs = {(e["source"], e["target"]) for e in out}
+            self.assertIn(("a", "b"), pairs)       # different zones
+            self.assertIn(("a", "c"), pairs)
+            self.assertNotIn(("b", "c"), pairs)    # same zone — not cross
+
+        def test_detect_tag_overlap(self):
+            out = detect_tag_overlap(self._two_zone_nodes())
+            self.assertEqual([(e["source"], e["target"]) for e in out], [("a", "b")])
+            self.assertEqual(out[0]["score"], 1.0)
+
+        def test_detect_temporal(self):
+            out = detect_temporal(self._two_zone_nodes(), window_s=86400)
+            pairs = {tuple(sorted((e["source"], e["target"]))) for e in out}
+            self.assertIn(("a", "b"), pairs)           # 500s ≤ window
+            self.assertNotIn(("a", "c"), pairs)        # 998000s > window
+
+        def test_detect_semantic_stub_vecs(self):
+            vecs = {"a": [1.0, 0.0], "b": [0.9, 0.1], "c": [0.0, 1.0]}
+            out = detect_semantic(self._two_zone_nodes(), vecs, threshold=0.75, top_k=3)
+            pairs = {tuple(sorted((e["source"], e["target"]))) for e in out}
+            self.assertIn(("a", "b"), pairs)
+            self.assertNotIn(("a", "c"), pairs)        # orthogonal
+
+        def test_detect_structural_optin_shape(self):
+            ns = self._two_zone_nodes() + [
+                {"id": "a2", "zone": "light", "type": "t", "ghost": False},
+                {"id": "a3", "zone": "light", "type": "t", "ghost": False},
+                {"id": "b2", "zone": "work", "type": "t", "ghost": False},
+                {"id": "b3", "zone": "work", "type": "t", "ghost": False}]
+            es = [{"source": "a", "target": "a2"}, {"source": "a2", "target": "a3"},
+                  {"source": "b", "target": "b2"}, {"source": "b2", "target": "b3"}]
+            for n in ns:
+                if n["id"] in ("a", "b"):
+                    n["type"] = "t"
+            out = detect_structural(ns, es)
+            self.assertTrue(any(e["kind"] == "structural_homology" for e in out))
+            self.assertTrue(all(e["position"] in (0, 1, 2) for e in out))
+
+        def test_detect_session_no_git_silent(self):
+            self.assertEqual(detect_session(self._two_zone_nodes(), self.src), [])
+
+        def test_search_vecs_survive_no_semantic_cross(self):
+            # --search-vecs --no-semantic-cross: vecs+layout survive, the detector stays silent
+            saved = globals()["fetch_embeddings"]
+            globals()["fetch_embeddings"] = lambda texts, **kw: {
+                "a": [1.0, 0.0], "b": [0.9, 0.1], "c": [0.0, 1.0]}
+            try:
+                ns = self._two_zone_nodes()
+                for n in ns:   # the texts path requires label/desc; the shared fixture doesn't carry them
+                    n.setdefault("label", n["id"])
+                    n.setdefault("desc", "")
+                args = argparse.Namespace(
+                    semantic_cross=False, search_vecs=True,
+                    semantic_threshold=0.75, semantic_top_k=3,
+                    tag_cross=False, temporal_cross=False, session_cross=False,
+                    structural_cross=False)
+                ran, added = run_detectors(ns, [], {}, self.src, args)
+                self.assertNotIn("semantic", ran)
+                self.assertFalse(any(e["kind"] == "semantic" for e in added))
+                self.assertEqual(getattr(args, "_vecs_payload")["ids"], ["a", "b", "c"])
+                self.assertTrue(all("sx" in n for n in ns if not n["ghost"]))
+            finally:
+                globals()["fetch_embeddings"] = saved
+
+        def test_semantic_layout_separates_clusters(self):
+            # two clusters in 4D: within-cluster distances < between-cluster distances
+            vecs = {"a1": [1, 0.9, 0, 0], "a2": [0.9, 1, 0, 0],
+                    "b1": [0, 0, 1, 0.9], "b2": [0, 0, 0.9, 1]}
+            pos = semantic_layout(vecs)
+            self.assertEqual(set(pos), set(vecs))
+            import math
+            d = lambda p, q: math.dist(pos[p], pos[q])
+            self.assertLess(d("a1", "a2"), d("a1", "b1"))
+            self.assertLess(d("b1", "b2"), d("b2", "a2"))
+            self.assertEqual(pos, semantic_layout(vecs))   # deterministic
+            self.assertTrue(all(abs(v) <= 1 for p in pos.values() for v in p))
+
+        def test_semantic_layout_too_few(self):
+            self.assertEqual(semantic_layout({"a": [1, 0]}), {})
+
+        def test_quantize_vecs_roundtrip(self):
+            q = quantize_vecs({"a": [0.5, -1.0], "b": [2.0, 0.0]})
+            self.assertEqual(q["ids"], ["a", "b"])
+            self.assertEqual(q["dim"], 2)
+            self.assertEqual(q["q"][0], [64, -127])    # 0.5/1.0*127 rounded
+
+        def test_mtime_emitted(self):
+            self.w("a.md", "x")
+            by, _ = self.graph()
+            self.assertGreater(by["a"]["mtime"], 0)
+
+        def test_render_script_safe(self):
+            out = os.path.join(self.src, "o.html")
+            data = {"title": "t", "zones": {}, "nodes": [
+                {"id": "a", "label": "a", "desc": "evil </script><b>", "type": "?",
+                 "zone": "z", "path": "", "bytes": 0, "age_days": 0, "heat": 1, "ghost": False}],
+                "edges": []}
+            html = render(data, out, d3js="/*d3*/", tpl="<script>/*__D3__*/</script><script>const D=\"__DATA__\";</script>")
+            self.assertNotIn("</script><b>", html)
+            self.assertIn("<\\/script>", html)
+
+        def test_full_render_from_template(self):
+            self.w("a.md", "---\nname: a\n---\n[[b]]")
+            self.w("b.md", "x")
+            nodes, edges, _ = build_graph(self.src)
+            out = os.path.join(self.src, "atlas.html")
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            html = render({"title": "t", "zones": ZONES, "nodes": nodes, "edges": edges,
+                           "generated": "now", "src": self.src,
+                           "heat": {"label": "freshness", "high": "fresh", "low": "stale"}},
+                          out, d3js="/*d3-stub*/", tpl=tpl)
+            self.assertNotIn("\"__DATA__\"", html)
+            self.assertNotIn("/*__D3__*/", html)
+
+        def test_i18n_lang_placeholder(self):
+            # --lang bakes in the starting language; the placeholder must not survive render
+            data = {"title": "t", "zones": {}, "nodes": [], "edges": []}
+            tpl = "<script>/*__D3__*/</script><script>const L='__LANG__';const D=\"__DATA__\";</script>"
+            out = os.path.join(self.src, "l.html")
+            self.assertIn("const L='en'", render(data, out, d3js="/*d3*/", tpl=tpl, lang="en"))
+            self.assertIn("const L='ru'", render(data, out, d3js="/*d3*/", tpl=tpl))
+
+        def test_i18n_dict_covers_static_markup(self):
+            # drift-guard: every Cyrillic string in the static markup
+            # (data-hint/title/placeholder + text nodes) must have an EN translation,
+            # otherwise EN mode shows an RU hole. New markup string = new pair in i18nEN.
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            m = re.search(r'<script type="application/json" id="i18nEN">(.*?)</script>', tpl, re.S)
+            self.assertIsNotNone(m, "i18nEN dict block missing")
+            en = json.loads(m.group(1).replace("<\\/", "</"))
+            cyr = re.compile(r"[А-Яа-яЁё]")
+            markup = tpl[:tpl.index('<script type="application/json" id="i18nEN">')]
+            markup = re.sub(r"<style>.*?</style>", "", markup, flags=re.S)
+            norm = lambda s: re.sub(r"\s+", " ", s.strip())  # the client-side walker normalizes the same way
+            missing = set()
+            for attr, val in re.findall(r'(data-hint|title|placeholder)="([^"]*)"', markup):
+                if cyr.search(val) and norm(val) not in en:
+                    missing.add(norm(val))
+            for txt in re.findall(r">([^<>]+)<", markup, re.S):
+                if cyr.search(txt) and norm(txt) and norm(txt) not in en:
+                    missing.add(norm(txt))
+            self.assertFalse(missing, f"untranslated static markup: {sorted(missing)[:10]}")
+
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(T)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(0 if result.wasSuccessful() else 1)
+
+
+if __name__ == "__main__":
+    main()
