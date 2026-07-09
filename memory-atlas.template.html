@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.6.1"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.6.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -3042,7 +3042,7 @@ function paintFrame(g, opts) {
         g.fillStyle = grad;
         g.strokeStyle = hexA(zc, muted ? 0.22 : 0.34);
         g.lineWidth = 1.2/transform.k;
-        // PERF (v2.6.1): NO canvas shadowBlur here. Its GPU-raster cost scales with the petal's
+        // PERF: NO canvas shadowBlur here. Its GPU-raster cost scales with the petal's
         // on-screen area — the shadow-fallback readback grows with the shape's device-pixel bbox,
         // so zooming in tanked fps (invisible to headless software raster, which is why the first
         // bench missed it — measured k=1 only). Flat gradient fill + stroke; the zone reads via
