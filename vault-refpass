@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""vault-refpass — curated trailing-ref proposals for vault notes (Ф5 of the
+unified-vault plan). PROPOSAL-ONLY by design: the tool writes batch files, the
+USER reviews and triggers apply; apply is additive and never deletes anything.
+
+Sits on the atlas pipeline like the other external modules (the core knows
+nothing about it):
+
+    memory-atlas --src ... --dump-data - | vault-refpass propose --batch-size 5
+
+Candidate refs per note = cross-detector edges (semantic / shared_ref /
+session_co_occurrence / tag_overlap) MINUS links the note already makes in its
+body (wikilinks or md-links, any direction the author wrote). Ghosts, index
+files and same-note loops are excluded. Ranking: per-kind weight × edge score;
+top --max-refs survive the floor.
+
+Batch order = notes that would gain the most: rich candidates, few existing
+outgoing links (the "поднятие участков" sign — well-connected notes need no
+lift). ≤ batch-size notes per file.
+
+Target format = the atrium convention (reference_vault_format):
+
+    Родственное: [[a]] · [[b]] · [[c]]
+
+apply BATCH.md: for every note block still carrying `- [ ]` unchecked refs the
+user removed — those are skipped; checked/untouched refs are appended as ONE
+trailing «Родственное:» line (or merged into an existing one, deduped). A note
+whose file changed since the proposal (mtime guard) is skipped with a warning.
+The user commits per batch — the tool never touches git.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+
+WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
+MDLINK_RE = re.compile(r"\]\(([^)#\s]+?\.md)(?:#[^)]*)?\)")
+ROD_RE = re.compile(r"^Родственное:\s*(.*)$", re.M)
+
+KIND_W = {"semantic": 1.0, "shared_ref": 0.9,
+          "session_co_occurrence": 0.7, "tag_overlap": 0.6}
+FLOOR = 0.80            # weight × score must clear this (semantic-каша ниже — шум для куратора)
+
+
+def norm(key):
+    k = key.strip().lower().replace("-", "_")
+    return k[:-3] if k.endswith(".md") else k
+
+
+def note_path(n, roots):
+    rdir = roots.get(n.get("root") or next(iter(roots), ""), "")
+    if rdir and n.get("path"):
+        return os.path.abspath(os.path.join(rdir, n["path"]))
+    return None
+
+
+def existing_refs(body):
+    out = {norm(t) for t in WIKILINK_RE.findall(body)}
+    out |= {norm(os.path.basename(t)) for t in MDLINK_RE.findall(body)}
+    return out
+
+
+def propose(data, batch_size, max_refs, out_dir, top_notes=50):
+    roots = data.get("roots") or {}
+    byid = {n["id"]: n for n in data.get("nodes", [])}
+    cand = {}
+    for e in data.get("edges", []):
+        w = KIND_W.get(e.get("kind"))
+        if w is None:
+            continue
+        score = w * float(e.get("score", e.get("w", 1.0)) or 1.0)
+        if score < FLOOR:
+            continue
+        for a, b in ((e["source"], e["target"]), (e["target"], e["source"])):
+            na, nb = byid.get(a), byid.get(b)
+            if not na or not nb or na.get("ghost") or nb.get("ghost"):
+                continue
+            best = cand.setdefault(a, {})
+            if score > best.get(b, (0, ""))[0]:
+                best[b] = (score, e.get("kind"))
+
+    proposals = []
+    for nid, refs in cand.items():
+        n = byid[nid]
+        p = note_path(n, roots)
+        if not p or not os.path.exists(p):
+            continue
+        try:
+            with open(p, encoding="utf-8") as f:
+                body = f.read()
+        except OSError:
+            continue
+        have = existing_refs(body) | {nid}
+        picks = [(rid, sc, kind) for rid, (sc, kind) in refs.items()
+                 if norm(rid) not in have]
+        picks.sort(key=lambda x: -x[1])
+        picks = picks[:max_refs]
+        if not picks:
+            continue
+        out_deg = len(existing_refs(body))
+        gain = sum(sc for _, sc, _ in picks) / (1 + out_deg)   # lift under-linked notes
+        proposals.append((gain, nid, p, int(os.stat(p).st_mtime), picks))
+
+    proposals.sort(key=lambda x: -x[0])
+    dropped = max(0, len(proposals) - top_notes)
+    if dropped:   # no silent caps: the tail exists, it just isn't этот прогон
+        print(f"refpass: top {top_notes} of {len(proposals)} notes taken "
+              f"({dropped} dropped — rerun after applying, the pool re-ranks)",
+              file=sys.stderr)
+    proposals = proposals[:top_notes]
+    os.makedirs(out_dir, exist_ok=True)
+    written = []
+    for bi in range(0, len(proposals), batch_size):
+        chunk = proposals[bi:bi + batch_size]
+        fn = os.path.join(out_dir, f"refpass-batch-{bi // batch_size + 1:03d}.md")
+        with open(fn, "w", encoding="utf-8") as f:
+            f.write("# vault-refpass proposal — review, снеси лишнее, потом "
+                    "`vault-refpass apply <этот файл>`\n"
+                    "# строка с `- [ ]` = кандидат; удали строку — реф не встанет.\n\n")
+            for gain, nid, p, mt, picks in chunk:
+                f.write(f"## {nid}\n<!-- path: {p} mtime: {mt} -->\n")
+                for rid, sc, kind in picks:
+                    f.write(f"- [ ] [[{rid}]]  <!-- {kind} {sc:.2f} -->\n")
+                f.write("\n")
+        written.append((fn, len(chunk)))
+    return written, len(proposals)
+
+
+def apply_batch(batch_file):
+    txt = open(batch_file, encoding="utf-8").read()
+    blocks = re.split(r"^## ", txt, flags=re.M)[1:]
+    done = skipped = 0
+    for b in blocks:
+        nid = b.splitlines()[0].strip()
+        m = re.search(r"<!-- path: (.*?) mtime: (\d+) -->", b)
+        refs = re.findall(r"^- \[[ xX]\] \[\[([^\]]+)\]\]", b, re.M)
+        if not m or not refs:
+            continue
+        p, mt = m.group(1), int(m.group(2))
+        if not os.path.exists(p):
+            print(f"skip {nid}: файла нет ({p})", file=sys.stderr)
+            skipped += 1
+            continue
+        if int(os.stat(p).st_mtime) != mt:
+            print(f"skip {nid}: файл менялся после proposal — перегенерируй батч",
+                  file=sys.stderr)
+            skipped += 1
+            continue
+        body = open(p, encoding="utf-8").read()
+        have = existing_refs(body)
+        add = [r for r in refs if norm(r) not in have]
+        if not add:
+            skipped += 1
+            continue
+        line = " · ".join(f"[[{r}]]" for r in add)
+        rod = ROD_RE.search(body)
+        if rod:   # merge into the existing trailing line, additive
+            body = body[:rod.start(1)] + rod.group(1).rstrip() + " · " + line \
+                + body[rod.end(1):]
+        else:
+            body = body.rstrip("\n") + f"\n\nРодственное: {line}\n"
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(body)
+        done += 1
+        print(f"ok {nid}: +{len(add)} реф.", file=sys.stderr)
+    print(f"refpass apply: notes={done} skipped={skipped} — коммить руками (per-batch)",
+          file=sys.stderr)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=False)
+    p = sub.add_parser("propose")
+    p.add_argument("--in", dest="inp", default="-", help="DATA JSON (file or '-')")
+    p.add_argument("--batch-size", type=int, default=5)
+    p.add_argument("--max-refs", type=int, default=4)
+    p.add_argument("--out-dir", default=os.path.expanduser("~/.cache/atlas/refpass"))
+    p.add_argument("--top-notes", type=int, default=50,
+                   help="кап нот на прогон — куратор живой человек")
+    a = sub.add_parser("apply")
+    a.add_argument("batch")
+    ap.add_argument("--self-test", action="store_true")
+    args = ap.parse_args()
+
+    if args.self_test:
+        run_self_test()
+        return
+    if args.cmd == "apply":
+        apply_batch(args.batch)
+        return
+    if args.cmd != "propose":
+        ap.error("нужен сабкоманд: propose | apply (или --self-test)")
+    raw = sys.stdin.read() if args.inp == "-" else open(args.inp, encoding="utf-8").read()
+    data = json.loads(raw)
+    written, total = propose(data, args.batch_size, args.max_refs, args.out_dir,
+                             args.top_notes)
+    print(f"refpass: {total} notes with candidates → {len(written)} batch files "
+          f"in {args.out_dir}", file=sys.stderr)
+    for fn, cnt in written[:5]:
+        print(f"  {fn}  ({cnt} notes)", file=sys.stderr)
+
+
+# ------------------------------------------------------------------ self-test
+def run_self_test():
+    import tempfile
+    import unittest
+
+    class T(unittest.TestCase):
+        def vault(self, d):
+            os.makedirs(os.path.join(d, "v"), exist_ok=True)
+            def w(name, body):
+                p = os.path.join(d, "v", name)
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(body)
+                return p
+            return w
+
+        def data(self, d, edges):
+            mk = lambda i, p: {"id": i, "ghost": False, "root": "v", "path": p}
+            return {"roots": {"v": os.path.join(d, "v")},
+                    "nodes": [mk("alpha", "alpha.md"), mk("beta", "beta.md"),
+                              mk("gamma", "gamma.md"),
+                              {"id": "ghosty", "ghost": True}],
+                    "edges": edges}
+
+        def test_propose_skips_existing_and_ghosts(self):
+            with tempfile.TemporaryDirectory() as d:
+                w = self.vault(d)
+                w("alpha.md", "линкует [[beta]] уже")
+                w("beta.md", "x"); w("gamma.md", "y")
+                data = self.data(d, [
+                    {"source": "alpha", "target": "beta", "kind": "semantic", "score": 0.9},
+                    {"source": "alpha", "target": "gamma", "kind": "semantic", "score": 0.9},
+                    {"source": "alpha", "target": "ghosty", "kind": "semantic", "score": 0.99}])
+                out = os.path.join(d, "out")
+                written, total = propose(data, 5, 4, out)
+                body = open(written[0][0], encoding="utf-8").read()
+                self.assertIn("[[gamma]]", body)        # new candidate proposed
+                self.assertNotIn("- [ ] [[beta]]", body)  # already linked — not re-proposed
+                self.assertNotIn("ghosty", body)          # ghosts never proposed
+
+        def test_apply_additive_idempotent_mtime_guard(self):
+            with tempfile.TemporaryDirectory() as d:
+                w = self.vault(d)
+                p = w("alpha.md", "тело")
+                w("gamma.md", "y"); w("beta.md", "x")
+                data = self.data(d, [
+                    {"source": "alpha", "target": "gamma", "kind": "semantic", "score": 0.9}])
+                out = os.path.join(d, "out")
+                written, _ = propose(data, 5, 4, out)
+                apply_batch(written[0][0])
+                body = open(p, encoding="utf-8").read()
+                self.assertIn("Родственное: [[gamma]]", body)
+                # re-apply: mtime changed by the first apply → guarded, no dup
+                apply_batch(written[0][0])
+                self.assertEqual(open(p, encoding="utf-8").read().count("[[gamma]]"), 1)
+
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(T)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(0 if result.wasSuccessful() else 1)
+
+
+if __name__ == "__main__":
+    main()
