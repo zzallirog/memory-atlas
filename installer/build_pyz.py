@@ -38,7 +38,8 @@ def main():
 
         os.makedirs(os.path.join(ROOT, "dist"), exist_ok=True)
         out = os.path.join(ROOT, "dist", "memory-atlas.pyz")
-        zipapp.create_archive(stage, out, interpreter="/usr/bin/env python3")
+        zipapp.create_archive(stage, out, interpreter="/usr/bin/env python3",
+                              compressed=True)
         # the interpreter line only matters for direct ./execution on unix;
         # on Windows you run `py memory-atlas.pyz` and it is ignored
         if os.name != "nt":
