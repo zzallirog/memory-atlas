@@ -3887,6 +3887,13 @@ if (zk > 0) {
   d3.select(canvas).call(zoom.transform, d3.zoomIdentity.translate(W/2, H/2).scale(zk).translate(-cx, -cy));
 }
 renderLens();   // the pill sees filters from ?q= / ?state=
+// deep-link ?tab=browse|dash (gallery / screenshot repro); with ?node= browse opens that note
+const bootTab = params.get('tab');
+if (bootTab === 'dash') showTab('dash');
+else if (bootTab === 'browse') {
+  if (bootNode && window.openInBrowse) window.openInBrowse(bootNode);
+  else showTab('browse');
+}
 requestDraw();
 document.body.dataset.ready = '1';   // smoke-test marker: the script reached the end without exceptions
 </script>
