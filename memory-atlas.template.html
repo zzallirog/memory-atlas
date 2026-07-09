@@ -3042,9 +3042,12 @@ function paintFrame(g, opts) {
         g.fillStyle = grad;
         g.strokeStyle = hexA(zc, muted ? 0.22 : 0.34);
         g.lineWidth = 1.2/transform.k;
-        if (!muted) { g.save(); g.shadowBlur = 16; g.shadowColor = hexA(zc, 0.45); }
+        // PERF: NO canvas shadowBlur here. Its GPU-raster cost scales with the petal's
+        // on-screen area — the shadow-fallback readback grows with the shape's device-pixel bbox,
+        // so zooming in tanked fps (invisible to headless software raster, which is why the first
+        // bench missed it — measured k=1 only). Flat gradient fill + stroke; the zone reads via
+        // its tint + rim. Rim glow dropped by design (user-approved on the live surface).
         g.fill(); g.stroke();
-        if (!muted) g.restore();
       } else {
         // ring petal: a hull would chord straight across the center — draw the zone as an
         // annular band along its arc instead (same gradient language as the petals)
