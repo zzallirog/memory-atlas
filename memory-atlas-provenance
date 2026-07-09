@@ -10,23 +10,32 @@ Two sources, both local:
 
 1. GIT HISTORY of every root in DATA.roots (skipped per-root if not a repo):
    `git log -M --find-renames --diff-filter=RADC --name-status`.
+   All events are ROOT-QUALIFIED — a stem in root A never resolves onto a node
+   of root B — and live targets resolve via (root, path-stem) → node, never by
+   re-deriving ids from paths (the generator qualifies colliding ids).
    - rename old→new where the stems differ → edge kind `moved_from`
      (ghost-of-old-name → living node) when somebody still links the old name;
      otherwise recorded on the living node as `prov.renamed_from`.
+     Chains a→b→c collapse to a→c: `renamed_to` always points at a LIVE node.
    - delete with no later re-add → a ghost of that stem gets
      `prov = {gone: date}` — the link points at a file that USED to exist
      (true forgottenness, vs a note that was never written).
+   - rename INTO an excluded dir (archive/_archive/… — mirror of the generator's
+     EXCLUDE_DIRS) = the same exit from the graph, flagged `prov.archived` —
+     archive-moves are this vault's dominant movement pattern.
    - delete X + add Y in the SAME commit → edge kind `became` (merge/split
      heuristic, confidence "same-commit"; only when X's ghost exists).
 
 2. SESSION TOUCHES via weighted-compact, natively (library import, no MCP):
    wc's `recap._load` parses each `~/.claude/projects/*/*.jsonl`; we walk
-   tool_use blocks (Read / Edit / Write / MultiEdit / NotebookEdit) whose
-   file_path lands under a root → per-note `usage` (touch count),
+   tool_use blocks (Read / Edit / Write / MultiEdit / NotebookEdit) with an
+   .md file_path → cached UNFILTERED as {abs_path: count}; apply() maps the
+   paths onto the current vault's nodes → per-note `usage` (touch count),
    `last_touch_days`. Read counts too — an edits-only signal would brand
    every read-daily-never-edited note as forgotten (wrong sign).
    Cached per session file by (mtime, size) — the first full pass is the
-   only expensive one.
+   only expensive one; one cache serves any roots combination.
+   `last` is the session FILE's mtime (upper bound, off by ≤ session length).
 
 forgotten ∈ [0,1] per real node (ghosts excluded):
     recency    = exp(-days_since_last_touch / tau)      # tau default 45d
@@ -40,7 +49,7 @@ Emits (DATA CONTRACT v2.9 additions, template consumes them in the render pass):
     data.node_metrics = ["forgotten"]                  # colorMode candidates
     data.edge_styles  = {moved_from: {...}, became: {...}}
     node.forgotten / node.usage / node.last_touch_days / node.prov
-    ghost.prov = {renamed_to?, gone?, date}
+    ghost.prov = {renamed_to?, gone?, archived?, date}
 """
 import argparse
 import glob
@@ -57,6 +66,14 @@ SESS_GLOB = os.path.expanduser("~/.claude/projects/*/*.jsonl")
 CACHE = os.path.join(os.path.expanduser(os.environ.get("ATLAS_HOME", "~/.mac-claw/atlas")),
                      "provenance-cache.json")
 TOUCH_TOOLS = {"Read", "Edit", "Write", "MultiEdit", "NotebookEdit"}
+# mirror of the generator's EXCLUDE_DIRS scan rule: a rename INTO one of these is an
+# exit from the graph (archive-move = the vault's dominant movement pattern), not a rename
+EXCLUDED_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
+                 ".obsidian", ".trash", "node_modules"}
+
+
+def in_excluded(path):
+    return any(part in EXCLUDED_DIRS for part in path.split("/")[:-1])
 
 # the generator's id discipline (norm + stem) — must match memory-atlas
 def norm(key):
@@ -99,50 +116,103 @@ def git_events(root_dir):
 
 
 def extract_git_prov(roots):
-    """→ renames [(ts, old_stem, new_stem)], gone {stem: ts}, became [(ts, old_stem, new_stem)].
-    Only .md files; 'gone' = deleted and never re-added later (list is newest→oldest,
-    so the FIRST verdict per stem wins and a later scan can't resurrect it)."""
-    renames, became, gone, alive = [], [], {}, set()
-    for _name, rdir in roots.items():
+    """→ renames [(ts, root, old_stem, new_stem)], gone {(root, stem): ts},
+    became [(ts, root, old_stem, new_stem)]. Only .md files; 'gone' = deleted and
+    never re-added later (list is newest→oldest, so the FIRST verdict per stem wins
+    and a later scan can't resurrect it). Everything is root-qualified — stems from
+    different roots must never resolve into each other's vault."""
+    renames, became, gone = [], [], {}
+    for name, rdir in roots.items():
+        alive = set()   # per-root: an add in root A must not resurrect a delete in root B
         for ts, changes in git_events(rdir):   # newest → oldest
-            adds = [p for st, p, _ in changes if st in ("A", "C") and p.endswith(".md")]
+            adds = [p for st, p, _ in changes
+                    if st in ("A", "C") and p.endswith(".md") and not in_excluded(p)]
             for st, p, p2 in changes:
                 if not p.endswith(".md"):
                     continue
                 if st == "R" and p2:
+                    src_ex, dst_ex = in_excluded(p), in_excluded(p2)
+                    if dst_ex:
+                        # exit from the graph: archive-move (the vault's dominant
+                        # movement pattern) counts as gone, kind "archived"
+                        s = stem_of(p)
+                        if not src_ex and s not in alive and (name, s) not in gone:
+                            gone[(name, s)] = (ts, "archived")
+                        continue
                     so, sn = stem_of(p), stem_of(p2)
-                    if so != sn:
-                        renames.append((ts, so, sn))
-                    alive.add(sn)
+                    if not src_ex and so != sn:
+                        renames.append((ts, name, so, sn))
+                    alive.add(sn)   # unarchive (src_ex) also lands the stem back alive
                 elif st in ("A", "C"):
-                    alive.add(stem_of(p))
+                    if not in_excluded(p):
+                        alive.add(stem_of(p))
                 elif st == "D":
+                    if in_excluded(p):
+                        continue
                     s = stem_of(p)
-                    if s not in alive and s not in gone:
-                        gone[s] = ts
-                        # same-commit delete+add → became-candidate (merge/split)
-                        for ap in adds:
-                            if stem_of(ap) != s:
-                                became.append((ts, s, stem_of(ap)))
+                    if s not in alive and (name, s) not in gone:
+                        gone[(name, s)] = (ts, "deleted")
+                        # same-commit delete+add → became-candidate (merge/split).
+                        # Only in SMALL commits: a real merge/split touches a handful of
+                        # files; a mass reorganization (200 adds) would cartesian-explode
+                        # (live case: 4 deletes × 223 adds = 892 false edges)
+                        if len(adds) <= 3:
+                            for ap in adds:
+                                if stem_of(ap) != s:
+                                    became.append((ts, name, s, stem_of(ap)))
     return renames, gone, became
+
+
+def collapse_renames(renames):
+    """chain a→b→c collapses to a→c: {(root, old): (ts, final_stem)}.
+    The list is newest→oldest, so the FIRST rename seen per (root, old) is the
+    latest one; following the chain lands on the final (live) stem."""
+    latest = {}
+    for ts, root, old, new in renames:          # newest first — first verdict wins
+        latest.setdefault((root, old), (ts, new))
+    out = {}
+    for (root, old), (ts, new) in latest.items():
+        seen = {old}
+        cur_ts, cur = ts, new
+        # follow a hop only FORWARD in time (>=: scripted moves land in one second) —
+        # stem reuse (t1: b→c, later t2: a→b) must not chain a through b's OLDER rename
+        while (root, cur) in latest and cur not in seen and latest[(root, cur)][0] >= cur_ts:
+            seen.add(cur)
+            cur_ts, cur = latest[(root, cur)]
+        out[(root, old)] = (ts, cur)
+    return out
 
 
 # --------------------------------------------------------- session touches (wc)
 def load_wc():
     sys.path.insert(0, WC_DIR)
-    from weighted_compact import recap   # stdlib-only module — no deps needed
+    try:
+        from weighted_compact import recap   # stdlib-only module — no deps needed
+    except ImportError:
+        # host without ~/weighted-compact: fresh session parses are OFF; touches already
+        # in the cache still apply, everything else falls back to file mtime
+        print(f"provenance: weighted_compact not found in {WC_DIR} — "
+              "fresh session parses off (cached touches still used, mtime fallback "
+              "otherwise); set WC_DIR or use --no-usage to silence",
+              file=sys.stderr)
+        return None
     return recap
 
 
-def session_touches(roots, sessions_glob, cache_path):
-    """{stem: {"n": touches, "last": ts}} for files under any root.
-    Cache per session file keyed on (mtime, size) — reruns only parse new/changed."""
-    prefixes = {os.path.abspath(d) + os.sep: name for name, d in roots.items()}
+def session_touches(sessions_glob, cache_path):
+    """{abs_md_path: {"n": touches, "last": session_file_mtime}} — UNFILTERED by vault;
+    the caller maps paths onto its own nodes (cache is vault-agnostic by design: one
+    cache serves any roots combination without cross-vault bleed).
+    Cache per session file keyed on (mtime, size) — reruns only parse new/changed.
+    'last' is the session FILE's mtime, not the touch's own time — an upper bound,
+    off by at most the session's length."""
     try:
         with open(cache_path, encoding="utf-8") as f:
             cache = json.load(f)
     except (OSError, ValueError):
         cache = {}
+    if cache.get("_v") != 2:      # v1 entries were stem-keyed + roots-filtered: unusable
+        cache = {"_v": 2}
     recap = None
     out, dirty = {}, False
     for sp in sorted(glob.glob(sessions_glob)):
@@ -154,7 +224,16 @@ def session_touches(roots, sessions_glob, cache_path):
         ent = cache.get(key)
         if not ent or ent.get("sig") != sig:
             if recap is None:
-                recap = load_wc()
+                recap = load_wc() or False   # False = tried, unavailable (warn once)
+            if recap is False:
+                # wc-less host: no fresh parses — but a stale entry (session grew since)
+                # still beats zero; only a never-seen session contributes nothing
+                if not ent:
+                    continue
+                ent = dict(ent)              # don't persist the stale sig as current
+            else:
+                ent = None
+        if ent is None:
             touches = {}
             try:
                 msgs, _ = recap._load(sp)
@@ -171,13 +250,12 @@ def session_touches(roots, sessions_glob, cache_path):
                     if not fp.endswith(".md"):
                         continue
                     afp = os.path.abspath(os.path.expanduser(fp))
-                    if any(afp.startswith(pre) for pre in prefixes):
-                        touches[stem_of(afp)] = touches.get(stem_of(afp), 0) + 1
+                    touches[afp] = touches.get(afp, 0) + 1
             ent = {"sig": sig, "ts": int(st.st_mtime), "touches": touches}
             cache[key] = ent
             dirty = True
-        for stem, n in ent["touches"].items():
-            rec = out.setdefault(stem, {"n": 0, "last": 0})
+        for path, n in ent["touches"].items():
+            rec = out.setdefault(path, {"n": 0, "last": 0})
             rec["n"] += n
             rec["last"] = max(rec["last"], ent["ts"])
     if dirty:
@@ -191,48 +269,81 @@ def session_touches(roots, sessions_glob, cache_path):
 def apply(data, args):
     now = time.time()
     byid = {n["id"]: n for n in data.get("nodes", [])}
-    edge_seen = {tuple(sorted((e["source"], e["target"]))) for e in data.get("edges", [])}
+    edges = data.setdefault("edges", [])
+    # kind-aware dedup: a wiki edge across the same pair (e.g. a «Переходы» section
+    # linking the old name) must NOT swallow the provenance edge — kinds are the signal
+    edge_seen = {(*sorted((e["source"], e["target"])), e.get("kind")) for e in edges}
     roots = data.get("roots") or ({os.path.basename(data["src"]): data["src"]}
                                   if data.get("src") else {})
     stats = {"moved_from": 0, "became": 0, "gone_ghosts": 0, "touched_notes": 0}
 
+    # LIVE nodes by (root, path-stem) — the generator qualifies colliding ids
+    # (skill~2, docs_overview), so ids must never be re-derived from paths; resolve
+    # through the nodes themselves. Ambiguous stems within a root resolve to None.
+    live = {}
+    for n in data.get("nodes", []):
+        if n.get("ghost") or not n.get("path"):
+            continue
+        k = (n.get("root") or next(iter(roots), None), stem_of(n["path"]))
+        live[k] = None if k in live else n
+    # ghosts keep raw unqualified stems (the generator mints them from link text) —
+    # a plain byid lookup is correct for them, but only with the ghost flag checked
+    def ghost_of(stem):
+        gh = byid.get(stem)
+        return gh if gh is not None and gh.get("ghost") else None
+
     if not args.no_git and roots:
         renames, gone, became = extract_git_prov(roots)
-        for ts, old, new in renames:
-            tgt = byid.get(new)
-            if tgt is None:
+        for (root, old), (ts, new) in collapse_renames(renames).items():
+            tgt = live.get((root, new))
+            if tgt is None:     # no live node with that stem in THIS root (or ambiguous)
                 continue
             date = time.strftime("%Y-%m-%d", time.localtime(ts))
-            tgt.setdefault("prov", {}).setdefault("renamed_from", []).append(
-                {"stem": old, "date": date})
-            gh = byid.get(old)
-            if gh is not None and gh.get("ghost"):
-                gh.setdefault("prov", {})["renamed_to"] = new
+            rf = tgt.setdefault("prov", {}).setdefault("renamed_from", [])
+            if not any(r.get("stem") == old for r in rf):   # idempotent on re-run
+                rf.append({"stem": old, "date": date})
+            gh = ghost_of(old)
+            if gh is not None:
+                gh.setdefault("prov", {})["renamed_to"] = tgt["id"]
                 gh["prov"]["date"] = date
-                key = tuple(sorted((old, new)))
+                key = (*sorted((old, tgt["id"])), "moved_from")
                 if key not in edge_seen:
                     edge_seen.add(key)
-                    data["edges"].append({"source": old, "target": new,
-                                          "kind": "moved_from", "cross": True})
+                    edges.append({"source": old, "target": tgt["id"],
+                                  "kind": "moved_from", "cross": True})
                     stats["moved_from"] += 1
-        for stem, ts in gone.items():
-            gh = byid.get(stem)
-            if gh is not None and gh.get("ghost"):
+        for (root, stem), (ts, kind) in gone.items():
+            gh = ghost_of(stem)
+            if gh is not None and "renamed_to" not in gh.get("prov", {}):
                 gh.setdefault("prov", {})["gone"] = time.strftime(
                     "%Y-%m-%d", time.localtime(ts))
+                if kind == "archived":
+                    gh["prov"]["archived"] = True
                 stats["gone_ghosts"] += 1
-        for ts, old, new in became:
-            gh, tgt = byid.get(old), byid.get(new)
-            if gh is not None and gh.get("ghost") and tgt is not None and not tgt.get("ghost"):
-                key = tuple(sorted((old, new)))
+        for ts, root, old, new in became:
+            gh, tgt = ghost_of(old), live.get((root, new))
+            if gh is not None and tgt is not None:
+                key = (*sorted((old, tgt["id"])), "became")
                 if key not in edge_seen:
                     edge_seen.add(key)
-                    data["edges"].append({"source": old, "target": new, "kind": "became",
-                                          "cross": True, "confidence": "same-commit"})
+                    edges.append({"source": old, "target": tgt["id"], "kind": "became",
+                                  "cross": True, "confidence": "same-commit"})
                     stats["became"] += 1
 
-    touches = {} if args.no_usage else session_touches(
-        roots, args.sessions, args.cache)
+    by_path = {}
+    for n in data.get("nodes", []):
+        if not n.get("ghost") and n.get("path"):
+            rdir = roots.get(n.get("root") or next(iter(roots), ""), "")
+            if rdir:
+                by_path[os.path.abspath(os.path.join(rdir, n["path"]))] = n["id"]
+    raw_touches = {} if args.no_usage else session_touches(args.sessions, args.cache)
+    touches = {}
+    for path, rec in raw_touches.items():
+        nid = by_path.get(path)
+        if nid:
+            agg = touches.setdefault(nid, {"n": 0, "last": 0})
+            agg["n"] += rec["n"]
+            agg["last"] = max(agg["last"], rec["last"])
     for n in data.get("nodes", []):
         if n.get("ghost"):
             continue
@@ -249,7 +360,9 @@ def apply(data, args):
         if t:
             stats["touched_notes"] += 1
 
-    data.setdefault("node_metrics", []).append("forgotten")
+    nm = data.setdefault("node_metrics", [])
+    if "forgotten" not in nm:   # idempotent: re-running the filter must not duplicate
+        nm.append("forgotten")
     data.setdefault("edge_styles", {}).update({
         "moved_from": {"c": "#c9903a", "a": 0.7, "arrow": True, "w": 1.4,
                        "label": "moved"},
@@ -272,6 +385,8 @@ def main():
     ap.add_argument("--no-usage", action="store_true")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
+    if args.tau <= 0:
+        ap.error("--tau must be > 0 (recency decay in days)")
 
     if args.self_test:
         run_self_test()
@@ -316,8 +431,40 @@ def run_self_test():
                 os.remove(os.path.join(d, "dead.md"))
                 g("add", "-A"); g("commit", "-qm", "drop")
                 renames, gone, _ = extract_git_prov({"r": d})
-                self.assertIn(("old_name", "new_name"), [(o, n) for _, o, n in renames])
-                self.assertIn("dead", gone)
+                self.assertIn(("r", "old_name", "new_name"),
+                              [(r, o, n) for _, r, o, n in renames])
+                self.assertIn(("r", "dead"), gone)
+                self.assertEqual(gone[("r", "dead")][1], "deleted")
+
+        def test_archive_move_is_gone_archived(self):
+            # rename INTO _archive/ = exit from the graph (stem unchanged, so it is
+            # invisible to the plain rename path) — must land in gone as "archived"
+            with tempfile.TemporaryDirectory() as d:
+                g = self.repo(d)
+                open(os.path.join(d, "note-x.md"), "w").write("x")
+                g("add", "-A"); g("commit", "-qm", "seed")
+                os.makedirs(os.path.join(d, "_archive"))
+                os.rename(os.path.join(d, "note-x.md"),
+                          os.path.join(d, "_archive", "note-x.md"))
+                g("add", "-A"); g("commit", "-qm", "archive")
+                renames, gone, _ = extract_git_prov({"r": d})
+                self.assertEqual(gone.get(("r", "note_x"), (0, ""))[1], "archived")
+                self.assertEqual(renames, [])   # same stem — not a rename event
+
+        def test_rename_chain_collapses_to_live(self):
+            # a→b→c: renamed_to must land on the LIVE end, not the dead intermediate
+            with tempfile.TemporaryDirectory() as d:
+                g = self.repo(d)
+                open(os.path.join(d, "a-one.md"), "w").write("x")
+                g("add", "-A"); g("commit", "-qm", "seed")
+                os.rename(os.path.join(d, "a-one.md"), os.path.join(d, "a-two.md"))
+                g("add", "-A"); g("commit", "-qm", "mv1")
+                os.rename(os.path.join(d, "a-two.md"), os.path.join(d, "a-three.md"))
+                g("add", "-A"); g("commit", "-qm", "mv2")
+                renames, _, _ = extract_git_prov({"r": d})
+                col = collapse_renames(renames)
+                self.assertEqual(col[("r", "a_one")][1], "a_three")
+                self.assertEqual(col[("r", "a_two")][1], "a_three")
 
         def test_apply_moves_ghost_edge_and_forgotten(self):
             with tempfile.TemporaryDirectory() as d:
@@ -329,8 +476,10 @@ def run_self_test():
                 data = {"src": d, "roots": {"r": d}, "edges": [
                     {"source": "user_note", "target": "a_old", "kind": "wiki"}],
                     "nodes": [
-                        {"id": "a_new", "ghost": False, "mtime": int(time.time()) - 86400 * 200},
-                        {"id": "user_note", "ghost": False, "mtime": int(time.time())},
+                        {"id": "a_new", "ghost": False, "root": "r", "path": "a-new.md",
+                         "mtime": int(time.time()) - 86400 * 200},
+                        {"id": "user_note", "ghost": False, "root": "r", "path": "user-note.md",
+                         "mtime": int(time.time())},
                         {"id": "a_old", "ghost": True},
                     ]}
                 ns = argparse.Namespace(no_git=False, no_usage=True, tau=45.0,
@@ -347,6 +496,26 @@ def run_self_test():
                 self.assertIn("moved_from", data["edge_styles"])
 
         def test_session_touch_cache(self):
+            # wc-less host (e.g. mac): stub weighted_compact — this test covers
+            # session_touches parsing+cache, not wc itself; arch runs the real module
+            try:
+                sys.path.insert(0, WC_DIR)
+                import weighted_compact  # noqa: F401
+            except ImportError:
+                import types
+                stub = types.ModuleType("weighted_compact")
+                rec = types.ModuleType("weighted_compact.recap")
+                def _load(path):
+                    msgs = []
+                    with open(path, encoding="utf-8") as f:
+                        for line in f:
+                            m = json.loads(line).get("message", {})
+                            msgs.append((m.get("role"), m.get("content")))
+                    return msgs, None
+                rec._load = _load
+                stub.recap = rec
+                sys.modules["weighted_compact"] = stub
+                sys.modules["weighted_compact.recap"] = rec
             with tempfile.TemporaryDirectory() as d:
                 root = os.path.join(d, "vault"); os.makedirs(root)
                 note = os.path.join(root, "hot-note.md")
@@ -356,11 +525,11 @@ def run_self_test():
                     {"type": "tool_use", "name": "Read", "input": {"file_path": note}}]}}
                 open(sess, "w").write(json.dumps(rec) + "\n")
                 cache = os.path.join(d, "cache.json")
-                t = session_touches({"v": root}, os.path.join(d, "*.jsonl"), cache)
-                self.assertEqual(t.get("hot_note", {}).get("n"), 1)
+                t = session_touches(os.path.join(d, "*.jsonl"), cache)
+                self.assertEqual(t.get(note, {}).get("n"), 1)   # path-keyed, vault-agnostic
                 self.assertTrue(os.path.exists(cache))
-                t2 = session_touches({"v": root}, os.path.join(d, "*.jsonl"), cache)
-                self.assertEqual(t2.get("hot_note", {}).get("n"), 1)   # from cache
+                t2 = session_touches(os.path.join(d, "*.jsonl"), cache)
+                self.assertEqual(t2.get(note, {}).get("n"), 1)   # from cache
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(T)
     result = unittest.TextTestRunner(verbosity=2).run(suite)

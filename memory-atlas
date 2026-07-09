@@ -34,6 +34,8 @@ DATA CONTRACT (for --data and external builders, e.g. memory-atlas-bastra):
   "nodes": [{id,label,desc,type,zone,path,bytes,age_days,mtime?,heat,ghost,light,heavy,orphan,conflict,root?}],
   "edges": [{source,target,kind,w?,score?}],   # kind → EDGE_STYLES in the template; unknown kind = default style
   "roots": {name: abs_dir},         # opt.; multi-root vaults — editor-open resolves node.path against node.root
+  "edge_styles": {kind: {c,a,dash?,arrow?,w?}},  # opt.; builder-declared kinds (template merges into EDGE_STYLES)
+  "node_metrics": [str],            # opt.; node fields ∈[0,1] → colorMode options (e.g. "forgotten")
   "detectors": [str],              # opt.; which cross-detectors ran (for the status line)
   "vecs": {model,dim,ids,q},       # opt.; int8 embeddings for client-side semantic search
   "browse": {nodes,edges,bodies,stats,types,generated}   # opt.; terminal browse module
@@ -57,7 +59,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.8.0"   # multi-root: repeatable --src (memory+wiki+skills in one graph, cross-root wikilink resolve), --dump-data for external pipeline builders, temporal_proximity capped top-2
+VERSION = "2.9.0"   # provenance axis: DATA-declared edge_styles/node_metrics (moved_from/became arrows, forgotten colorMode + lens), panel provenance block, ghost gone/moved chips
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -329,6 +331,8 @@ def build_graph(src):
                     for t in MDLINK_RE.findall(body)
                     if not t.startswith("http")]
         for tkey, kind in targets:
+            if not tkey:   # literal [[]] / [x]() in docs ABOUT wikilinks → empty stem, not a link
+                continue
             hit = own.get(tkey) or lookup.get(tkey)
             if hit:
                 add_edge(stem, hit, kind)
@@ -1121,6 +1125,35 @@ def run_self_test():
             self.assertEqual({n["id"] for n in data["nodes"]}, {"a", "b"})
             self.assertIn("roots", data)
 
+        def test_data_edge_styles_passthrough(self):
+            # DATA CONTRACT v2.9: builder-declared edge kinds (provenance feed) render
+            # via data — the payload carries them and the template merges into EDGE_STYLES
+            data = {"title": "t", "zones": {}, "nodes": [
+                {"id": "a", "label": "a", "desc": "", "type": "?", "zone": "z", "path": "",
+                 "bytes": 0, "age_days": 0, "heat": 1, "ghost": False, "forgotten": 0.8}],
+                "edges": [],
+                "edge_styles": {"moved_from": {"c": "#c9903a", "a": 0.8, "arrow": True}},
+                "node_metrics": ["forgotten"]}
+            validate_data(data)   # v2.9 top-level keys must pass the contract check
+            out = os.path.join(self.src, "es.html")
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            html = render(data, out, d3js="/*d3*/", tpl=tpl)
+            self.assertIn('"moved_from"', html)                    # declared kind in payload
+            self.assertIn("Object.assign(EDGE_STYLES, DATA.edge_styles", tpl,
+                          "template must merge builder-declared edge kinds")
+
+        def test_node_metrics_colormode_hook(self):
+            # DATA CONTRACT v2.9: node_metrics become colorMode options + a metric ramp
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            self.assertIn("DATA.node_metrics", tpl, "colorMode options from data")
+            self.assertIn("'metric:'", tpl, "nodeColor must branch on metric: modes")
+
         def test_obsidian_dir_excluded(self):
             # G7: .obsidian/ is not chewed on
             self.w(".obsidian/workspace.md", "junk")
@@ -1163,6 +1196,14 @@ def run_self_test():
             self.w("a.md", "x")
             by, _ = self.graph()
             self.assertEqual(by["a"]["zone"], "light")
+
+        def test_empty_wikilink_no_ghost(self):
+            # literal [[]] in docs about wikilinks (skills corpus) must not mint an id-less
+            # ghost — it used to fail validate_data downstream ("nodes[i] missing 'id'")
+            self.w("a.md", "docs example: [[]] and []() stay text")
+            by, edges = self.graph()
+            self.assertNotIn("", by)
+            self.assertTrue(all(e["source"] and e["target"] for e in edges))
 
         def test_edges_ghosts_dedup(self):
             self.w("a.md", "---\nname: a\n---\n[[b]] [[b]] [[missing-note]] [x](b.md) [[a]]")
