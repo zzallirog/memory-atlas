@@ -40,7 +40,7 @@ py dist\memory-atlas.pyz --src C:\Users\you\vault
 
 Requirements: **Python 3.8+ and a browser.** That's the whole list. macOS, Linux and Windows are exercised in CI (self-test + demo build + `.pyz` build on all three). Obsidian vaults work out of the box (`.obsidian/`, `.trash/` skipped, frontmatter `tags:` read). Each top-level folder becomes a colored zone.
 
-Full walkthrough: [docs/QUICKSTART.md](docs/QUICKSTART.md). More lives of the same tool — a worldbuilding campaign, a homelab runbook, reading notes, language study, trip planning — in the **[gallery](docs/GALLERY.md)**, each with a runnable example vault.
+Full walkthrough: [docs/QUICKSTART.md](docs/QUICKSTART.md). More lives of the same tool — a worldbuilding campaign, a homelab runbook, reading notes, language study, trip planning — in the **[gallery](docs/GALLERY.md)**, each with a runnable example vault. How layouts, the **grouping axis** and the reading views compose: [docs/VIEWS.md](docs/VIEWS.md).
 
 ## What you get
 

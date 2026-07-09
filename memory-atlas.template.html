@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.9.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -660,7 +660,7 @@
         <option value="bytes">file size</option>
       </select>
     </div>
-    <div class="row" data-hint="раскладка ([ ] = цикл): force = зоны силами · semantic = близость по смыслу · pack = вложенные круги зона⊃кластер, всё поле · ring = кольцо синергии зон · petals = спираль-подсолнух на зону · radial = хабы в центр · grid = полки по зонам · zones = колонки · timeline = свежесть по X"><label>layout</label>
+    <div class="row" data-hint="раскладка ([ ] = цикл): force = группы силами · semantic = близость по смыслу · pack = вложенные круги группа⊃кластер · ring = кольцо синергии · petals = спираль-подсолнух · radial = хабы в центр · grid = полки · zones = колонки · timeline = свежесть по X · spine = читаемый список опорных + дуга · facets = панели значений по периметру · dendro = радиальное дерево, каждый лист подписан"><label>layout</label>
       <select id="layoutMode" title="раскладка ([ ] = cycle)">
         <option value="force">force · зоны</option>
         <option value="semantic">semantic · cosine</option>
@@ -671,6 +671,18 @@
         <option value="grid">grid · полки</option>
         <option value="zones">zones · columns</option>
         <option value="timeline">timeline · свежесть</option>
+        <option value="spine">spine · список+дуга</option>
+        <option value="facets">facets · панели</option>
+        <option value="dendro">dendro · дерево</option>
+      </select>
+    </div>
+    <div class="row" data-hint="ЧЕМ группировать раскладку: layout = форма, group = разрез. Все групповые раскладки (pack/ring/petals/grid/zones/radial/spine/facets/dendro) режутся выбранной осью: зона памяти / корень вульта / louvain-кластер / тип ноты / возраст"><label>group</label>
+      <select id="groupMode" title="ось группировки раскладок">
+        <option value="zone">zone · зоны памяти</option>
+        <option value="root">root · корень вульта</option>
+        <option value="cluster">cluster · тематики</option>
+        <option value="type">type · тип ноты</option>
+        <option value="age">age · возраст</option>
       </select>
     </div>
     <div class="row" data-hint="представление под задачу одним выбором: ставит раскладку+цвет+слои разом; дальше всё крутится вручную как обычно"><label>задача</label>
@@ -682,6 +694,7 @@
         <option value="fresh">свежесть · что живо</option>
         <option value="hubs">хабы · опорные ноты</option>
         <option value="meaning">смысловая карта</option>
+        <option value="reading">чтение · список</option>
         <option value="debts">долги · ghost-ноты</option>
       </select>
     </div>
@@ -880,7 +893,7 @@
   <div id="keys"><b>/</b> search · <b>c</b> в кадр · <b>t</b> тег · <b>f</b> fit · <b>rmb</b> pin · <b>?</b> help</div>
 </div>
 
-<script type="application/json" id="i18nEN">{"наложение зон: тает anchor-guard пропорционально мост-массе между зонами (cross-zone рёбра). 0 = зоны врозь · выше = петалы сходятся там где есть мосты, цвета смешиваются в OKLab": "zone overlap: melts the anchor-guard in proportion to bridge mass between zones (cross-zone edges). 0 = zones apart · higher = petals converge where bridges exist, colours mix in OKLab", "overlap живёт на спатиал-раскладках (force · pack · petals · radial · timeline) — где зоны спатиальны; grid/zones/semantic/ring структурны": "overlap lives on spatial layouts (force · pack · petals · radial · timeline) — where zones are spatial; grid/zones/semantic/ring are structural", "⭐ стандарт · живой": "⭐ standard · alive", "✦ ориентация: жёстко повернуть текущую раскладку под угол, где облако лучше всего заполняет кадр (ring→ring, непересечения целы — поворот это изометрия). Тост кажет реальное заполнение база→лучшее.": "✦ orient: rigidly rotate the current layout to the angle where the cloud best fills the frame (ring→ring, non-crossings intact — rotation is an isometry). The toast shows the real fill, base→best.", "✦ кадр": "✦ frame", "мало нод для ориентации": "too few nodes to orient", "✦ подбираю ориентацию…": "✦ finding orientation…", "заполнение": "fill", "saved": "saved", "рядом · детекторы": "nearby · detectors", "клик = вернуть вид, каким он был при пине": "click = restore the view as it was when pinned", "rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; пин запоминает вид (клик по карточке = вернуть); 🏷 = собрать пачку пинов в свой тег": "rmb = pin: node+neighbors stay bright; ctrl+rmb = stack up to 6; a pin remembers the view (click the card = restore); 🏷 = gather the pinned batch into an own tag", "usage · открытия": "usage · my opens", "URL-scheme шаблон; {abs} = абсолютный путь. Путь всегда дублируется в буфер.": "URL-scheme template; {abs} = absolute path. The path is always copied to the clipboard too.", "путь всегда копируется в буфер (fallback); на Linux scheme открывает xdg-handler редактора": "the path is always copied to the clipboard (fallback); on Linux the scheme opens the editor's xdg handler", "ровесники": "same-age", "снять temporal-линзу": "clear the temporal lens", "temporal-линза: ноты того же окна времени резко, остальное в блюр; повторный клик шире (2→7→30д), потом off": "temporal lens: notes from the same time window stay sharp, the rest blurs; click again to widen (2→7→30d), then off", "открыта": "opened", "что сейчас режет вид: теги-линза / поиск / изоляция / зоны / top-N; ✕ снимает по месту, 💾 = сохранить линзу как вид": "what currently cuts the view: tag-lens / search / isolation / zones / top-N; ✕ clears in place, 💾 = save lens as a view", "фильтр": "filter", "поиск имя/описание…": "search name/description…", "← выбери файл": "← pick a file", "фильтр: термы через пробел = OR; дропдаун: ↑↓ + enter = перелёт к ноде": "filter: space-separated terms = OR; dropdown: ↑↓ + enter = fly to node", "вид": "view", "цвет нод: cluster = тематики из топологии (louvain) · zone = зона памяти · type = тип ноты · heat = свежесть": "node color: cluster = topics from topology (louvain) · zone = memory zone · type = note type · heat = recency", "размер ноды: degree = число wikilinks · file size = байты файла": "node size: degree = wikilink count · file size = file bytes", "раскладка ([ ] = цикл): force = зоны силами · semantic = близость по смыслу · pack = вложенные круги зона⊃кластер, всё поле · ring = кольцо синергии зон · petals = спираль-подсолнух на зону · radial = хабы в центр · grid = полки по зонам · zones = колонки · timeline = свежесть по X": "layout ([ ] = cycle): force = zones by forces · semantic = proximity by meaning · pack = nested circles zone⊃cluster, full canvas · ring = zone-synergy ring · petals = sunflower spiral per zone · radial = hubs to center · grid = shelves by zone · zones = columns · timeline = recency along X", "раскладка ([ ] = cycle)": "layout ([ ] = cycle)", "force · зоны": "force · zones", "pack · круги зон": "pack · zone circles", "ring · синергия зон": "ring · zone synergy", "petals · лепестки": "petals · spiral", "radial · хабы в центр": "radial · hubs to center", "grid · полки": "grid · shelves", "timeline · свежесть": "timeline · recency", "представление под задачу одним выбором: ставит раскладку+цвет+слои разом; дальше всё крутится вручную как обычно": "task-shaped view in one pick: sets layout+color+layers at once; everything stays hand-tunable after", "задача": "task", "обзор · где что лежит": "overview · where things live", "тематики · кластеры": "topics · clusters", "синергия зон": "zone synergy", "свежесть · что живо": "recency · what's alive", "хабы · опорные ноты": "hubs · anchor notes", "смысловая карта": "meaning map", "долги · ghost-ноты": "debts · ghost notes", "фокус · камера": "focus · camera", "что делает клик по ноде: dim = приглушить остальное · ego blur = фон в блюр, нода+соседи резко · тайлы = ego карточками": "what clicking a node does: dim = mute the rest · ego blur = background blurred, node+neighbors sharp · tiles = ego as cards", "что делает выделение ноды": "what selecting a node does", "dim · приглушить": "dim · mute rest", "ego · blur фона": "ego · blur background", "ego · тайлы": "ego · tiles", "камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner": "camera on select: stay = do NOT touch at all (fly only via c / ⌖ / enter in search) · adaptive = fly over if off-screen · fit / corner", "framing при select; stay = зум ручной, камера не трогается": "framing on select; stay = manual zoom, camera untouched", "stay · ручной": "stay · manual", "перелёты камеры не меняют масштаб, только пан": "camera flights keep zoom, pan only", "подписи": "labels", "кто подписан: hubs = топ-degree · hops = N шагов от выделенной · near = вокруг курсора · all (клавиша l = цикл)": "which nodes get labels: hubs = top-degree · hops = N steps from selected · near = around cursor · all (key l = cycle)", "какие ноды получают лейбл (l = cycle)": "which nodes get a label (l = cycle)", "hops (от selected)": "hops (from selected)", "near (у курсора)": "near (at cursor)", "BFS-глубина для hops": "BFS depth for hops", "плотность подписей — ось, НЕЗАВИСИМАЯ от зума: бюджет имён на экран (приоритет selected > pin > hover > degree); 0 = только выделенное/пины; зум добавляет бюджет сам, ползунок — множитель": "label density — an axis INDEPENDENT of zoom: name budget per screen (priority selected > pin > hover > degree); 0 = only selected/pins; zoom adds budget by itself, the slider is a multiplier", "подписи нод на графе": "node labels on the graph", "прятать налезающие друг на друга лейблы": "hide overlapping labels", "на месте спрятанного лейбла — крошечная метка-тире (видно, что имя есть; текст не мажется)": "a hidden label leaves a tiny dash mark (the name exists, text doesn't smear)", "плотность": "density", "оставить яркими только top-N нод по degree, остальные притушить (не удалять)": "keep only top-N nodes by degree bright, dim the rest (not removed)", "множитель прозрачности всех рёбер": "opacity multiplier for all edges", "множитель размера нод": "node size multiplier", "слои": "layers", "контуры зон памяти на подложке": "memory-zone outlines on the underlay", "мягкие блобы вокруг louvain-кластеров (тематики из топологии)": "soft blobs around louvain clusters (topics from topology)", "пунктирные ноды = [[ссылка]] без файла — «стоит написать»": "dashed nodes = a [[link]] with no file — “worth writing”", "все рёбра; off = только у выделенной/пинов/hover (клавиша 9)": "all edges; off = only for selected/pins/hover (key 9)", "моушн": "motion", "бегущие частицы вдоль рёбер, включая викилинки — направление = кто ссылается (клавиша 0)": "flowing particles along edges, wikilinks included — direction = who references whom (key 0)", "курсор-магнит: раздвигает облако; ближняя нода после ~1.3с липнет к курсору": "cursor magnet: pushes the cloud apart; after ~1.3s the nearest node sticks to the cursor", "жесты вебкамерой: ладонь = пан, щипок = зум (нужен CDN)": "webcam gestures: palm = pan, pinch = zoom (needs CDN)", "клик по чипу = скрыть/показать зону целиком (клавиши 1-8)": "click a chip = hide/show the whole zone (keys 1-8)", "зоны · 1-8 hide": "zones · 1-8 hide", "слои рёбер по типу детектора: клик = вкл/выкл слой; что значит каждый тип — в ? справке": "edge layers by detector type: click = toggle layer; what each type means — in ? help", "рёбра по типу": "edges by type", "клик по тегу = ЛИНЗА: остаются только ноды с тегом, остальное растворяется в блюр-пустоту (в focus=dim — приглушается). Свои теги: «+ тег» в панели ноды (клавиша t) или 🏷 из пинов; ∪/∩ = режим нескольких тегов": "click a tag = LENS: only tagged nodes remain, the rest dissolves into blur-void (with focus=dim — dimmed). Own tags: “+ tag” in the node panel (key t) or 🏷 from pins; ∪/∩ = multi-tag mode", "несколько тегов: ∪ = любой из них, ∩ = все сразу": "multiple tags: ∪ = any of them, ∩ = all at once", "теги · линза": "tags · lens", "сброс": "reset", "легенда цвета; клик по строке = изолировать группу (второй клик = вернуть)": "color legend; click a row = isolate the group (second click = restore)", "rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; 🏷 = собрать пачку пинов в свой тег": "rmb = pin: node+neighbors stay bright; ctrl+rmb = stack up to 6; 🏷 = gather the pinned batch into an own tag", "повесить один тег на все запиненные ноды": "put one tag on all pinned nodes", "🏷 в тег": "🏷 to tag", "сохранить текущую камеру + фильтры (включая тег-линзу) под именем; клик по строке = вернуть вид": "save current camera + filters (incl. tag lens) under a name; click a row = restore the view", "имя вида…": "view name…", "atlas — справка": "atlas — help", "клавиши": "keys", "поиск (дропдаун: ↑↓ enter esc; enter = снять фильтр + перелёт)": "search (dropdown: ↑↓ enter esc; enter = clear filter + fly)", "скрыть/показать зону": "hide/show zone", "цикл label-режима hubs → hops → near → all": "cycle label mode hubs → hops → near → all", "цикл раскладки force → semantic → pack → ring → petals → radial → grid → zones → timeline; морф анимирован. «Задача» в HUD ставит раскладку+цвет+слои пресетом": "cycle layout force → semantic → pack → ring → petals → radial → grid → zones → timeline; the morph is animated. “Task” in the HUD sets layout+color+layers as a preset", "fit по графу / home (стартовый вид)": "fit to graph / home (start view)", "подтянуть выделенную ноду + соседей в кадр — ЕДИНСТВЕННЫЙ автоперелёт при cam=stay": "pull the selected node + neighbors into frame — the ONLY auto-flight when cam=stay", "тег на выделенную ноду (фокус в «+ тег», enter вешает, можно цепочкой)": "tag the selected node (focuses “+ tag”, enter applies, chainable)", "пан · зум (shift = boost)": "pan · zoom (shift = boost)", "назад по истории выделений": "back through selection history", "скрыть панели, контекст остаётся (второй v — вернуть)": "hide panels, context stays (second v — restore)", "каскад: поиск → selected → pins → изоляция/теги": "cascade: search → selected → pins → isolation/tags", "select / pin (context delivery) / multi-pin стек": "select / pin (context delivery) / multi-pin stack", "нарисовать user-ребро между двумя нодами (overlay)": "draw a user edge between two nodes (overlay)", "cross-zone рёбра (детекторы graph-lab; зоны = canvases)": "cross-zone edges (graph-lab detectors; zones = canvases)", "панель ноды": "node panel", "копировать в буфер": "copy to clipboard", "открыть в редакторе (scheme ниже; fallback = copy path)": "open in editor (scheme below; fallback = copy path)", "▾ у зоны": "▾ at zone", "override зоны ноды (localStorage; ★ = переопределена)": "override the node's zone (localStorage; ★ = overridden)", "✕ у линка": "✕ at link", "negative assertion — спрятать авто-ребро (overlay)": "negative assertion — hide an auto edge (overlay)", "+ тег / ✕ на теге": "+ tag / ✕ on tag", "свои теги на ноде (localStorage); 🏷 в pins-карте = один тег на пачку пинов; клик по тегу = ЛИНЗА: остаются только помеченные ноды (+ пины), остальное в блюр-пустоту — это задумано; виды и ?state= несут линзу": "own tags on a node (localStorage); 🏷 in the pins card = one tag on the pinned batch; click a tag = LENS: only tagged nodes remain (+ pins), the rest into blur-void — by design; views and ?state= carry the lens", "⌖ в кадр": "⌖ frame", "явный перелёт к ноде+соседям (= клавиша c)": "explicit flight to node+neighbors (= key c)", "масштаб": "scale", "ноды становятся карточками с подложкой (заголовок читается); ещё ближе — с превью описания": "nodes become cards with a backing (title readable); closer still — with a description preview", "масштаб текста графа и панелей UI": "text scale of the graph and UI panels", "настройки": "settings", "профиль · редактор · пересборка · ссылка на вид — в": "profile · editor · rebuild · view link — in", "(кнопка в баре)": "(button in the bar)", "показать скрытые ноды (": "show hidden nodes (", "экспорт overlay.json": "export overlay.json", "сбросить конфиг + localStorage этого корпуса": "reset config + localStorage of this corpus", "закрыть (esc)": "close (esc)", "⛭ настройки": "⛭ settings", "профиль": "profile", "мержит": "merges", "с текущим, не затирает; незнакомые ключи переносятся как есть.": "into the current one, no clobber; unknown keys carry over as-is.", "↧ экспорт профиля": "↧ export profile", "↥ импорт профиля…": "↥ import profile…", "?state= — раскладка/цвет/слои/нода/зум; кросс-хост: камера якорится на ноду, не на координаты": "?state= — layout/color/layers/node/zoom; cross-host: the camera anchors to a node, not coordinates", "⧉ ссылка на текущий вид": "⧉ link to current view", "поведение": "behavior", "восстанавливать": "restore", "при старте (иначе motion-режимы включаются только руками в сессии)": "on start (otherwise motion modes only turn on by hand per session)", "данные": "data", "⚙ пересборка данных…": "⚙ rebuild data…", "редактор (↗ open в панели ноды)": "editor (↗ open in the node panel)", "опасное": "danger", "сбросить конфиг + localStorage ЭТОГО корпуса": "reset config + localStorage of THIS corpus", "⚙ пересборка данных": "⚙ rebuild data", "— семантический поиск в дропдауне (эмбеддинги внутрь файла, +≈1.3MB)": "— semantic search in the dropdown (embeddings into the file, +≈1.3MB)", "— детектор структурных близнецов (медленнее)": "— structural-twin detector (slower)", "— без Ollama-эмбеддингов (если Ollama лежит)": "— without Ollama embeddings (if Ollama is down)", "— только wikilink-граф, самый быстрый прогон": "— wikilink graph only, fastest run", "⧉ копировать команду": "⧉ copy command", "⟳ перезагрузить (после прогона)": "⟳ reload (after the run)", "камера": "camera", "вписать КОНТЕКСТ в кадр (поиск / фильтр / пины / ego выделенной; без контекста — весь граф) — клавиша f; весь мир всегда = ⌂ / h": "fit CONTEXT into frame (search / filter / pins / ego of selected; no context — the whole graph) — key f; the whole world always = ⌂ / h", "вернуться к стартовому виду (клавиша h)": "return to the start view (key h)", "стартовый вид (h)": "start view (h)", "перезагрузить страницу (свежий файл атласа после пересборки; сама пересборка — в ⛭)": "reload the page (fresh atlas file after a rebuild; the rebuild itself — in ⛭)", "перезагрузить": "reload", "скачать видимый срез графа как JSON; shift+клик = полный корпус": "download the visible slice as JSON; shift+click = full corpus", "экспорт видимого среза JSON; shift = полный корпус": "export visible slice JSON; shift = full corpus", "настройки · справка": "settings · help", "настройки: профиль export/import, ссылка на вид, поведение, пересборка данных, редактор": "settings: profile export/import, view link, behavior, data rebuild, editor", "справка по всем клавишам и типам рёбер (?)": "help for all keys and edge types (?)", "справка (?)": "help (?)", "масштаб текста на графе И панелей UI (сохраняется)": "text scale on the graph AND UI panels (persists)", "мельче": "smaller", "крупнее": "larger", "текст": "text", "в кадр ·": "frame ·", "тег ·": "tag ·", "язык интерфейса: RU ↔ EN — страница перезагрузится, настройки останутся": "UI language: RU ↔ EN — the page reloads, settings survive", "в semantic hulls не рисуются (зоны перемешаны) — контраст зон несут кольца нод": "hulls don't draw in semantic (zones are mixed) — zone contrast is carried by node rings", "повесить этот тег на ноду": "put this tag on the node", "тег": "tag", "нод": "nodes", "снят": "removed", "нод контекста (весь граф = ⌂/h)": "context nodes (the whole graph = ⌂/h)", " <span class=\"tg-mark\">ghost — ноты нет</span>": " <span class=\"tg-mark\">ghost — no note</span>", " · нарисовано руками": " · drawn by hand", "overlay: кликни вторую ноду для user-ребра": "overlay: click a second node for a user edge", "удалить user-ребро": "delete user edge", "вернуть ребро": "restore edge", "negative: спрятать авто-ребро": "negative: hide the auto edge", "override зоны (порт layers.overrides)": "zone override (layers.overrides port)", "<span class=\"chip ghostchip\">ghost — нота не написана</span>": "<span class=\"chip ghostchip\">ghost — note not written</span>", "копировать id": "copy id", "открыть в редакторе (пресет в ?)": "open in editor (preset in ?)", "скрыть до перезагрузки": "hide until reload", "подтянуть ноду+соседей в кадр (c)": "pull node+neighbors into frame (c)", "теги · клик = линза": "tags · click = lens", "снять свой тег": "remove own tag", "+ тег (t)": "+ tag (t)", "enter = повесить тег; клавиша t фокусирует сюда": "enter = apply the tag; key t focuses here", "изменена": "modified", "д назад": "d ago", " назад": " ago", "▤ читать полностью": "▤ read in full", "скрыта до перезагрузки (вернуть — в ?)": "hidden until reload (restore — in ?)", "∩ все": "∩ all", "снять тег из линзы": "remove tag from lens", "снять поиск": "clear search", "снять изоляцию": "clear isolation", "зоны": "zones", "показать все зоны": "show all zones", "вернуть все ноды": "restore all nodes", "нот": "notes", "сохранить линзу как вид": "save lens as view", "💾 в вид": "💾 to view", "линза": "lens", "скопировано": "copied", "copy не удался": "copy failed", "нет пинов: rmb = пин, ctrl+rmb = стек": "no pins: rmb = pin, ctrl+rmb = stack", "тег для": "tag for", "запиненных нод:": "pinned nodes:", "ребро уже есть": "edge already exists", "user-ребро:": "user edge:", "user-ребро удалено": "user edge removed", "negative: ребро спрятано": "negative: edge hidden", "вид сохранён до раскладок — камера может не совпасть": "view saved before layouts — the camera may not match", "вид: ": "view: ", "вид сохранён: ": "view saved: ", "экспорт: ": "export: ", "# граф собран внешним билдером (--data): пересобери его и перезапусти пайп": "# graph built by an external builder (--data): rebuild it and rerun the pipe", "данные: ": "data: ", "ч": "h", "д": "d", "команда": "command", "скрытые ноды возвращены": "hidden nodes restored", "две зоны ссылаются на один ghost (всегда on)": "two zones reference one ghost (always on)", "cosine эмбеддингов ≥ 0.75 (Ollama, build-time)": "embedding cosine ≥ 0.75 (Ollama, build-time)", "Jaccard рабочих тегов ≥ 0.5": "working-tag Jaccard ≥ 0.5", "co-modification в окне 24h": "co-modification within a 24h window", "co-touched в git-коммитах": "co-touched in git commits", "chain-3 мотивы (opt-in, research)": "chain-3 motifs (opt-in, research)", "нарисовано юзером (ctrl+click ×2)": "drawn by the user (ctrl+click ×2)", "🎥 жесты: ладонь = пан, щипок = зум": "🎥 gestures: palm = pan, pinch = zoom", "вебкамера недоступна": "webcam unavailable", "CDN недоступен (offline) — жесты выключены": "CDN unavailable (offline) — gestures off", "обзор: зоны силами, ghost-пунктир виден": "overview: zones by forces, ghost dashes visible", "тематики: круг зоны ⊃ круги louvain-кластеров": "topics: zone circle ⊃ louvain cluster circles", "синергия: связанные зоны — соседние дуги; пограничные ноды у общей границы": "synergy: linked zones are adjacent arcs; border nodes at the shared boundary", "свежесть: справа = свежее, ярче = горячее": "recency: right = fresher, brighter = hotter", "хабы: чем связнее нота, тем ближе к центру": "hubs: the more connected a note, the closer to center", "смысл: позиция = cosine-близость, фиолетовые рёбра ≥0.75": "meaning: position = cosine proximity, violet edges ≥0.75", "долги: пунктирные ghost = на них ссылаются, ноты нет": "debts: dashed ghosts = referenced, but no note", "semantic-раскладки нет: пересобери с эмбеддингами (⚙)": "no semantic layout: rebuild with embeddings (⚙)", "нет данных возраста для timeline": "no age data for timeline", " · слой включён на сессию (насовсем = чип)": " · layer on for this session (permanent = chip)", "рёбер": "edges", " детекторов": " detectors", "кластеров": "clusters", "всё": "all", "<div class=\"empty\">пусто</div>": "<div class=\"empty\">empty</div>", "файла нет; ссылаются:": "no file; referenced by:", "◌ в граф": "◌ to graph", "<1д": "<1d", "мес": "mo", "ноты": "notes", "wiki-рёбра": "wiki edges", "cross-рёбра": "cross edges", "медиана возраста": "median age", "сегодня": "today", "неделя": "week", "месяц": "month", "квартал": "quarter", "старше": "older", "реф.": "refs", "клик по полосе = в граф с изоляцией зоны": "click a bar = to the graph with the zone isolated", "когда ноты менялись; клик = timeline-пресет свежести": "when notes changed; click = recency timeline preset", "на них ссылаются, файла нет — «стоит написать»; клик = к ноде в графе": "referenced but the file is missing — “worth writing”; click = to the node in the graph", "самые связные ноты; клик = к ноде в графе": "the most connected notes; click = to the node in the graph", "вне всех recall-индексов; клик = читать": "outside all recall indexes; click = read", "sync-конфликты файлов; клик = читать": "file sync-conflicts; click = read", "слои рёбер по детекторам; клик = вкл/выкл, синхронно с чипами HUD": "edge layers by detector; click = toggle, synced with the HUD chips", "<div class=\"empty2\">пусто</div>": "<div class=\"empty2\">empty</div>", "<div class=\"empty2\">чисто</div>": "<div class=\"empty2\">clean</div>", "свежесть": "recency", "хабы": "hubs", "конфликты": "conflicts", "ghost-долги · топ по ссылкам": "ghost debts · top by refs", "здоровье данных": "data health", "собрано:": "built:", "stem-коллизии:": "stem collisions:", "скрыто руками:": "hidden by hand:", "нет": "none", "⚙ пересборка…": "⚙ rebuild…", "рёбра": "edges", "профиль экспортирован": "profile exported", "битый JSON профиля": "broken profile JSON", "это не atlas-profile JSON": "not an atlas-profile JSON", "пины→": "pins→", "виды +": "views +", "теги +": "tags +", "импорт: ": "import: ", "нечего мержить": "nothing to merge", " — перезагрузка…": " — reloading…", "ссылка на вид": "view link", "битый ?state= — игнорирую": "broken ?state= — ignoring", "Атлас — статичный file://, данные пересобирает генератор в терминале. Отметь нужное, скопируй команду, прогони — затем «⟳ перезагрузить». Раскладки/цвета/слои пересборки не требуют — они живые, крути прямо в HUD.": "The atlas is a static file://; data is rebuilt by the generator in the terminal. Tick what you need, copy the command, run it — then “⟳ reload”. Layouts/colors/layers need no rebuild — they are live, tune them right in the HUD.", "Всё ручное (пины · виды · свои теги · user-рёбра · negatives · zone-overrides · конфиг) живёт в localStorage этого браузера. Профиль = один JSON для бэкапа/переезда между хостами. Импорт": "Everything manual (pins · views · own tags · user edges · negatives · zone-overrides · config) lives in this browser's localStorage. A profile = one JSON for backup / moving between hosts. Import", "забытые": "forgotten", "живые": "alive", "forgotten · забытость": "forgotten", "ушла в архив": "moved to archive", "снять линзу забытости": "drop the forgotten-lens", "файл СУЩЕСТВОВАЛ — удалён": "the file EXISTED — deleted", "переехала": "moved", "в сессиях": "in sessions", "с тача": "since last touch", "была": "was", "стала": "became", "файл удалён": "file deleted", "провенанс": "provenance"}</script>
+<script type="application/json" id="i18nEN">{"наложение зон: тает anchor-guard пропорционально мост-массе между зонами (cross-zone рёбра). 0 = зоны врозь · выше = петалы сходятся там где есть мосты, цвета смешиваются в OKLab": "zone overlap: melts the anchor-guard in proportion to bridge mass between zones (cross-zone edges). 0 = zones apart · higher = petals converge where bridges exist, colours mix in OKLab", "overlap живёт на спатиал-раскладках (force · pack · petals · radial · timeline) — где зоны спатиальны; grid/zones/semantic/ring структурны": "overlap lives on spatial layouts (force · pack · petals · radial · timeline) — where zones are spatial; grid/zones/semantic/ring are structural", "⭐ стандарт · живой": "⭐ standard · alive", "✦ ориентация: жёстко повернуть текущую раскладку под угол, где облако лучше всего заполняет кадр (ring→ring, непересечения целы — поворот это изометрия). Тост кажет реальное заполнение база→лучшее.": "✦ orient: rigidly rotate the current layout to the angle where the cloud best fills the frame (ring→ring, non-crossings intact — rotation is an isometry). The toast shows the real fill, base→best.", "✦ кадр": "✦ frame", "мало нод для ориентации": "too few nodes to orient", "✦ подбираю ориентацию…": "✦ finding orientation…", "заполнение": "fill", "saved": "saved", "рядом · детекторы": "nearby · detectors", "клик = вернуть вид, каким он был при пине": "click = restore the view as it was when pinned", "rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; пин запоминает вид (клик по карточке = вернуть); 🏷 = собрать пачку пинов в свой тег": "rmb = pin: node+neighbors stay bright; ctrl+rmb = stack up to 6; a pin remembers the view (click the card = restore); 🏷 = gather the pinned batch into an own tag", "usage · открытия": "usage · my opens", "URL-scheme шаблон; {abs} = абсолютный путь. Путь всегда дублируется в буфер.": "URL-scheme template; {abs} = absolute path. The path is always copied to the clipboard too.", "путь всегда копируется в буфер (fallback); на Linux scheme открывает xdg-handler редактора": "the path is always copied to the clipboard (fallback); on Linux the scheme opens the editor's xdg handler", "ровесники": "same-age", "снять temporal-линзу": "clear the temporal lens", "temporal-линза: ноты того же окна времени резко, остальное в блюр; повторный клик шире (2→7→30д), потом off": "temporal lens: notes from the same time window stay sharp, the rest blurs; click again to widen (2→7→30d), then off", "открыта": "opened", "что сейчас режет вид: теги-линза / поиск / изоляция / зоны / top-N; ✕ снимает по месту, 💾 = сохранить линзу как вид": "what currently cuts the view: tag-lens / search / isolation / zones / top-N; ✕ clears in place, 💾 = save lens as a view", "фильтр": "filter", "поиск имя/описание…": "search name/description…", "← выбери файл": "← pick a file", "фильтр: термы через пробел = OR; дропдаун: ↑↓ + enter = перелёт к ноде": "filter: space-separated terms = OR; dropdown: ↑↓ + enter = fly to node", "вид": "view", "цвет нод: cluster = тематики из топологии (louvain) · zone = зона памяти · type = тип ноты · heat = свежесть": "node color: cluster = topics from topology (louvain) · zone = memory zone · type = note type · heat = recency", "размер ноды: degree = число wikilinks · file size = байты файла": "node size: degree = wikilink count · file size = file bytes", "раскладка ([ ] = цикл): force = зоны силами · semantic = близость по смыслу · pack = вложенные круги зона⊃кластер, всё поле · ring = кольцо синергии зон · petals = спираль-подсолнух на зону · radial = хабы в центр · grid = полки по зонам · zones = колонки · timeline = свежесть по X": "layout ([ ] = cycle): force = zones by forces · semantic = proximity by meaning · pack = nested circles zone⊃cluster, full canvas · ring = zone-synergy ring · petals = sunflower spiral per zone · radial = hubs to center · grid = shelves by zone · zones = columns · timeline = recency along X", "раскладка ([ ] = cycle)": "layout ([ ] = cycle)", "раскладка ([ ] = цикл): force = группы силами · semantic = близость по смыслу · pack = вложенные круги группа⊃кластер · ring = кольцо синергии · petals = спираль-подсолнух · radial = хабы в центр · grid = полки · zones = колонки · timeline = свежесть по X · spine = читаемый список опорных + дуга · facets = панели значений по периметру · dendro = радиальное дерево, каждый лист подписан": "layout ([ ] = cycle): force = groups by forces · semantic = proximity by meaning · pack = nested circles group⊃cluster · ring = synergy ring · petals = sunflower spiral · radial = hubs to center · grid = shelves · zones = columns · timeline = recency along X · spine = readable list of anchors + arc · facets = value panels on the perimeter · dendro = radial tree, every leaf labeled", "ЧЕМ группировать раскладку: layout = форма, group = разрез. Все групповые раскладки (pack/ring/petals/grid/zones/radial/spine/facets/dendro) режутся выбранной осью: зона памяти / корень вульта / louvain-кластер / тип ноты / возраст": "WHAT slices the layout: layout = the shape, group = the cut. Every grouping layout (pack/ring/petals/grid/zones/radial/spine/facets/dendro) is sliced by the chosen axis: memory zone / vault root / louvain cluster / note type / age", "ось группировки раскладок": "grouping axis for layouts", "zone · зоны памяти": "zone · memory zones", "root · корень вульта": "root · vault root", "cluster · тематики": "cluster · topics", "type · тип ноты": "type · note type", "age · возраст": "age · recency", "spine · список+дуга": "spine · list+arc", "facets · панели": "facets · panels", "dendro · дерево": "dendro · tree", "чтение · список": "reading · list", "чтение: опорные ноты списком по группам, остальное на дуге": "reading: anchor notes as a grouped list, the rest on the arc", "force · зоны": "force · zones", "pack · круги зон": "pack · zone circles", "ring · синергия зон": "ring · zone synergy", "petals · лепестки": "petals · spiral", "radial · хабы в центр": "radial · hubs to center", "grid · полки": "grid · shelves", "timeline · свежесть": "timeline · recency", "представление под задачу одним выбором: ставит раскладку+цвет+слои разом; дальше всё крутится вручную как обычно": "task-shaped view in one pick: sets layout+color+layers at once; everything stays hand-tunable after", "задача": "task", "обзор · где что лежит": "overview · where things live", "тематики · кластеры": "topics · clusters", "синергия зон": "zone synergy", "свежесть · что живо": "recency · what's alive", "хабы · опорные ноты": "hubs · anchor notes", "смысловая карта": "meaning map", "долги · ghost-ноты": "debts · ghost notes", "фокус · камера": "focus · camera", "что делает клик по ноде: dim = приглушить остальное · ego blur = фон в блюр, нода+соседи резко · тайлы = ego карточками": "what clicking a node does: dim = mute the rest · ego blur = background blurred, node+neighbors sharp · tiles = ego as cards", "что делает выделение ноды": "what selecting a node does", "dim · приглушить": "dim · mute rest", "ego · blur фона": "ego · blur background", "ego · тайлы": "ego · tiles", "камера при выделении: stay = НЕ трогать вообще (перелёт только c / ⌖ / enter в поиске) · adaptive = долететь если вне кадра · fit / corner": "camera on select: stay = do NOT touch at all (fly only via c / ⌖ / enter in search) · adaptive = fly over if off-screen · fit / corner", "framing при select; stay = зум ручной, камера не трогается": "framing on select; stay = manual zoom, camera untouched", "stay · ручной": "stay · manual", "перелёты камеры не меняют масштаб, только пан": "camera flights keep zoom, pan only", "подписи": "labels", "кто подписан: hubs = топ-degree · hops = N шагов от выделенной · near = вокруг курсора · all (клавиша l = цикл)": "which nodes get labels: hubs = top-degree · hops = N steps from selected · near = around cursor · all (key l = cycle)", "какие ноды получают лейбл (l = cycle)": "which nodes get a label (l = cycle)", "hops (от selected)": "hops (from selected)", "near (у курсора)": "near (at cursor)", "BFS-глубина для hops": "BFS depth for hops", "плотность подписей — ось, НЕЗАВИСИМАЯ от зума: бюджет имён на экран (приоритет selected > pin > hover > degree); 0 = только выделенное/пины; зум добавляет бюджет сам, ползунок — множитель": "label density — an axis INDEPENDENT of zoom: name budget per screen (priority selected > pin > hover > degree); 0 = only selected/pins; zoom adds budget by itself, the slider is a multiplier", "подписи нод на графе": "node labels on the graph", "прятать налезающие друг на друга лейблы": "hide overlapping labels", "на месте спрятанного лейбла — крошечная метка-тире (видно, что имя есть; текст не мажется)": "a hidden label leaves a tiny dash mark (the name exists, text doesn't smear)", "плотность": "density", "оставить яркими только top-N нод по degree, остальные притушить (не удалять)": "keep only top-N nodes by degree bright, dim the rest (not removed)", "множитель прозрачности всех рёбер": "opacity multiplier for all edges", "множитель размера нод": "node size multiplier", "слои": "layers", "контуры зон памяти на подложке": "memory-zone outlines on the underlay", "мягкие блобы вокруг louvain-кластеров (тематики из топологии)": "soft blobs around louvain clusters (topics from topology)", "пунктирные ноды = [[ссылка]] без файла — «стоит написать»": "dashed nodes = a [[link]] with no file — “worth writing”", "все рёбра; off = только у выделенной/пинов/hover (клавиша 9)": "all edges; off = only for selected/pins/hover (key 9)", "моушн": "motion", "бегущие частицы вдоль рёбер, включая викилинки — направление = кто ссылается (клавиша 0)": "flowing particles along edges, wikilinks included — direction = who references whom (key 0)", "курсор-магнит: раздвигает облако; ближняя нода после ~1.3с липнет к курсору": "cursor magnet: pushes the cloud apart; after ~1.3s the nearest node sticks to the cursor", "жесты вебкамерой: ладонь = пан, щипок = зум (нужен CDN)": "webcam gestures: palm = pan, pinch = zoom (needs CDN)", "клик по чипу = скрыть/показать зону целиком (клавиши 1-8)": "click a chip = hide/show the whole zone (keys 1-8)", "зоны · 1-8 hide": "zones · 1-8 hide", "слои рёбер по типу детектора: клик = вкл/выкл слой; что значит каждый тип — в ? справке": "edge layers by detector type: click = toggle layer; what each type means — in ? help", "рёбра по типу": "edges by type", "клик по тегу = ЛИНЗА: остаются только ноды с тегом, остальное растворяется в блюр-пустоту (в focus=dim — приглушается). Свои теги: «+ тег» в панели ноды (клавиша t) или 🏷 из пинов; ∪/∩ = режим нескольких тегов": "click a tag = LENS: only tagged nodes remain, the rest dissolves into blur-void (with focus=dim — dimmed). Own tags: “+ tag” in the node panel (key t) or 🏷 from pins; ∪/∩ = multi-tag mode", "несколько тегов: ∪ = любой из них, ∩ = все сразу": "multiple tags: ∪ = any of them, ∩ = all at once", "теги · линза": "tags · lens", "сброс": "reset", "легенда цвета; клик по строке = изолировать группу (второй клик = вернуть)": "color legend; click a row = isolate the group (second click = restore)", "rmb = пин: нода+соседи остаются яркими; ctrl+rmb = стек до 6; 🏷 = собрать пачку пинов в свой тег": "rmb = pin: node+neighbors stay bright; ctrl+rmb = stack up to 6; 🏷 = gather the pinned batch into an own tag", "повесить один тег на все запиненные ноды": "put one tag on all pinned nodes", "🏷 в тег": "🏷 to tag", "сохранить текущую камеру + фильтры (включая тег-линзу) под именем; клик по строке = вернуть вид": "save current camera + filters (incl. tag lens) under a name; click a row = restore the view", "имя вида…": "view name…", "atlas — справка": "atlas — help", "клавиши": "keys", "поиск (дропдаун: ↑↓ enter esc; enter = снять фильтр + перелёт)": "search (dropdown: ↑↓ enter esc; enter = clear filter + fly)", "скрыть/показать зону": "hide/show zone", "цикл label-режима hubs → hops → near → all": "cycle label mode hubs → hops → near → all", "цикл раскладки force → semantic → pack → ring → petals → radial → grid → zones → timeline; морф анимирован. «Задача» в HUD ставит раскладку+цвет+слои пресетом": "cycle layout force → semantic → pack → ring → petals → radial → grid → zones → timeline; the morph is animated. “Task” in the HUD sets layout+color+layers as a preset", "fit по графу / home (стартовый вид)": "fit to graph / home (start view)", "подтянуть выделенную ноду + соседей в кадр — ЕДИНСТВЕННЫЙ автоперелёт при cam=stay": "pull the selected node + neighbors into frame — the ONLY auto-flight when cam=stay", "тег на выделенную ноду (фокус в «+ тег», enter вешает, можно цепочкой)": "tag the selected node (focuses “+ tag”, enter applies, chainable)", "пан · зум (shift = boost)": "pan · zoom (shift = boost)", "назад по истории выделений": "back through selection history", "скрыть панели, контекст остаётся (второй v — вернуть)": "hide panels, context stays (second v — restore)", "каскад: поиск → selected → pins → изоляция/теги": "cascade: search → selected → pins → isolation/tags", "select / pin (context delivery) / multi-pin стек": "select / pin (context delivery) / multi-pin stack", "нарисовать user-ребро между двумя нодами (overlay)": "draw a user edge between two nodes (overlay)", "cross-zone рёбра (детекторы graph-lab; зоны = canvases)": "cross-zone edges (graph-lab detectors; zones = canvases)", "панель ноды": "node panel", "копировать в буфер": "copy to clipboard", "открыть в редакторе (scheme ниже; fallback = copy path)": "open in editor (scheme below; fallback = copy path)", "▾ у зоны": "▾ at zone", "override зоны ноды (localStorage; ★ = переопределена)": "override the node's zone (localStorage; ★ = overridden)", "✕ у линка": "✕ at link", "negative assertion — спрятать авто-ребро (overlay)": "negative assertion — hide an auto edge (overlay)", "+ тег / ✕ на теге": "+ tag / ✕ on tag", "свои теги на ноде (localStorage); 🏷 в pins-карте = один тег на пачку пинов; клик по тегу = ЛИНЗА: остаются только помеченные ноды (+ пины), остальное в блюр-пустоту — это задумано; виды и ?state= несут линзу": "own tags on a node (localStorage); 🏷 in the pins card = one tag on the pinned batch; click a tag = LENS: only tagged nodes remain (+ pins), the rest into blur-void — by design; views and ?state= carry the lens", "⌖ в кадр": "⌖ frame", "явный перелёт к ноде+соседям (= клавиша c)": "explicit flight to node+neighbors (= key c)", "масштаб": "scale", "ноды становятся карточками с подложкой (заголовок читается); ещё ближе — с превью описания": "nodes become cards with a backing (title readable); closer still — with a description preview", "масштаб текста графа и панелей UI": "text scale of the graph and UI panels", "настройки": "settings", "профиль · редактор · пересборка · ссылка на вид — в": "profile · editor · rebuild · view link — in", "(кнопка в баре)": "(button in the bar)", "показать скрытые ноды (": "show hidden nodes (", "экспорт overlay.json": "export overlay.json", "сбросить конфиг + localStorage этого корпуса": "reset config + localStorage of this corpus", "закрыть (esc)": "close (esc)", "⛭ настройки": "⛭ settings", "профиль": "profile", "мержит": "merges", "с текущим, не затирает; незнакомые ключи переносятся как есть.": "into the current one, no clobber; unknown keys carry over as-is.", "↧ экспорт профиля": "↧ export profile", "↥ импорт профиля…": "↥ import profile…", "?state= — раскладка/цвет/слои/нода/зум; кросс-хост: камера якорится на ноду, не на координаты": "?state= — layout/color/layers/node/zoom; cross-host: the camera anchors to a node, not coordinates", "⧉ ссылка на текущий вид": "⧉ link to current view", "поведение": "behavior", "восстанавливать": "restore", "при старте (иначе motion-режимы включаются только руками в сессии)": "on start (otherwise motion modes only turn on by hand per session)", "данные": "data", "⚙ пересборка данных…": "⚙ rebuild data…", "редактор (↗ open в панели ноды)": "editor (↗ open in the node panel)", "опасное": "danger", "сбросить конфиг + localStorage ЭТОГО корпуса": "reset config + localStorage of THIS corpus", "⚙ пересборка данных": "⚙ rebuild data", "— семантический поиск в дропдауне (эмбеддинги внутрь файла, +≈1.3MB)": "— semantic search in the dropdown (embeddings into the file, +≈1.3MB)", "— детектор структурных близнецов (медленнее)": "— structural-twin detector (slower)", "— без Ollama-эмбеддингов (если Ollama лежит)": "— without Ollama embeddings (if Ollama is down)", "— только wikilink-граф, самый быстрый прогон": "— wikilink graph only, fastest run", "⧉ копировать команду": "⧉ copy command", "⟳ перезагрузить (после прогона)": "⟳ reload (after the run)", "камера": "camera", "вписать КОНТЕКСТ в кадр (поиск / фильтр / пины / ego выделенной; без контекста — весь граф) — клавиша f; весь мир всегда = ⌂ / h": "fit CONTEXT into frame (search / filter / pins / ego of selected; no context — the whole graph) — key f; the whole world always = ⌂ / h", "вернуться к стартовому виду (клавиша h)": "return to the start view (key h)", "стартовый вид (h)": "start view (h)", "перезагрузить страницу (свежий файл атласа после пересборки; сама пересборка — в ⛭)": "reload the page (fresh atlas file after a rebuild; the rebuild itself — in ⛭)", "перезагрузить": "reload", "скачать видимый срез графа как JSON; shift+клик = полный корпус": "download the visible slice as JSON; shift+click = full corpus", "экспорт видимого среза JSON; shift = полный корпус": "export visible slice JSON; shift = full corpus", "настройки · справка": "settings · help", "настройки: профиль export/import, ссылка на вид, поведение, пересборка данных, редактор": "settings: profile export/import, view link, behavior, data rebuild, editor", "справка по всем клавишам и типам рёбер (?)": "help for all keys and edge types (?)", "справка (?)": "help (?)", "масштаб текста на графе И панелей UI (сохраняется)": "text scale on the graph AND UI panels (persists)", "мельче": "smaller", "крупнее": "larger", "текст": "text", "в кадр ·": "frame ·", "тег ·": "tag ·", "язык интерфейса: RU ↔ EN — страница перезагрузится, настройки останутся": "UI language: RU ↔ EN — the page reloads, settings survive", "в semantic hulls не рисуются (зоны перемешаны) — контраст зон несут кольца нод": "hulls don't draw in semantic (zones are mixed) — zone contrast is carried by node rings", "повесить этот тег на ноду": "put this tag on the node", "тег": "tag", "нод": "nodes", "снят": "removed", "нод контекста (весь граф = ⌂/h)": "context nodes (the whole graph = ⌂/h)", " <span class=\"tg-mark\">ghost — ноты нет</span>": " <span class=\"tg-mark\">ghost — no note</span>", " · нарисовано руками": " · drawn by hand", "overlay: кликни вторую ноду для user-ребра": "overlay: click a second node for a user edge", "удалить user-ребро": "delete user edge", "вернуть ребро": "restore edge", "negative: спрятать авто-ребро": "negative: hide the auto edge", "override зоны (порт layers.overrides)": "zone override (layers.overrides port)", "<span class=\"chip ghostchip\">ghost — нота не написана</span>": "<span class=\"chip ghostchip\">ghost — note not written</span>", "копировать id": "copy id", "открыть в редакторе (пресет в ?)": "open in editor (preset in ?)", "скрыть до перезагрузки": "hide until reload", "подтянуть ноду+соседей в кадр (c)": "pull node+neighbors into frame (c)", "теги · клик = линза": "tags · click = lens", "снять свой тег": "remove own tag", "+ тег (t)": "+ tag (t)", "enter = повесить тег; клавиша t фокусирует сюда": "enter = apply the tag; key t focuses here", "изменена": "modified", "д назад": "d ago", " назад": " ago", "▤ читать полностью": "▤ read in full", "скрыта до перезагрузки (вернуть — в ?)": "hidden until reload (restore — in ?)", "∩ все": "∩ all", "снять тег из линзы": "remove tag from lens", "снять поиск": "clear search", "снять изоляцию": "clear isolation", "зоны": "zones", "показать все зоны": "show all zones", "вернуть все ноды": "restore all nodes", "нот": "notes", "сохранить линзу как вид": "save lens as view", "💾 в вид": "💾 to view", "линза": "lens", "скопировано": "copied", "copy не удался": "copy failed", "нет пинов: rmb = пин, ctrl+rmb = стек": "no pins: rmb = pin, ctrl+rmb = stack", "тег для": "tag for", "запиненных нод:": "pinned nodes:", "ребро уже есть": "edge already exists", "user-ребро:": "user edge:", "user-ребро удалено": "user edge removed", "negative: ребро спрятано": "negative: edge hidden", "вид сохранён до раскладок — камера может не совпасть": "view saved before layouts — the camera may not match", "вид: ": "view: ", "вид сохранён: ": "view saved: ", "экспорт: ": "export: ", "# граф собран внешним билдером (--data): пересобери его и перезапусти пайп": "# graph built by an external builder (--data): rebuild it and rerun the pipe", "данные: ": "data: ", "ч": "h", "д": "d", "команда": "command", "скрытые ноды возвращены": "hidden nodes restored", "две зоны ссылаются на один ghost (всегда on)": "two zones reference one ghost (always on)", "cosine эмбеддингов ≥ 0.75 (Ollama, build-time)": "embedding cosine ≥ 0.75 (Ollama, build-time)", "Jaccard рабочих тегов ≥ 0.5": "working-tag Jaccard ≥ 0.5", "co-modification в окне 24h": "co-modification within a 24h window", "co-touched в git-коммитах": "co-touched in git commits", "chain-3 мотивы (opt-in, research)": "chain-3 motifs (opt-in, research)", "нарисовано юзером (ctrl+click ×2)": "drawn by the user (ctrl+click ×2)", "🎥 жесты: ладонь = пан, щипок = зум": "🎥 gestures: palm = pan, pinch = zoom", "вебкамера недоступна": "webcam unavailable", "CDN недоступен (offline) — жесты выключены": "CDN unavailable (offline) — gestures off", "обзор: зоны силами, ghost-пунктир виден": "overview: zones by forces, ghost dashes visible", "тематики: круг зоны ⊃ круги louvain-кластеров": "topics: zone circle ⊃ louvain cluster circles", "синергия: связанные зоны — соседние дуги; пограничные ноды у общей границы": "synergy: linked zones are adjacent arcs; border nodes at the shared boundary", "свежесть: справа = свежее, ярче = горячее": "recency: right = fresher, brighter = hotter", "хабы: чем связнее нота, тем ближе к центру": "hubs: the more connected a note, the closer to center", "смысл: позиция = cosine-близость, фиолетовые рёбра ≥0.75": "meaning: position = cosine proximity, violet edges ≥0.75", "долги: пунктирные ghost = на них ссылаются, ноты нет": "debts: dashed ghosts = referenced, but no note", "semantic-раскладки нет: пересобери с эмбеддингами (⚙)": "no semantic layout: rebuild with embeddings (⚙)", "нет данных возраста для timeline": "no age data for timeline", " · слой включён на сессию (насовсем = чип)": " · layer on for this session (permanent = chip)", "рёбер": "edges", " детекторов": " detectors", "кластеров": "clusters", "всё": "all", "<div class=\"empty\">пусто</div>": "<div class=\"empty\">empty</div>", "файла нет; ссылаются:": "no file; referenced by:", "◌ в граф": "◌ to graph", "<1д": "<1d", "мес": "mo", "ноты": "notes", "wiki-рёбра": "wiki edges", "cross-рёбра": "cross edges", "медиана возраста": "median age", "сегодня": "today", "неделя": "week", "месяц": "month", "квартал": "quarter", "старше": "older", "реф.": "refs", "клик по полосе = в граф с изоляцией зоны": "click a bar = to the graph with the zone isolated", "когда ноты менялись; клик = timeline-пресет свежести": "when notes changed; click = recency timeline preset", "на них ссылаются, файла нет — «стоит написать»; клик = к ноде в графе": "referenced but the file is missing — “worth writing”; click = to the node in the graph", "самые связные ноты; клик = к ноде в графе": "the most connected notes; click = to the node in the graph", "вне всех recall-индексов; клик = читать": "outside all recall indexes; click = read", "sync-конфликты файлов; клик = читать": "file sync-conflicts; click = read", "слои рёбер по детекторам; клик = вкл/выкл, синхронно с чипами HUD": "edge layers by detector; click = toggle, synced with the HUD chips", "<div class=\"empty2\">пусто</div>": "<div class=\"empty2\">empty</div>", "<div class=\"empty2\">чисто</div>": "<div class=\"empty2\">clean</div>", "свежесть": "recency", "хабы": "hubs", "конфликты": "conflicts", "ghost-долги · топ по ссылкам": "ghost debts · top by refs", "здоровье данных": "data health", "собрано:": "built:", "stem-коллизии:": "stem collisions:", "скрыто руками:": "hidden by hand:", "нет": "none", "⚙ пересборка…": "⚙ rebuild…", "рёбра": "edges", "профиль экспортирован": "profile exported", "битый JSON профиля": "broken profile JSON", "это не atlas-profile JSON": "not an atlas-profile JSON", "пины→": "pins→", "виды +": "views +", "теги +": "tags +", "импорт: ": "import: ", "нечего мержить": "nothing to merge", " — перезагрузка…": " — reloading…", "ссылка на вид": "view link", "битый ?state= — игнорирую": "broken ?state= — ignoring", "Атлас — статичный file://, данные пересобирает генератор в терминале. Отметь нужное, скопируй команду, прогони — затем «⟳ перезагрузить». Раскладки/цвета/слои пересборки не требуют — они живые, крути прямо в HUD.": "The atlas is a static file://; data is rebuilt by the generator in the terminal. Tick what you need, copy the command, run it — then “⟳ reload”. Layouts/colors/layers need no rebuild — they are live, tune them right in the HUD.", "Всё ручное (пины · виды · свои теги · user-рёбра · negatives · zone-overrides · конфиг) живёт в localStorage этого браузера. Профиль = один JSON для бэкапа/переезда между хостами. Импорт": "Everything manual (pins · views · own tags · user edges · negatives · zone-overrides · config) lives in this browser's localStorage. A profile = one JSON for backup / moving between hosts. Import", "забытые": "forgotten", "живые": "alive", "forgotten · забытость": "forgotten", "ушла в архив": "moved to archive", "снять линзу забытости": "drop the forgotten-lens", "файл СУЩЕСТВОВАЛ — удалён": "the file EXISTED — deleted", "переехала": "moved", "в сессиях": "in sessions", "с тача": "since last touch", "была": "was", "стала": "became", "файл удалён": "file deleted", "провенанс": "provenance"}</script>
 <script>
 const DATA = "__DATA__";
 
@@ -1169,6 +1182,51 @@ const zoneSlot = new Map(zoneOrder.map((z,i) => [z, i]));
 const heatScale = d3.scaleLinear().domain([1, 0]).range(['#3987e5', '#3a3a37']); // heat 1 bright, 0 recedes
 const zoneColor = z => { const i = zoneSlot.get(z); return i !== undefined && i < 8 ? CAT[i] : OTHER; };
 
+// ---- GROUP BY: the grouping axis every grouping layout rides on (v2.10) ----
+// LAYOUT = the shape, GROUP = what slices it. zone stays the default; root cuts a
+// multi-root vault by origin, cluster by topology-topic, type by note kind, age by recency.
+let groupMode = 'zone';   // declared before layouts; restored from CFG later
+const AGE_BUCKETS = [[7, 'неделя'], [30, 'месяц'], [90, 'квартал'], [365, 'год']];
+const ageBucket = n => {
+  const d = n.age_days ?? 1e4;
+  for (const [lim, name] of AGE_BUCKETS) if (d <= lim) return name;
+  return 'старше';
+};
+const groupVal = n =>
+  groupMode === 'root'    ? (n.root || '—') :
+  groupMode === 'cluster' ? 'c' + (n.cluster ?? '?') :
+  groupMode === 'type'    ? (n.type || '?') :
+  groupMode === 'age'     ? ageBucket(n) :
+  n.zone;                                          // 'zone' + fallback
+let _gOrder = null, _gSlot = null;                 // caches, dropped on groupMode change
+function groupOrder() {
+  if (_gOrder) return _gOrder;
+  if (groupMode === 'zone') { _gOrder = zoneOrder.slice(); }
+  else if (groupMode === 'age') { _gOrder = [...AGE_BUCKETS.map(b => b[1]), 'старше']; }
+  else {
+    const counts = new Map();
+    for (const n of nodes) if (!n.ghost) counts.set(groupVal(n), (counts.get(groupVal(n)) || 0) + 1);
+    _gOrder = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  }
+  _gSlot = new Map(_gOrder.map((v, i) => [v, i]));
+  return _gOrder;
+}
+const groupColor = v => {
+  if (groupMode === 'zone') return zoneColor(v);
+  groupOrder();
+  const i = _gSlot.get(v);
+  return i !== undefined && i < 8 ? CAT[i] : OTHER;
+};
+const groupLabel = v => groupMode === 'cluster' && String(v).startsWith('c')
+  ? clusterName(+String(v).slice(1)) : String(v);
+function setGroupMode(v) {
+  groupMode = v; _gOrder = _gSlot = null;
+  const el = document.getElementById('groupMode');
+  if (el && el.value !== v) el.value = v;
+  saveCfg();
+  applyLayout(layoutName, false);   // re-slice the current shape
+}
+
 function groupKey(n) {
   switch (mode()) {
     case 'cluster': return n.cluster < 8 ? n.cluster : 'other';
@@ -1235,6 +1293,7 @@ function saveCfg() {
     labelHops: labelHopsV(), camPolicy2: camPolicy(),
     edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value, labelDens: +$('labelDens').value, collisions: +($('collisions') ? $('collisions').value : 0),
     maxN: maxN >= realCount ? null : maxN, TS: TS, toggles: toggles, layout: layoutName, lang: CFG.lang,
+    group: groupMode,
     hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
   });
 }
@@ -1258,7 +1317,10 @@ $('colorMode').addEventListener('change', () => renderPins());   // pin swatches
 const showGhosts = () => toggles.ghosts;
 // in the semantic layout, zone hulls lie (positions = cosine, zones intermixed) — auto-off;
 // zone contrast there is carried by colored node rings (see paintFrame)
-const showHulls = () => toggles.hulls && layoutName !== 'semantic';
+// spine/facets/dendro: group signal lives in the layout's own structure (headers, panels,
+// wedges) — hulls would wrap list+arc into one giant blob; titles come via layoutTitles
+const showHulls = () => toggles.hulls && !['semantic', 'spine', 'facets', 'dendro'].includes(layoutName);
+let layoutTitles = [];   // [{x, y, v}] world-space group headers, set by list-shaped layouts
 const showLabels = () => toggles.labels;
 
 // VIEW multipliers (edgeAlphaMul / nodeSizeMul) + value labels
@@ -1275,7 +1337,9 @@ $('labelDensv').textContent = (+$('labelDens').value).toFixed(1);
 // label budget (a "label density" axis, decoupled from spatial zoom):
 // zoom already adds budget by default (closer = collisions free up room = more names),
 // the lbl ρ slider is a user multiplier on top; 0 = only selected/hover/pin/search
-const lblBudget = K => Math.round((16 + 52 * Math.min(K, 6)) * (+$('labelDens').value));
+// v2.10 readable pass: base budget raised (16→40) — "I see a graph, I can't read the files"
+// was the top complaint; collision-cull still governs, so it degrades to what fits
+const lblBudget = K => Math.round((40 + 64 * Math.min(K, 6)) * (+$('labelDens').value));
 
 // FILTER maxNodes: top-N by degree; outside keep — don't delete, dim 0.10 (principle #2)
 const realCount = nodes.filter(n => !n.ghost).length;
@@ -1450,7 +1514,7 @@ for (const e of edges) {
 }
 const layoutEdges = edges.filter(e => !e.cross);
 // cross-zone edges pull almost nothing: otherwise inter-zone links collapse zones into a central blob
-const sameZone = e => e.source.zone === e.target.zone;
+const sameZone = e => groupVal(e.source) === groupVal(e.target);   // group-aware since v2.10 (name kept: call sites)
 // charge grows with degree: hubs push apart their own core — dense zone cores (LIGHT)
 // don't clump into a label mush; capped at 24 links so a super-hub doesn't tear the zone apart
 const makeCharge = () => d3.forceManyBody()
@@ -1536,7 +1600,7 @@ function fitTransform(subset) {
   if (!vis.length) return d3.zoomIdentity;
   // world-unit padding: hull overhang + zone label above it (more margin on top);
   // ring mode: zone labels sit OUTSIDE the ring (rmax+80) — pad wider or they clip
-  const pad = layoutName === 'ring' ? 170 : 70;
+  const pad = { ring: 170, dendro: 240, facets: 210, spine: 160 }[layoutName] || 70;
   const x0 = d3.min(vis, n => n.x) - pad, x1 = d3.max(vis, n => n.x) + pad;
   const y0 = d3.min(vis, n => n.y) - Math.max(150, pad), y1 = d3.max(vis, n => n.y) + pad;
   const vr = viewRect(), vw = vr.x1 - vr.x0, vh = vr.y1 - vr.y0;
@@ -2512,6 +2576,11 @@ function applyView(v) {
   if (v.color) $('colorMode').value = v.color;
   if (v.size) $('sizeMode').value = v.size;
   // a view without a layout = camera flies to coordinates of ANOTHER layout (debug case, 07-08 audit)
+  if (v.group && v.group !== groupMode &&
+      [...$('groupMode').options].some(o => o.value === v.group)) {
+    groupMode = v.group; _gOrder = _gSlot = null;
+    $('groupMode').value = v.group;
+  }
   if (v.layout && v.layout !== layoutName &&
       [...$('layoutMode').options].some(o => o.value === v.layout))
     applyLayout(v.layout, true);
@@ -2531,7 +2600,7 @@ function saveView(name) {
     hiddenZones: [...hiddenZones], hiddenKinds: [...hiddenKinds],
     tags: [...tagSel],   // view carries the lens: "tag-driven saved view"
     motion: { magnet: toggles.magnet, particles: toggles.particles },   // the vibe is part of the view
-    color: mode(), size: sizeMode(), layout: layoutName });
+    color: mode(), size: sizeMode(), layout: layoutName, group: groupMode });
   lsSet(KEYP + 'views', views);
   renderViews(); toast(T('вид сохранён: ') + name);
 }
@@ -2806,15 +2875,17 @@ if (!hasAge) {
 }
 function layoutTargets(name) {
   const t = new Map();
+  layoutTitles = [];                                   // only list-shaped layouts repopulate
+  for (const n of nodes) delete n._lbAnchor;           // side-anchored labels are layout-owned
   const real = nodes.filter(n => !n.ghost);
   const maxDeg = d3.max(real, n => n.degree) || 1;
   if (name === 'semantic') {
     for (const n of real) if (n.sx !== undefined) t.set(n.id, [n.sx * R, n.sy * R]);
   } else if (name === 'radial') {
-    // zones = ring sectors, hubs toward center (radial port)
+    // groups = ring sectors, hubs toward center (radial port)
     let a0 = -Math.PI / 2;
-    for (const z of zoneOrder) {
-      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+    for (const z of groupOrder()) {
+      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
       if (!ns.length) continue;
       const span = 2 * Math.PI * ns.length / real.length;
       ns.forEach((n, i) => {
@@ -2825,9 +2896,9 @@ function layoutTargets(name) {
       a0 += span;
     }
   } else if (name === 'pack') {
-    // nested circles (d3.pack): zone ⊃ louvain cluster ⊃ note. Fills the whole area
+    // nested circles (d3.pack): group ⊃ louvain cluster ⊃ note. Fills the whole area
     // (space-filling), intra-domain structure shows up as cluster sub-circles
-    const groups = d3.groups(real, n => n.zone, n => n.cluster);
+    const groups = d3.groups(real, n => groupVal(n), n => n.cluster);
     const root = d3.hierarchy({ children: groups.map(([, cs]) =>
         ({ children: cs.map(([, ns]) => ({ children: ns.map(n => ({ n })) })) })) })
       .sum(d => d.n ? 6 + d.n.degree : 0);
@@ -2839,12 +2910,12 @@ function layoutTargets(name) {
     // zone synergy: zones = ring arcs (length ∝ note count); arc order is a greedy chain,
     // the most connected zone pairs sit next to each other; within an arc, nodes pulling
     // toward a neighboring zone hug the shared border (inter-zone orientation), hubs toward the inner edge
-    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
-    const cnt = new Map(zs.map(z => [z, real.filter(n => n.zone === z).length]));
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const cnt = new Map(zs.map(z => [z, real.filter(n => groupVal(n) === z).length]));
     const syn = new Map(), pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
     for (const e of edges) {   // synergy over ALL edges (incl. detectors): semantic connectivity
       if (e.user) continue;
-      const a = e.source.zone, b = e.target.zone;
+      const a = groupVal(e.source), b = groupVal(e.target);
       if (a !== b) syn.set(pk(a, b), (syn.get(pk(a, b)) || 0) + 1);
     }
     const S = (a, b) => syn.get(pk(a, b)) || 0;
@@ -2878,11 +2949,11 @@ function layoutTargets(name) {
         let p = 0;
         for (const id of adj.get(n.id) || []) {
           const m = byId.get(id);
-          if (m && m.zone === prev) p--; else if (m && m.zone === next) p++;
+          if (m && groupVal(m) === prev) p--; else if (m && groupVal(m) === next) p++;
         }
         return p;
       };
-      const ns = real.filter(n => n.zone === z)
+      const ns = real.filter(n => groupVal(n) === z)
         .sort((a, b) => pull(a) - pull(b) || b.degree - a.degree);
       ns.forEach((n, i) => {
         const aa = ang + span * (i + 0.5) / ns.length;
@@ -2897,13 +2968,13 @@ function layoutTargets(name) {
     // Anchors sit on their own circle sized from the fattest petal, so neighboring petals
     // almost touch — the whole thing reads as one flower, not clumps in the corners
     const GA = Math.PI * (3 - Math.sqrt(5));
-    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
-    const maxCnt = d3.max(zs, z => real.filter(n => n.zone === z).length) || 1;
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const maxCnt = d3.max(zs, z => real.filter(n => groupVal(n) === z).length) || 1;
     const pitch = 26;
     const petalR = pitch * Math.sqrt(maxCnt + 0.6);
     const aR = zs.length > 1 ? petalR * 1.18 / Math.sin(Math.PI / zs.length) : 0;
     zs.forEach((z, zi) => {
-      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
       const za = -Math.PI / 2 + zi * 2 * Math.PI / zs.length;
       const ax = Math.cos(za) * aR, ay = Math.sin(za) * aR;
       ns.forEach((n, i) => {
@@ -2915,12 +2986,12 @@ function layoutTargets(name) {
     // grid by zone: each domain is its own block-"shelf" with a gap, sorted by degree inside;
     // blocks flow in a ribbon and fill the rectangle — scans like a table.
     // pitch = LAYOUT_PITCH.grid: widened 56→76 so label/tile card fits the column
-    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
     const CELL = LAYOUT_PITCH.grid, GAPB = 130, maxW = 2.4 * R;
     let bx = 0, by = 0, rowH = 0;
     const blocks = [];
     for (const z of zs) {
-      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
       const cols = Math.ceil(Math.sqrt(ns.length * 1.7));
       const w = cols * CELL, h = Math.ceil(ns.length / cols) * CELL;
       if (bx + w > maxW && bx > 0) { bx = 0; by += rowH + GAPB; rowH = 0; }
@@ -2935,7 +3006,7 @@ function layoutTargets(name) {
   } else if (name === 'timeline') {
     // time: x = age RANK (not raw days: a log scale crammed fresh notes into the right edge),
     // freshest on the RIGHT, full width used evenly; y = zone lane — "what I touched when"
-    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
     const orderT = real.slice().sort((a, b) =>
       (a.age_days || 0) - (b.age_days || 0) || (a.id < b.id ? -1 : 1));
     const xIdx = new Map(orderT.map((n, i) => [n.id, i]));
@@ -2943,17 +3014,17 @@ function layoutTargets(name) {
     const laneH = Math.min(170, 2 * R / Math.max(1, zs.length));
     zs.forEach((z, zi) => {
       const lane = (zi - (zs.length - 1) / 2) * laneH;
-      real.filter(n => n.zone === z).forEach((n, i) =>
+      real.filter(n => groupVal(n) === z).forEach((n, i) =>
         t.set(n.id, [X(xIdx.get(n.id)), lane + ((i * 37 % 100) - 50) / 100 * laneH * 0.6]));
     });
   } else if (name === 'zones') {
     // stacked port: one column per zone, sorted by degree inside.
     // column pitch = LAYOUT_PITCH.zones (46→64) + zone width derived from its column count:
     // a fixed 360 per zone caused overlap on wide zones and empty space on narrow ones
-    const zs = zoneOrder.filter(z => real.some(n => n.zone === z));
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
     const COLP = LAYOUT_PITCH.zones, GAPZ = 170;
     const packs = zs.map(z => {
-      const ns = real.filter(n => n.zone === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
       return { ns, cols: Math.max(1, Math.ceil(ns.length / 24)) };
     });
     const tot = d3.sum(packs, p => p.cols * COLP) + GAPZ * (packs.length - 1);
@@ -2963,6 +3034,81 @@ function layoutTargets(name) {
         x0 + (i % p.cols + 0.5) * COLP,
         (Math.floor(i / p.cols) - 12) * 40]));
       x0 += p.cols * COLP + GAPZ;
+    }
+  } else if (name === 'spine') {
+    // ref: arc+spine (v2.10) — central grouped LIST of the strongest notes (readable rows,
+    // section headers) + perimeter arc for the rest; edges connect the arc to the list.
+    // The spine is the reading surface: every row gets a side-anchored, always-drawn label.
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    // row budget is SCREEN physics, not taste: at fit the whole spine maps to the viewport
+    // height — more rows than pixels/16 = guaranteed smear. 44 rows ≈ 15px pitch at fit.
+    const ROWP = 38, HEADH = 76;
+    const topPer = Math.max(3, Math.floor(44 / Math.max(1, zs.length)));
+    const groupsNs = zs.map(z => real.filter(n => groupVal(n) === z)
+      .sort((a, b) => b.degree - a.degree));
+    const rowsTotal = groupsNs.reduce((s, ns) => s + Math.min(topPer, ns.length), 0);
+    const totH = rowsTotal * ROWP + zs.length * HEADH;
+    let y = -totH / 2;
+    const arcNs = [];
+    groupsNs.forEach((ns, zi) => {
+      layoutTitles.push({ x: 0, y: y + 30, v: zs[zi] });
+      y += HEADH;
+      layoutTitles[layoutTitles.length - 1].align = 'left';   // header shares the rows' left edge
+      layoutTitles[layoutTitles.length - 1].x = 14;
+      ns.slice(0, topPer).forEach(n => {
+        t.set(n.id, [0, y]);
+        n._lbAnchor = 'right';
+        y += ROWP;
+      });
+      for (const n of ns.slice(topPer)) arcNs.push(n);
+    });
+    // arc radius clears the list's corners; a small gap at the poles keeps the arc off the list ends
+    const Ra = Math.max(totH * 0.64, R * 0.8);
+    arcNs.forEach((n, i) => {
+      const f = (i + 0.5) / arcNs.length;
+      const ang = -Math.PI / 2 + 0.30 + f * (2 * Math.PI - 0.60);
+      t.set(n.id, [Math.cos(ang) * Ra, Math.sin(ang) * Ra]);
+    });
+  } else if (name === 'facets') {
+    // ref: In-My-Dreams facet panels (v2.10) — group values sit on the perimeter as readable
+    // mini-lists (top notes, side-anchored labels), the long tail fills a center disc in the
+    // group's own wedge; membership reads as node→panel direction
+    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const GA = Math.PI * (3 - Math.sqrt(5));
+    const Rp = R * 1.06, ROWP = 34, TOPN = 5, discR = R * 0.5;   // 5 rows/panel: fit-pitch stays readable
+    zs.forEach((z, zi) => {
+      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
+      const ang = -Math.PI / 2 + zi * 2 * Math.PI / zs.length;
+      const ax = Math.cos(ang) * Rp, ay = Math.sin(ang) * Rp;
+      const side = Math.cos(ang) >= -0.05 ? 'right' : 'left';
+      const rows = Math.min(TOPN, ns.length);
+      layoutTitles.push({ x: ax, y: ay - (rows / 2 + 0.9) * ROWP, v: z });
+      ns.slice(0, TOPN).forEach((n, i) => {
+        t.set(n.id, [ax, ay + (i - (rows - 1) / 2) * ROWP]);
+        n._lbAnchor = side;
+      });
+      const tail = ns.slice(TOPN), wedge = 2 * Math.PI / zs.length * 0.8;
+      tail.forEach((n, i) => {
+        const f01 = ((i * GA) % (2 * Math.PI)) / (2 * Math.PI);
+        const aa = ang + (f01 - 0.5) * wedge;
+        const rr2 = discR * Math.sqrt((i + 0.6) / Math.max(1, tail.length));
+        t.set(n.id, [Math.cos(aa) * rr2, Math.sin(aa) * rr2]);
+      });
+    });
+  } else if (name === 'dendro') {
+    // ref: snag-tree (v2.10) — radial dendrogram group ⊃ cluster ⊃ note, every leaf on the
+    // rim with an outward side-anchored label: the whole vault as one labeled tree crown
+    const groups = d3.groups(real, n => groupVal(n), n => n.cluster);
+    const root = d3.hierarchy({ children: groups.map(([, cs]) =>
+        ({ children: cs.map(([, ns]) => ({ children: ns.map(n => ({ n })) })) })) });
+    root.count();
+    const Rt = Math.max(R * 1.1, real.length * 3.4);   // rim circumference ≈ label pitch
+    d3.cluster().size([2 * Math.PI, Rt])
+      .separation((a, b) => (a.parent === b.parent ? 1 : 1.6))(root);
+    for (const leaf of root.leaves()) if (leaf.data.n) {
+      const ang = leaf.x - Math.PI / 2, r = leaf.y;
+      t.set(leaf.data.n.id, [Math.cos(ang) * r, Math.sin(ang) * r]);
+      leaf.data.n._lbAnchor = Math.cos(ang) >= 0 ? 'right' : 'left';
     }
   }
   // ghosts: at the centroid of real neighbors (a meaningful spot, not random)
@@ -2977,6 +3123,9 @@ function applyLayout(name, instant) {
   layoutName = name;
   $('layoutMode').value = name;
   saveCfg();
+  // force/semantic skip layoutTargets — drop list-layout leftovers here as well
+  layoutTitles = [];
+  for (const n of nodes) delete n._lbAnchor;
   if (name === 'force') {
     sim.force('link').distance(e => sameZone(e) ? 46 : 110).strength(e => sameZone(e) ? 0.22 : 0.035);
     sim.force('charge', makeCharge());
@@ -3019,6 +3168,8 @@ const PRESETS = {
               toast: T('хабы: чем связнее нота, тем ближе к центру') },
   meaning:  { layout: 'semantic', color: 'cluster', size: 'degree', clusters: false, ghosts: false,
               kinds: ['semantic'], toast: T('смысл: позиция = cosine-близость, фиолетовые рёбра ≥0.75') },
+  reading:  { layout: 'spine',    color: 'zone',    size: 'degree', clusters: false, ghosts: false,
+              labels: 'all', toast: T('чтение: опорные ноты списком по группам, остальное на дуге') },
   debts:    { layout: 'force',    color: 'type',    size: 'degree', clusters: false, ghosts: true,
               labels: 'all', toast: T('долги: пунктирные ghost = на них ссылаются, ноты нет') },
 };
@@ -3110,7 +3261,7 @@ function drawFocus(fm) {
     tagSel.size ? [...tagSel].join('§') + (tagAnd ? '∩' : '∪') : '·',
     timeLens ? timeLens.id + '±' + timeLens.win : '·',
     metricLens ? metricLens.metric + '≥' + metricLens.thr : '·',
-    layoutName, mode(), sizeMode(),
+    layoutName, groupMode, mode(), sizeMode(),
     nsMul(), maxN, hiddenZones.size, hiddenKinds.size, sessionKinds.size, hiddenNodes.size,
     toggles.edgesOn, toggles.hulls, toggles.ghosts].join('|');
   const moving = sim.alpha() > 0.005 || magActive;
@@ -3169,18 +3320,19 @@ function paintFrame(g, opts) {
   const pinDimmed = n => pinSet.size && !pinHl.has(n.id);   // pin=context: everything else fades to 0.22
   const searchHit = n => query.length && matches(n);
 
-  // hulls per zone — tinted with the zone color (spatial anchoring). Not needed in the ego pass.
+  // hulls per GROUP — tinted with the group color (spatial anchoring; group=zone by default).
+  // Not needed in the ego pass.
   if (showHulls() && !only) {
-    const zoneLblBoxes = [];   // de-conflict zone labels: overlap → label is nudged up
+    const zoneLblBoxes = [];   // de-conflict group labels: overlap → label is nudged up
     const ringMode = layoutName === 'ring';   // ring arc: the hull chord covers the center — don't fill it
-    for (const z of zoneOrder) {
-      // B21: ghost phantoms don't stretch the zone outline — hull over written notes only
-      const pts = nodes.filter(n => n.zone === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
+    for (const z of groupOrder()) {
+      // B21: ghost phantoms don't stretch the group outline — hull over written notes only
+      const pts = nodes.filter(n => groupVal(n) === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
       if (pts.length < 3) continue;
       const hull = d3.polygonHull(pts);
       if (!hull) continue;
       const [cx, cy] = d3.polygonCentroid(hull);
-      const zc = zoneColor(z);
+      const zc = groupColor(z);
       if (!ringMode) {
         // petal: expanded hull smoothed into a closed quadratic curve; fill = radial
         // gradient (airy center → tinted rim) so the zone reads as a glowing petal,
@@ -3236,7 +3388,7 @@ function paintFrame(g, opts) {
         g.fill(); g.stroke();
       }
       if (!muted) {
-        const zl = z.toUpperCase();
+        const zl = groupLabel(z).toUpperCase();
         const zfs = Math.max(12, 14/transform.k)*TS;
         g.font = `500 ${zfs}px ${'"SF Mono", ui-monospace, Menlo, monospace'}`;
         g.textAlign = 'center';
@@ -3272,7 +3424,7 @@ function paintFrame(g, opts) {
     // additive white. alpha ∝ slider × bridge mass, so a bridgeless pair never blooms (guard
     // holds them apart). 3-zone regions emerge where pair-blooms overlap under 'lighten'.
     const _cz = +($('collisions') ? $('collisions').value : 0);
-    if (_cz > 0 && !ringMode && overlapSet()) {
+    if (_cz > 0 && !ringMode && overlapSet() && groupMode === 'zone') {   // blooms = zone-synergy concept
       const B = bridgeData(), pos = new Map(nodes.map(n => [n.id, n]));
       for (const [key, o] of B.pair) {
         const norm = o.w / B.maxW, a = _cz * norm;
@@ -3296,6 +3448,28 @@ function paintFrame(g, opts) {
 
   // (louvain blob layer removed 07-09 — it glitched over dense zones; louvain data itself
   // stays: pack layout + color=cluster still use n.cluster)
+
+  // group headers of the list-shaped layouts (spine sections / facet panel titles):
+  // hulls are off there — these carry the group names instead, same halo discipline
+  if (!muted && !only && layoutTitles.length && ['spine', 'facets', 'dendro'].includes(layoutName)) {
+    const tfs = Math.max(12, 14 / transform.k) * TS;
+    g.font = `500 ${tfs}px "SF Mono", ui-monospace, Menlo, monospace`;
+    g.textAlign = 'center';
+    for (const tl of layoutTitles) {
+      const txt = groupLabel(tl.v).toUpperCase();
+      g.textAlign = tl.align || 'center';
+      const tw = g.measureText(txt).width;
+      zoneLblScreenBoxes.push({
+        x: (tl.x - (tl.align === 'left' ? 0 : tw / 2)) * transform.k + transform.x - 4,
+        y: (tl.y - tfs) * transform.k + transform.y - 4,
+        w: (tw + 8 / transform.k) * transform.k, h: (tfs * 1.3 + 8 / transform.k) * transform.k });
+      g.lineWidth = 4 / transform.k; g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(12,12,11,0.8)';
+      g.strokeText(txt, tl.x, tl.y);
+      g.fillStyle = hexA(groupColor(tl.v), 0.85);
+      g.fillText(txt, tl.x, tl.y);
+    }
+  }
 
   // edges: per-kind styles (EDGE_STYLES), negatives hidden, edgesOn=off → only contextual ones
   const baseLw = Math.max(0.4, 1/transform.k);
@@ -3566,8 +3740,11 @@ function paintFrame(g, opts) {
     const NEAR_D = 320;   // world units from the cursor for near mode
     const always = n => n === selected || n === hovered || n === magNode || pinSet.has(n.id) || searchHit(n);
     // cull exemption already narrow: only singletons (selected/hover/magnet) draw even when overlapping;
-    // pins/search go through cull with high prio — a stack of pins doesn't smear over itself
-    const noCull = n => n === selected || n === hovered || n === magNode;
+    // pins/search go through cull with high prio — a stack of pins doesn't smear over itself.
+    // spine rows / facet panels: evenly pitched by construction — collision-cull was eating
+    // the reading list; dendro rims the whole corpus, so it still culls
+    const noCull = n => n === selected || n === hovered || n === magNode ||
+      (!!n._lbAnchor && layoutName !== 'dendro');
     // backing plate + bigger: selection/hover/pin context — "zoom into overview", zoom itself untouched
     const plateFor = n => n === selected || n === hovered || n === magNode || pinSet.has(n.id) ||
       (neighbors && neighbors.has(n.id));
@@ -3595,7 +3772,9 @@ function paintFrame(g, opts) {
     let budget = (only || lm === 'all') ? Infinity : lblBudget(K);
     const pitch = LAYOUT_PITCH[layoutName];
     for (const n of cand) {
-      const isAlways = always(n);
+      // spine rows / facet panels are the READING surface — never budget-culled
+      // (dendro rims the whole corpus: budget still applies there)
+      const isAlways = always(n) || (!!n._lbAnchor && layoutName !== 'dendro');
       const sx = snap(NX(n) * K + transform.x), sy = snap(NY(n) * K + transform.y);
       // off-frame — don't draw and DON'T burn budget (otherwise invisible hubs eat the whole frame budget)
       if (!isAlways && (sx < -80 || sx > W + 80 || sy < -50 || sy > H + 50)) continue;
@@ -3608,8 +3787,16 @@ function paintFrame(g, opts) {
       const maxPx = plate ? 460 : Math.min(240 * TS, pitch ? Math.max(56, pitch * K - 8) : 240 * TS);
       const lbl = fitLabel(g, n.label, maxPx);
       const w = g.measureText(lbl).width, h = fs * 1.1;
-      const yBase = sy - rs - 4;                    // text baseline above the node
-      const x = sx - w/2, y = yBase - h;
+      // list-shaped layouts (spine rows / facet panels / dendro rim) anchor the name to the
+      // node's SIDE — a vertical list of side labels reads as a table of contents
+      const anchor = n._lbAnchor;
+      const yBase = anchor ? sy + fs * 0.36 : sy - rs - 4;   // side: vertically centered; else above
+      const x = anchor === 'right' ? sx + rs + 8
+              : anchor === 'left'  ? sx - rs - 8 - w
+              : sx - w / 2;
+      const y = yBase - h;
+      const tx = anchor ? x : sx;                   // draw anchored text from its left edge
+      g.textAlign = anchor ? 'left' : 'center';
       const lost = (!isAlways && budget <= 0) ||
         (!noCull(n) && toggles.collide &&
           // b !== n._tm: in the crossfade window a node's pill doesn't collide with ITS OWN card
@@ -3623,9 +3810,9 @@ function paintFrame(g, opts) {
           if (rec) { n._la = la0 * 0.62; labelAnim = true; }
           g.globalAlpha = la0 * 0.85;
           g.lineWidth = 3; g.strokeStyle = 'rgba(12,12,11,0.85)'; g.lineJoin = 'round';
-          g.strokeText(lbl, sx, yBase);
+          g.strokeText(lbl, tx, yBase);
           g.fillStyle = '#c3c2b7';
-          g.fillText(lbl, sx, yBase);
+          g.fillText(lbl, tx, yBase);
           g.globalAlpha = 1;
         } else if (toggles.softFade && !n.ghost && sx > -20 && sx < W + 20 && sy > -20 && sy < H + 20) {
           if (rec) n._la = 0;
@@ -3659,7 +3846,8 @@ function paintFrame(g, opts) {
         g.strokeStyle = hexA(nodeColor(n), 0.22); g.lineWidth = 1; g.stroke();
       }
       g.fillStyle = n === selected ? '#ffffff' : plate ? '#e2e1d6' : '#c3c2b7';
-      g.fillText(lbl, sx, yBase);
+      g.fillText(lbl, tx, yBase);
+      g.textAlign = 'center';   // desc preview below stays centered on the node
       // LOD preview: the magnet node reads right in the cloud (principle #3), pinned — 1 line.
       // In ego focus (blur background) desc is also carried by the selection's neighbors: the blur
       // clears room, "what's adjacent" reads in place, selected — 3 lines, neighbors — 2
@@ -3670,15 +3858,20 @@ function paintFrame(g, opts) {
         g.lineWidth = 3;
         g.strokeStyle = 'rgba(12,12,11,0.85)';
         g.lineJoin = 'round';
-        const lw = 46;
-        for (let li = 0; li < lines; li++) {
-          const seg = n.desc.slice(li * lw, (li + 1) * lw);
-          if (!seg) break;
+        const segs = wrapText(g, n.desc, 230*TS, lines);
+        segs.forEach((seg, li) => {
           const ly = sy + rs + (11 + li * 11) * TS;
           g.strokeText(seg, sx, ly);
-          g.fillStyle = '#8b8983';
+          // same excerpt language as the cards: the last line dissolves to transparent
+          if (li === segs.length - 1 && segs.length > 1) {
+            const lw2 = g.measureText(seg).width;
+            const grad = g.createLinearGradient(sx - lw2/2, 0, sx + lw2/2, 0);
+            grad.addColorStop(0, '#8b8983');
+            grad.addColorStop(1, 'rgba(139,137,131,0)');
+            g.fillStyle = grad;
+          } else g.fillStyle = '#8b8983';
           g.fillText(seg, sx, ly);
-        }
+        });
       }
       g.globalAlpha = 1;
     }
@@ -3686,11 +3879,14 @@ function paintFrame(g, opts) {
   }
   g.restore();
 }
-// tile-LOD threshold: from this zoom on, circles become cards (screen-constant font size = readable)
-const TILE_K = 2.2;
+// tile-LOD threshold: from this zoom on, circles become cards (screen-constant font size = readable).
+// v2.10 readable pass: thresholds LOWERED (2.2→1.5, 3.0→2.1) — cards with body text arrive
+// much earlier on the zoom ramp; "reading the vault" starts before "navigating dots" ends
+const TILE_K = 1.5;
 const TILE_W = 0.5;   // width of the circle→card crossfade (in zoom units): wider = softer seam
-const DESC_K = 3.0;   // closer than this zoom, the desc preview FADES IN inside the card (alpha+height lerp)
+const DESC_K = 2.1;   // closer than this zoom, the body preview FADES IN inside the card (alpha+height lerp)
 const DESC_W = 0.6;   // width of the desc ramp
+const BODY_K = 3.2;   // closer still: the card grows to 4 lines of body
 const tileRamp = K => Math.min(1, Math.max(0, (K - TILE_K) / TILE_W));
 const descRamp = K => Math.min(1, Math.max(0, (K - DESC_K) / DESC_W));
 // blur background (muted pass): a screen-space radius cap + zoom falloff — at close zoom
@@ -3717,14 +3913,37 @@ function rr(g, x, y, w, h, r) {
   g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r);
   g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath();
 }
+// word-aware wrap (canvas-measured): lines break on spaces, never mid-word unless a
+// single word alone overflows — «часть боди» reads as prose, not as chopped 42-char slabs
+function wrapText(g, text, maxPx, maxLines) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+  for (let i = 0; i < words.length; i++) {
+    const probe = cur ? cur + ' ' + words[i] : words[i];
+    if (g.measureText(probe).width <= maxPx || !cur) cur = probe;
+    else {
+      lines.push(cur); cur = words[i];
+      if (lines.length === maxLines) return lines;   // overflow marked by the gradient fade, not '…'
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, maxLines);
+}
+// card body text: curated desc first, body prose as the continuation (browse bodies, if built)
+function cardText(n) {
+  const b = bodySnip(n, 360);
+  return n.desc ? (b ? n.desc + ' — ' + b : n.desc) : b;
+}
 // tile card metrics (SCREEN px) — shared by the pre-pass collision check and drawing;
 // call with the card's font already set (600 13*TS system-ui)
 function tileMetrics(g, n) {
   const K = transform.k;
   const nx = Math.round(NX(n) * K + transform.x), ny = Math.round(NY(n) * K + transform.y);
-  // desc doesn't snap at the threshold: descT lerps card height and line alpha along the zoom ramp —
+  // body doesn't snap at the threshold: descT lerps card height and line alpha along the zoom ramp —
   // the preview "grows" out of the card continuously instead of switching in a step
-  const descT = n.desc ? descRamp(K) : 0;
+  const body = cardText(n);
+  const descT = body ? descRamp(K) : 0;
   const withDesc = descT > 0;
   const pitch = LAYOUT_PITCH[layoutName];
   const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
@@ -3732,10 +3951,13 @@ function tileMetrics(g, n) {
   // exactly on the grid pitch end up slightly wider than the pitch → only every other one survives, shelves get gappy)
   const maxW = Math.max(64, Math.min(280*TS, pitch ? pitch * K - 2*padX - 12 : 280*TS));
   const label = fitLabel(g, n.label, maxW);
-  const dLines = [];
+  let dLines = [];
   if (withDesc) {
-    const lw = 42;
-    for (let i = 0; i < 2; i++) { const seg = n.desc.slice(i*lw, (i+1)*lw); if (seg) dLines.push(seg); }
+    const save = g.font;
+    g.font = `${9.5*TS}px system-ui`;   // measure wraps with the BODY font, not the title's
+    const maxLines = K >= BODY_K ? 4 : 2;
+    dLines = wrapText(g, body, Math.max(140*TS, maxW - 4), maxLines);
+    g.font = save;
   }
   const w = Math.min(Math.max(g.measureText(label).width, withDesc ? 200*TS*descT : 0), maxW) + 2*padX;
   const h = th + dLines.length*dh*descT + 2*padY;
@@ -3762,12 +3984,24 @@ function drawTile(g, n, m) {
   const ty = y + padY + th/2;
   g.fillText(label, nx, ty);
   if (dLines.length) {
-    // desc fades in: alpha and vertical spacing are driven by descT (card height is already lerped in metrics)
+    // body fades in (descT drives alpha+spacing) AND fades OUT toward its end: each line a
+    // touch quieter than the last, the final line dissolves left→right into transparency —
+    // «часть боди с градиентом прозрачности к концу текста», the card reads as an excerpt
     const a0 = g.globalAlpha;
-    g.globalAlpha = a0 * descT;
     g.font = `${9.5*TS}px system-ui`;
-    g.fillStyle = '#8b8983';
-    dLines.forEach((seg, i) => g.fillText(seg, nx, ty + th/2 + (i + 0.5)*dh*descT));
+    dLines.forEach((seg, i) => {
+      const last = i === dLines.length - 1;
+      g.globalAlpha = a0 * descT * (1 - i / dLines.length * 0.35);
+      if (last && dLines.length > 1) {
+        const lw2 = g.measureText(seg).width;
+        const grad = g.createLinearGradient(nx - lw2/2, 0, nx + lw2/2, 0);
+        grad.addColorStop(0, '#8b8983');
+        grad.addColorStop(0.55, 'rgba(139,137,131,0.75)');
+        grad.addColorStop(1, 'rgba(139,137,131,0)');
+        g.fillStyle = grad;
+      } else g.fillStyle = '#8b8983';
+      g.fillText(seg, nx, ty + th/2 + (i + 0.5)*dh*descT);
+    });
     g.globalAlpha = a0;
   }
   g.textBaseline = 'alphabetic';
@@ -4163,7 +4397,8 @@ function importProfile(p) {
 // view link: NOT a raw transform — a different host has a different corpus/positions.
 // The camera anchors to a node-id (+ zoom), filters/layout/color go by value.
 $('stShare').addEventListener('click', () => {
-  const s = { v: 1, layout: layoutName, color: mode(), size: sizeMode(),
+  const s = { v: 1, layout: layoutName, group: groupMode !== 'zone' ? groupMode : undefined,
+    color: mode(), size: sizeMode(),
     hz: [...hiddenZones], hk: [...hiddenKinds].filter(k => !sessionKinds.has(k)),   // share what's actually VISIBLE
     tags: tagSel.size ? [...tagSel] : undefined, and: tagAnd || undefined,
     node: selected ? selected.id : undefined, k: +transform.k.toFixed(3),
@@ -4206,6 +4441,13 @@ if (bootState) {
   }
   renderLegend();
 }
+// GROUP restore BEFORE layout: the boot layout must slice by the restored axis
+const bootGroup = (bootState && bootState.group) || params.get('group') || CFG.group;
+if (bootGroup && bootGroup !== 'zone' && [...$('groupMode').options].some(o => o.value === bootGroup)) {
+  groupMode = bootGroup; _gOrder = _gSlot = null;
+  $('groupMode').value = bootGroup;
+}
+$('groupMode').addEventListener('change', ev => setGroupMode(ev.target.value));
 const bootLayout = (bootState && bootState.layout) || params.get('layout') || CFG.layout;   // deep-link beats the saved value
 // guard = does the option exist: semantic/timeline drop out of the select on their own if there's no data
 if (bootLayout && bootLayout !== 'force' && [...$('layoutMode').options].some(o => o.value === bootLayout)) {
