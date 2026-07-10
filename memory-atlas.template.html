@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.10.2"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.3"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -4030,6 +4030,50 @@ function tileMetrics(g, n) {
   const h = th + dLines.length*dh*descT + 2*padY;
   return { label, dLines, descT, x: nx - w/2, y: ny - h/2, w, h, nx, th, padY, dh };
 }
+// desc sprite cache (v2.10.3): the card body used to re-draw 2-4 fillText + a fresh
+// createLinearGradient PER CARD PER FRAME — with descs visible that alone dragged the
+// frame back down («с десками как было»). The body text, per-line fade and the last-line
+// gradient are static per (node, width, lines, TS) — bake once offscreen; a frame then
+// costs one drawImage, descT modulates alpha + vertical growth.
+const _dsC = new Map();
+function descSprite(g, n, dLines, dh) {
+  // width comes from the LINES (wrap width can exceed the card box — the original
+  // centered overflow is preserved, not clipped); key = content signature, not geometry
+  const key = n.id + '|' + TS + '|' + dLines.length + '|' + dLines.map(l => l.length).join(',');
+  let c = _dsC.get(key);
+  if (!c) {
+    if (_dsC.size > 400) _dsC.clear();
+    const font = `${9.5*TS}px system-ui`;
+    let wpx = 8;
+    { const save = g.font; g.font = font;
+      for (const seg of dLines) wpx = Math.max(wpx, mtw(g, seg));
+      g.font = save; }
+    wpx = Math.ceil(wpx) + 4;
+    c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(wpx * dpr));
+    c.height = Math.max(1, Math.ceil(dLines.length * dh * dpr));
+    const s = c.getContext('2d');
+    s.scale(dpr, dpr);
+    s.font = font;
+    s.textAlign = 'center'; s.textBaseline = 'middle';
+    dLines.forEach((seg, i) => {
+      const last = i === dLines.length - 1;
+      s.globalAlpha = 1 - i / dLines.length * 0.35;
+      if (last && dLines.length > 1) {
+        const lw2 = mtw(s, seg);
+        const grad = s.createLinearGradient(wpx/2 - lw2/2, 0, wpx/2 + lw2/2, 0);
+        grad.addColorStop(0, '#8b8983');
+        grad.addColorStop(0.55, 'rgba(139,137,131,0.75)');
+        grad.addColorStop(1, 'rgba(139,137,131,0)');
+        s.fillStyle = grad;
+      } else s.fillStyle = '#8b8983';
+      s.fillText(seg, wpx/2, (i + 0.5) * dh);
+    });
+    c._w = wpx;
+    _dsC.set(key, c);
+  }
+  return c;
+}
 // node tile card: rounded-rect backing + title; at close zoom also desc.
 // Drawn in SCREEN-space (see labels): sharp text, whole rect is clickable (tileHits).
 // m = metrics from the pre-pass (n._tm) — computed on the spot if absent
@@ -4051,24 +4095,12 @@ function drawTile(g, n, m) {
   const ty = y + padY + th/2;
   g.fillText(label, nx, ty);
   if (dLines.length) {
-    // body fades in (descT drives alpha+spacing) AND fades OUT toward its end: each line a
-    // touch quieter than the last, the final line dissolves left→right into transparency —
-    // «часть боди с градиентом прозрачности к концу текста», the card reads as an excerpt
+    // body fades in (descT drives alpha + vertical growth) AND fades OUT toward its end —
+    // «часть боди с градиентом прозрачности к концу текста»; pre-baked sprite, one blit
     const a0 = g.globalAlpha;
-    g.font = `${9.5*TS}px system-ui`;
-    dLines.forEach((seg, i) => {
-      const last = i === dLines.length - 1;
-      g.globalAlpha = a0 * descT * (1 - i / dLines.length * 0.35);
-      if (last && dLines.length > 1) {
-        const lw2 = g.measureText(seg).width;
-        const grad = g.createLinearGradient(nx - lw2/2, 0, nx + lw2/2, 0);
-        grad.addColorStop(0, '#8b8983');
-        grad.addColorStop(0.55, 'rgba(139,137,131,0.75)');
-        grad.addColorStop(1, 'rgba(139,137,131,0)');
-        g.fillStyle = grad;
-      } else g.fillStyle = '#8b8983';
-      g.fillText(seg, nx, ty + th/2 + (i + 0.5)*dh*descT);
-    });
+    const spr = descSprite(g, n, dLines, dh);
+    g.globalAlpha = a0 * descT;
+    g.drawImage(spr, nx - spr._w/2, ty + th/2, spr._w, dLines.length * dh * descT);
     g.globalAlpha = a0;
   }
   g.textBaseline = 'alphabetic';
