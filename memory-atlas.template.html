@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.10.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.1"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -3849,11 +3849,12 @@ function paintFrame(g, opts) {
       g.fillText(lbl, tx, yBase);
       g.textAlign = 'center';   // desc preview below stays centered on the node
       // LOD preview: the magnet node reads right in the cloud (principle #3), pinned — 1 line.
-      // In ego focus (blur background) desc is also carried by the selection's neighbors: the blur
-      // clears room, "what's adjacent" reads in place, selected — 3 lines, neighbors — 2
-      const egoPrev = only && selected && neighbors && neighbors.has(n.id);
-      if (n.desc && (n === magNode || egoPrev || (pinSet.has(n.id) && K > 0.7))) {
-        const lines = (n === magNode || n === selected) ? 3 : egoPrev ? 2 : 1;
+      // Ego-focus neighbors deliberately DON'T carry desc (v2.10.1): a hub selection used to
+      // spray 2 bare lines under every neighbor — unboxed text colliding into soup (see the
+      // 2026-07-10 screenshots). Reading minimum = the plate chip; body is on-demand:
+      // hover (magnet), the selected node itself, or a pin.
+      if (n.desc && (n === magNode || n === selected || (pinSet.has(n.id) && K > 0.7))) {
+        const lines = (n === magNode || n === selected) ? 3 : 1;
         g.font = `${9.5*TS}px system-ui`;
         g.lineWidth = 3;
         g.strokeStyle = 'rgba(12,12,11,0.85)';
