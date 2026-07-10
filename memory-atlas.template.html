@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.10.1"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.2"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -3229,6 +3229,7 @@ function draw() {
 const blurCanvas = document.createElement('canvas');
 const blurCtx = blurCanvas.getContext('2d');
 let bgStamp = '', bgAt = 0;
+let bgT = null, bgSettle = 0;   // camera at last bg raster + pending settle re-raster (v2.10.2)
 const BG_MS = 150;
 // TAG LENS (×20): a selected tag turns the view into "pretty blur + void" — the ONLY
 // things staying sharp are nodes with the tag (+ pins: explicit manual intent). Everything else
@@ -3256,8 +3257,13 @@ function drawFocus(fm) {
     for (const n of nodes) if (visible(n) && (hasTag(n) || pinSet.has(n.id))) sharp.add(n.id);
   }
   sizeBg();
-  const stamp = [transform.x.toFixed(1), transform.y.toFixed(1), transform.k.toFixed(3),
-    canvas.width, canvas.height, dpr, selected ? selected.id : '·',
+  // v2.10.2 perf: transform is OUT of the stamp. It used to be in — so every pan/zoom
+  // frame under focus re-painted the ENTIRE muted graph (nodes+edges, half-res) AND
+  // re-rasterized the 5px blur = the «10fps exactly when desc appears» disease (desc
+  // lives in ego/card zoom where focus blur is always on). Now: content changes re-raster;
+  // camera changes re-BLIT the cached blur with the transform delta (cheap), and a full
+  // re-raster happens at most every BG_MS while the camera keeps moving.
+  const stamp = [canvas.width, canvas.height, dpr, selected ? selected.id : '·',
     tagSel.size ? [...tagSel].join('§') + (tagAnd ? '∩' : '∪') : '·',
     timeLens ? timeLens.id + '±' + timeLens.win : '·',
     metricLens ? metricLens.metric + '≥' + metricLens.thr : '·',
@@ -3265,7 +3271,8 @@ function drawFocus(fm) {
     nsMul(), maxN, hiddenZones.size, hiddenKinds.size, sessionKinds.size, hiddenNodes.size,
     toggles.edgesOn, toggles.hulls, toggles.ghosts].join('|');
   const moving = sim.alpha() > 0.005 || magActive;
-  if (stamp !== bgStamp || (moving && performance.now() - bgAt > BG_MS)) {
+  const camMoved = !bgT || bgT.x !== transform.x || bgT.y !== transform.y || bgT.k !== transform.k;
+  if (stamp !== bgStamp || ((moving || camMoved) && performance.now() - bgAt > BG_MS)) {
     paintFrame(bgCtx, { muted: true, scale: BG_SCALE });   // whole graph dimmed → offscreen (half resolution)
     if (blurCanvas.width !== bgCanvas.width || blurCanvas.height !== bgCanvas.height) {
       blurCanvas.width = bgCanvas.width; blurCanvas.height = bgCanvas.height;
@@ -3276,6 +3283,10 @@ function drawFocus(fm) {
     blurCtx.drawImage(bgCanvas, 0, 0);              // blur is rasterized ONCE into the cache
     blurCtx.restore();
     bgStamp = stamp; bgAt = performance.now();
+    bgT = { x: transform.x, y: transform.y, k: transform.k };
+  } else if (camMoved && !bgSettle) {
+    // camera stopped between BG_MS windows → schedule one crisp re-raster after the dust settles
+    bgSettle = setTimeout(() => { bgSettle = 0; bgAt = 0; requestDraw(); }, BG_MS + 30);
   }
   // focus/lens fade-in: for the first ~180ms the blur fades in over the sharp frame, no snap
   const ft = Math.min(1, (performance.now() - Math.max(selT, lensT)) / 180);
@@ -3285,8 +3296,17 @@ function drawFocus(fm) {
   if (ft >= 1) ctx.clearRect(0, 0, canvas.width, canvas.height);
   // lens is deeper than ego: the blur background is sunk slightly into the page — void reads as void
   ctx.globalAlpha = ft * (lens && !selected ? LENS_BG_ALPHA : 1);
-  // finished blur — blit with upscale (bg lives at half resolution)
-  ctx.drawImage(blurCanvas, 0, 0, blurCanvas.width, blurCanvas.height, 0, 0, canvas.width, canvas.height);
+  // blit the cached blur through the camera delta: dest = r×cached + dpr·(t − r·t0), r = k/k0.
+  // camera unchanged → identity (the old full-canvas upscale); mid-motion → the blur tracks,
+  // slightly stale at the margins for ≤BG_MS, then the settle raster lands
+  const _r = transform.k / bgT.k;
+  if (_r !== 1 || bgT.x !== transform.x || bgT.y !== transform.y) {
+    ctx.fillStyle = PAGE;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);   // uncovered margins read as page, not smear
+  }
+  ctx.drawImage(blurCanvas, 0, 0, blurCanvas.width, blurCanvas.height,
+    dpr * (transform.x - _r * bgT.x), dpr * (transform.y - _r * bgT.y),
+    canvas.width * _r, canvas.height * _r);
   ctx.globalAlpha = 1;
   ctx.restore();
   paintFrame(ctx, { only: sharp, tiles: fm === 'tiles' && !!selected, noClear: true, noBg: true, lens });
@@ -3500,6 +3520,7 @@ function paintFrame(g, opts) {
     nodeF = Math.max(NODE_FADE_FLOOR, Math.min(1, NODE_FADE_KNEE / Math.max(1, dens)));
   }
   const iA = Math.sqrt(autoF) * (0.6 + 0.4 * zf);   // intra-zone edges fade softer: the zone's texture stays
+  const edgeBuckets = new Map();
   for (const e of edges) {
     const s = e.source, t = e.target;
     if (!visible(s) || !visible(t)) continue;
@@ -3512,37 +3533,41 @@ function paintFrame(g, opts) {
     if (!toggles.edgesOn && !hotCtx && !e.user) continue;        // thought-cloud (principle #3)
     if (only && !(only.has(s.id) && only.has(t.id))) continue;   // ego pass: internal edges only
     const st = EDGE_STYLES[e.kind];
-    g.lineWidth = baseLw * (st && st.w || 1) * (e.w ? Math.min(2.5, 0.6 + Math.log2(1 + e.w) * 0.5) : 1);
+    const lw = baseLw * (st && st.w || 1) * (e.w ? Math.min(2.5, 0.6 + Math.log2(1 + e.w) * 0.5) : 1);
+    let ss;
     if (muted) {
-      g.strokeStyle = 'rgba(255,255,255,0.05)';                  // will go under the blur
+      ss = 'rgba(255,255,255,0.05)';                  // will go under the blur
     } else if (only) {
       const hot = s === selected || t === selected;
-      g.strokeStyle = st ? hexA(st.c, hot ? Math.min(1, st.a + 0.25) : st.a)
+      ss = st ? hexA(st.c, hot ? Math.min(1, st.a + 0.25) : st.a)
         : hot ? 'rgba(57,135,229,0.6)' : 'rgba(255,255,255,0.16)';
     } else {
       const hot = neighbors && (s === selected || t === selected);
       const dim = (query.length && !(matches(s) && matches(t))) || (neighbors && !hot) || !(inIso(s) && inIso(t)) || !(hasTag(s) && hasTag(t)) || (keepSet && !(inKeep(s) && inKeep(t)));
       if (st) {
-        g.strokeStyle = hexA(st.c, capA(dim ? st.a * 0.15 : hot ? Math.min(1, st.a + 0.3) : st.a * autoF));
+        ss = hexA(st.c, capA(dim ? st.a * 0.15 : hot ? Math.min(1, st.a + 0.3) : st.a * autoF));
       } else {
         // cross-zone edges are quieter (and fade on overview: zf × autoF): the haze in the center is them
-        g.strokeStyle = hot ? `rgba(57,135,229,${capA(0.55)})` : dim ? `rgba(255,255,255,${capA(0.02)})`
+        ss = hot ? `rgba(57,135,229,${capA(0.55)})` : dim ? `rgba(255,255,255,${capA(0.02)})`
           : s.zone !== t.zone ? `rgba(255,255,255,${capA(0.035*zf*autoF)})`
           : `rgba(255,255,255,${capA(0.09*iA)})`;
       }
     }
     // edge hover-highlight removed on request (edges don't light up on hover)
-    if (st && st.dash) g.setLineDash(st.dash.map(d => d / Math.sqrt(transform.k)));
-    g.beginPath();
-    g.moveTo(NX(s), NY(s));
+    // v2.10.2 perf: edges accumulate into per-style Path2D buckets — ONE stroke() per style
+    // per frame instead of one per edge (profiled: ~1 280 stroke calls/frame with edges on).
+    // Same coords, same styles; only the z-order between translucent edges shifts (invisible).
+    const bk = ss + '|' + lw.toFixed(3) + '|' + (st && st.dash ? st.dash.join(',') : '');
+    let bkt = edgeBuckets.get(bk);
+    if (!bkt) edgeBuckets.set(bk, bkt = { ss, lw,
+      dash: st && st.dash ? st.dash.map(d => d / Math.sqrt(transform.k)) : null, path: new Path2D() });
+    bkt.path.moveTo(NX(s), NY(s));
     if (st && st.curve) {
       // detector edges curve: distinguishable from straight wikilinks without reading the legend
       const mx = (NX(s) + NX(t)) / 2, my = (NY(s) + NY(t)) / 2;
       const dx = NX(t) - NX(s), dy = NY(t) - NY(s);
-      g.quadraticCurveTo(mx - dy * st.curve, my + dx * st.curve, NX(t), NY(t));
-    } else g.lineTo(NX(t), NY(t));
-    g.stroke();
-    if (st && st.dash) g.setLineDash([]);
+      bkt.path.quadraticCurveTo(mx - dy * st.curve, my + dx * st.curve, NX(t), NY(t));
+    } else bkt.path.lineTo(NX(t), NY(t));
     if (st && st.arrow && !muted) {
       // direction matters for provenance kinds (moved_from/became): head sits at the
       // target edge of the node circle, sized in screen px
@@ -3555,13 +3580,19 @@ function paintFrame(g, opts) {
       g.lineTo(hx - ux * a - uy * a * 0.5, hy - uy * a + ux * a * 0.5);
       g.lineTo(hx - ux * a + uy * a * 0.5, hy - uy * a - ux * a * 0.5);
       g.closePath();
-      g.fillStyle = g.strokeStyle;
+      g.fillStyle = ss;
       g.fill();
     }
     // particles fly on styled kinds AND on plain wikilinks (kind 'wiki', no EDGE_STYLES
     // entry): flow direction = source→target = who references whom
     if (!muted && toggles.particles && (st ? st.particles : true) && !(only && !(only.has(s.id) && only.has(t.id))))
       partEdges.push(e);
+  }
+  for (const bkt of edgeBuckets.values()) {
+    g.strokeStyle = bkt.ss; g.lineWidth = bkt.lw;
+    if (bkt.dash) g.setLineDash(bkt.dash);
+    g.stroke(bkt.path);
+    if (bkt.dash) g.setLineDash([]);
   }
   // flowing particles; dense corpora are subsampled deterministically (~600 carriers)
   // instead of the old all-or-nothing 600 gate that silently killed the whole layer
@@ -3786,7 +3817,7 @@ function paintFrame(g, opts) {
       // a label surviving cull reads in full, zoom widens the pitch → text expands
       const maxPx = plate ? 460 : Math.min(240 * TS, pitch ? Math.max(56, pitch * K - 8) : 240 * TS);
       const lbl = fitLabel(g, n.label, maxPx);
-      const w = g.measureText(lbl).width, h = fs * 1.1;
+      const w = mtw(g, lbl), h = fs * 1.1;
       // list-shaped layouts (spine rows / facet panels / dendro rim) anchor the name to the
       // node's SIDE — a vertical list of side labels reads as a table of contents
       const anchor = n._lbAnchor;
@@ -3901,13 +3932,38 @@ const bgFade = K => K <= BG_FADE_K0 ? 1 :
 // small corpora can afford a wider pitch — full names instead of mid-ellipsis at fit
 const LAYOUT_PITCH = realCount <= 80 ? { grid: 108, zones: 88 } : { grid: 76, zones: 64 };
 // name truncation to maxPx: long ones get a "mid-…" cut — head (type) and tail (disambiguator) survive
-function fitLabel(g, label, maxPx) {
-  if (g.measureText(label).width <= maxPx) return label;
-  let head = label.slice(0, Math.ceil(label.length / 2)), tail = label.slice(head.length);
-  while (head.length + tail.length > 5 && g.measureText(head + '…' + tail).width > maxPx) {
-    if (head.length >= tail.length) head = head.slice(0, -1); else tail = tail.slice(1);
+// ---- text-metrics caches (v2.10.2 perf) ----
+// Profiled 2026-07-10: ~8 200 measureText calls PER FRAME (fitLabel trim loop × every
+// label + wrapText × every card, recomputed each frame) — the shared disease behind
+// "10fps with chips/cards/edges". Width depends only on (font, text); results survive
+// across frames. maxPx is quantized DOWN to 8px buckets so a continuous zoom doesn't
+// churn the key space (the text is at most 8px shorter than it could be — invisible).
+const _mtC = new Map(), _flC = new Map(), _wrC = new Map();
+function mtw(g, text) {
+  const k = g.font + '' + text;
+  let v = _mtC.get(k);
+  if (v === undefined) {
+    if (_mtC.size > 60000) _mtC.clear();
+    v = g.measureText(text).width; _mtC.set(k, v);
   }
-  return head + '…' + tail;
+  return v;
+}
+function fitLabel(g, label, maxPx) {
+  maxPx = Math.max(8, Math.floor(maxPx / 8) * 8);
+  const key = g.font + '' + maxPx + '' + label;
+  const hit = _flC.get(key);
+  if (hit !== undefined) return hit;
+  let out = label;
+  if (mtw(g, label) > maxPx) {
+    let head = label.slice(0, Math.ceil(label.length / 2)), tail = label.slice(head.length);
+    while (head.length + tail.length > 5 && mtw(g, head + '…' + tail) > maxPx) {
+      if (head.length >= tail.length) head = head.slice(0, -1); else tail = tail.slice(1);
+    }
+    out = head + '…' + tail;
+  }
+  if (_flC.size > 20000) _flC.clear();
+  _flC.set(key, out);
+  return out;
 }
 function rr(g, x, y, w, h, r) {
   g.beginPath();
@@ -3917,19 +3973,26 @@ function rr(g, x, y, w, h, r) {
 // word-aware wrap (canvas-measured): lines break on spaces, never mid-word unless a
 // single word alone overflows — «часть боди» reads as prose, not as chopped 42-char slabs
 function wrapText(g, text, maxPx, maxLines) {
+  maxPx = Math.max(24, Math.floor(maxPx / 8) * 8);
+  const key = g.font + '' + maxPx + '' + maxLines + '' + text;
+  const hit = _wrC.get(key);
+  if (hit !== undefined) return hit;   // callers only read the array — safe to share
   const words = String(text).split(/\s+/).filter(Boolean);
-  const lines = [];
+  let lines = [];
   let cur = '';
   for (let i = 0; i < words.length; i++) {
     const probe = cur ? cur + ' ' + words[i] : words[i];
-    if (g.measureText(probe).width <= maxPx || !cur) cur = probe;
+    if (mtw(g, probe) <= maxPx || !cur) cur = probe;
     else {
       lines.push(cur); cur = words[i];
-      if (lines.length === maxLines) return lines;   // overflow marked by the gradient fade, not '…'
+      if (lines.length === maxLines) { cur = ''; break; }   // overflow marked by the gradient fade, not '…'
     }
   }
   if (cur) lines.push(cur);
-  return lines.slice(0, maxLines);
+  lines = lines.slice(0, maxLines);
+  if (_wrC.size > 20000) _wrC.clear();
+  _wrC.set(key, lines);
+  return lines;
 }
 // card body text: curated desc first, body prose as the continuation (browse bodies, if built)
 function cardText(n) {
@@ -3944,7 +4007,10 @@ function tileMetrics(g, n) {
   // body doesn't snap at the threshold: descT lerps card height and line alpha along the zoom ramp —
   // the preview "grows" out of the card continuously instead of switching in a step
   const body = cardText(n);
-  const descT = body ? descRamp(K) : 0;
+  // sub-visible ramp gate (v2.10.2): descRamp goes >0 long before the text is readable —
+  // cards used to pay full wrap+draw for lines at alpha ≈0 («desc рендерится, но его не видно»)
+  const _dt = body ? descRamp(K) : 0;
+  const descT = _dt > 0.06 ? _dt : 0;
   const withDesc = descT > 0;
   const pitch = LAYOUT_PITCH[layoutName];
   const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
@@ -3960,7 +4026,7 @@ function tileMetrics(g, n) {
     dLines = wrapText(g, body, Math.max(140*TS, maxW - 4), maxLines);
     g.font = save;
   }
-  const w = Math.min(Math.max(g.measureText(label).width, withDesc ? 200*TS*descT : 0), maxW) + 2*padX;
+  const w = Math.min(Math.max(mtw(g, label), withDesc ? 200*TS*descT : 0), maxW) + 2*padX;
   const h = th + dLines.length*dh*descT + 2*padY;
   return { label, dLines, descT, x: nx - w/2, y: ny - h/2, w, h, nx, th, padY, dh };
 }
