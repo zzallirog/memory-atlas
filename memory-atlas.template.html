@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.10.3"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.4"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -1731,12 +1731,22 @@ let hovered = null;
 let cursorW = null;   // cursor in world coordinates: magnet + label mode near
 function tipHide() { tooltip.style.display = 'none'; }
 // note body as plain text for snippets: frontmatter/markdown formatting stripped
+const _bsC = new Map();   // v2.10.4: 4 regex over the FULL raw body (up to ~40kB) ran per
+// node per frame inside cardText→tileMetrics at K≥TILE_K — profiled 46ms/frame JS cliff
+// exactly at the card threshold («дески тянут одеяло»). BODIES are static per load → cache.
 function bodySnip(n, cap) {
+  const key = n.id + '|' + cap;
+  const hit = _bsC.get(key);
+  if (hit !== undefined) return hit;
   const raw = !n.ghost && typeof BODIES !== 'undefined' && BODIES[n.id];
-  if (!raw) return '';
-  const s = String(raw).replace(/^---[\s\S]*?---\s*/, '').replace(/[#*`>|]/g, ' ')
-    .replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, '$1').replace(/\s+/g, ' ').trim();
-  return s.length > cap ? s.slice(0, cap) + '…' : s;
+  let out = '';
+  if (raw) {
+    const s = String(raw).replace(/^---[\s\S]*?---\s*/, '').replace(/[#*`>|]/g, ' ')
+      .replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, '$1').replace(/\s+/g, ' ').trim();
+    out = s.length > cap ? s.slice(0, cap) + '…' : s;
+  }
+  _bsC.set(key, out);
+  return out;
 }
 function tipNode(n) {
   const lname = id => { const m = byId.get(id); return m ? m.label : id; };
