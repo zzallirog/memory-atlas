@@ -59,7 +59,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.10.6"  # scale pass: capped group axis (410 louvain sections), density-LOD cards (few-in-frame = reading), node screen-radius floor, dendro skeleton, title font caps, orient tween
+VERSION = "2.11.0"  # scale pass: capped group axis (410 louvain sections), density-LOD cards (few-in-frame = reading), node screen-radius floor, dendro skeleton, title font caps, orient tween
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
