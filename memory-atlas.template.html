@@ -1271,8 +1271,12 @@ $('focusMode').addEventListener('change', () => {
   if (selected && focusMode() !== 'dim' && camPolicy() !== 'stay') frameEgo(selected);
   requestDraw();
 });
+// motion defaults ON (user, 07-10): magnet + particles live out of the box; wikilinks
+// stay hover-rendered (edgesOn=false = the layer is alive, only the hot context draws —
+// «эквилибриум от оверхеда»: particles then fly only on hovered/selected/pinned edges).
+// EDGES chip = the expensive "draw ALL edges always" mode, still opt-in.
 const toggles = { hulls: true, ghosts: true, labels: true,
-  edgesOn: false, particles: false, magnet: false, gestures: false,
+  edgesOn: false, particles: true, magnet: true, gestures: false,
   collide: true, softFade: true, lockZoom: false };
 // persisted knobs (port of graph-lab:config:v1) — restore BEFORE the first draw
 // 🎥 don't auto-start (webcam); magnet/particles restore with the rest of the config —
@@ -1280,6 +1284,9 @@ const toggles = { hulls: true, ghosts: true, labels: true,
 // opt-out lives in ⛭ (motionRestore)
 if (CFG.toggles) Object.assign(toggles, CFG.toggles, { gestures: false },
   lsGet(KEYP + 'motionRestore', true) ? {} : { magnet: false, particles: false });
+// cfg v3 migration: motion ON became the default — flip it once even over an older
+// persisted cfg (saveCfg stamps v:3, so this runs exactly once per corpus profile)
+if ((CFG.v || 1) < 3) { toggles.magnet = true; toggles.particles = true; }
 delete toggles.clusters;   // the louvain blob layer is gone (glitchy; cut 07-09) — old cfgs may still carry the key
 // DATA CONTRACT v2.9: node_metrics (e.g. "forgotten" from the provenance feed) become
 // colorMode options — BEFORE cfg-restore, so a persisted metric choice survives reload
@@ -1297,7 +1304,7 @@ for (const [sel, key] of [['colorMode','color'],['sizeMode','size'],['focusMode'
 for (const id of ['edgeAlpha', 'nodeSize', 'labelDens', 'collisions']) if (CFG[id] !== undefined) $(id).value = CFG[id];
 function saveCfg() {
   lsSet(KEYP + 'cfg', {
-    v: 2,   // config version: v2 trusts TS as-is (the "TS===1 = legacy" magic is dead)
+    v: 3,   // config version: v2 trusts TS as-is; v3 = motion-defaults migration ran
     color: mode(), size: sizeMode(), focus2: focusMode(), labelMode: labelModeV(),
     labelHops: labelHopsV(), camPolicy2: camPolicy(),
     edgeAlpha: +$('edgeAlpha').value, nodeSize: +$('nodeSize').value, labelDens: +$('labelDens').value, collisions: +($('collisions') ? $('collisions').value : 0),
@@ -2895,10 +2902,16 @@ function magnetStep() {
         tx = dx / d * f; ty = dy / d * f;
       }
     }
-    n._mx = (n._mx || 0) + (tx - (n._mx || 0)) * lerp;
-    n._my = (n._my || 0) + (ty - (n._my || 0)) * lerp;
-    if (Math.abs(n._mx) > 0.05 || Math.abs(n._my) > 0.05) magActive = true;
+    // magActive = "still MOVING", not "displaced": a converged steady-state (cursor parked
+    // in a cluster) must NOT hold the rAF loop at 60fps — the step delta decides
+    const ddx = (tx - (n._mx || 0)) * lerp, ddy = (ty - (n._my || 0)) * lerp;
+    n._mx = (n._mx || 0) + ddx;
+    n._my = (n._my || 0) + ddy;
+    if (Math.abs(ddx) > 0.02 || Math.abs(ddy) > 0.02) magActive = true;
   }
+  // waiting out the pull dwell needs frames even at converged offsets (the 1.3s timer
+  // has to fire mid-hover) — hold the loop only while a candidate is armed but not pulling
+  if (best && !pulling) magActive = true;
   magNode = toggles.magnet ? best : null;
 }
 
@@ -3244,6 +3257,7 @@ let pT = 0, lastPT = 0;
 //   opts.tiles  — ego nodes as tile cards with a title (instead of a circle)
 //   opts.noClear/noBg — don't clear/don't fill background (composite over blur)
 var drawQueued = false;
+var liveParts = 0;   // particle carriers in the last live frame (rAF keepalive gate)
 function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(draw); } }
 function draw() {
   drawQueued = false;
@@ -3258,8 +3272,12 @@ function draw() {
   else paintFrame(ctx, {});
   drawMinimap();
   // animated modes keep the rAF loop alive; static = single frames.
-  // labelAnim = labels fading in/out; selT/lensT window = blur-focus/lens fade-in
-  if (toggles.particles || magActive || (toggles.magnet && cursorW) || labelAnim ||
+  // labelAnim = labels fading in/out; selT/lensT window = blur-focus/lens fade-in.
+  // particles hold the loop only while something actually flies (liveParts) — with
+  // hover-rendered edges the idle graph draws ZERO frames despite particles being ON
+  // magnet holds the loop via magActive alone (real offsets), NOT via bare cursor presence:
+  // a still cursor over empty space costs zero frames; any mousemove re-arms the step
+  if ((toggles.particles && liveParts) || magActive || labelAnim ||
       ((selected || tagSel.size || timeLens || metricLens) && fm !== 'dim' && now - Math.max(selT, lensT) < 220)) requestDraw();
 }
 // A/B focus: the background is actually blurred (offscreen), the ego subgraph sharp on top.
@@ -3651,6 +3669,7 @@ function paintFrame(g, opts) {
   }
   // flowing particles; dense corpora are subsampled deterministically (~600 carriers)
   // instead of the old all-or-nothing 600 gate that silently killed the whole layer
+  if (g === ctx) liveParts = partEdges.length;   // rAF keepalive: only while carriers exist
   if (partEdges.length && !muted) {
     const step = Math.max(1, Math.ceil(partEdges.length / 600));
     for (let i = 0; i < partEdges.length; i += step) {
