@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.10.4"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.5"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -196,19 +196,23 @@
   }
   #keys { margin-left: auto; color: var(--muted); font: 10px var(--mono); opacity: .75; flex: none; }
   #keys b { color: var(--ink-2); font-weight: 500; }
-  #fit, #homeBtn, #reloadBtn, #exportBtn, #settingsBtn, #helpBtn {
+  /* ONE rule for every bar control (was a hand-list of ids — #ofit and #langBtn fell out
+     of it, rendered as white UA-default buttons AND inherited pointer-events:none from
+     #bar, so clicks fell through to the canvas: «белые кнопки не работают», 07-10) */
+  #bar button {
     pointer-events: auto; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border); color: var(--ink-2);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-radius: 8px; padding: 5px 12px; font: 10.5px var(--mono);
   }
-  #fit:hover, #homeBtn:hover, #reloadBtn:hover, #exportBtn:hover, #settingsBtn:hover, #helpBtn:hover { border-color: var(--accent); color: var(--ink); }
-  /* bar groups: [camera] [data] [settings] — segments, not a scatter of identical buttons */
+  #bar button:hover { border-color: var(--accent); color: var(--ink); }
+  /* bar groups: [camera] [data] [settings] — segments, not a scatter of identical buttons
+     (#bar-scoped: the id keeps these ahead of the #bar button base rule) */
   .bgrp { display: flex; pointer-events: none; flex: none; }
-  .bgrp button { border-radius: 0; }
-  .bgrp button:first-child { border-radius: 8px 0 0 8px; }
-  .bgrp button:last-child { border-radius: 0 8px 8px 0; }
-  .bgrp button + button { border-left-width: 0; }
+  #bar .bgrp button { border-radius: 0; }
+  #bar .bgrp button:first-child { border-radius: 8px 0 0 8px; }
+  #bar .bgrp button:last-child { border-radius: 0 8px 8px 0; }
+  #bar .bgrp button + button { border-left-width: 0; }
   /* narrow viewport (S13): keys row drops, status shrinks — bar never wraps */
   @media (max-width: 1240px) {
     #keys { display: none; }
@@ -219,7 +223,7 @@
   /* ---- text-size stepper (canvas readability, user-controlled) ---- */
   #tsz { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
   #tsz button {
-    pointer-events: auto; cursor: pointer; width: 26px; height: 26px;
+    pointer-events: auto; cursor: pointer; width: 26px; height: 26px; padding: 0;
     background: var(--surface); border: 1px solid var(--border); color: var(--ink-2);
     border-radius: 7px; font: 600 13px var(--mono); line-height: 1;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
@@ -599,8 +603,10 @@
   #settings label.opt input { margin-top:2px; accent-color:var(--accent); }
   #settings select { background:rgba(0,0,0,0.35); color:var(--ink-2); border:1px solid var(--grid);
     border-radius:6px; padding:3px 5px; font:11px var(--mono); }
-#langBtn { transition: opacity .9s; }
-#langBtn.dim { opacity: .22; }
+/* langBtn auto-hide: fully dissolves after 10s idle (smooth), any pointer move wakes it;
+   visibility flips AFTER the fade so the invisible button is not a click-trap */
+#langBtn { transition: opacity .9s ease, visibility 0s linear 0s; }
+#langBtn.dim { opacity: 0; visibility: hidden; transition: opacity .9s ease, visibility 0s linear .9s; }
 </style>
 <script>/*__D3__*/</script>
 </head>
@@ -1039,8 +1045,8 @@ if (LANG === 'en') {   // static markup: attributes + text nodes via dictionary
     const c = lsGet(KEYP + 'cfg', {}); c.lang = CFG.lang; lsSet(KEYP + 'cfg', c);
     location.reload();
   });
-  let lit = 0;   // auto-hide: button fades on idle, wakes on movement
-  const wake = () => { lb.classList.remove('dim'); clearTimeout(lit); lit = setTimeout(() => lb.classList.add('dim'), 5000); };
+  let lit = 0;   // auto-hide: button dissolves after 10s idle, wakes on movement
+  const wake = () => { lb.classList.remove('dim'); clearTimeout(lit); lit = setTimeout(() => lb.classList.add('dim'), 10000); };
   window.addEventListener('pointermove', wake, { passive: true });
   wake();
 }
@@ -1252,8 +1258,11 @@ function nodeColor(n) {
 
 // ---- controls (before simulation: collide calls radius at init) ----
 const $ = id => document.getElementById(id);
-const mode = () => $('colorMode').value;
-const sizeMode = () => $('sizeMode').value;
+// hot-path knobs read a CACHED element, not getElementById: mode()/sizeMode() sit inside
+// nodeColor()/radius() = 2×~1470 DOM lookups per frame (profiled 2.5%+ of pan JS, 07-10)
+const _colorEl = document.getElementById('colorMode'), _sizeEl = document.getElementById('sizeMode');
+const mode = () => _colorEl.value;
+const sizeMode = () => _sizeEl.value;
 const focusMode = () => $('focusMode').value;   // dim | blur | tiles (A/B)
 const labelModeV = () => $('labelMode').value;  // hubs | hops | near | all
 const labelHopsV = () => +$('labelHops').value;
@@ -1339,7 +1348,14 @@ $('labelDensv').textContent = (+$('labelDens').value).toFixed(1);
 // the lbl ρ slider is a user multiplier on top; 0 = only selected/hover/pin/search
 // v2.10 readable pass: base budget raised (16→40) — "I see a graph, I can't read the files"
 // was the top complaint; collision-cull still governs, so it degrades to what fits
-const lblBudget = K => Math.round((40 + 64 * Math.min(K, 6)) * (+$('labelDens').value));
+// v2.10.5: the on-screen data budget follows the PHYSICAL frame, not only zoom — a bigger
+// window fits more labels/cards, bigger text (TS) fits fewer (each one occupies more of the
+// same frame). One knob feeds BOTH the label pass and the card pre-pass, so "how much data
+// this zoom shows" stays coherent across monitors, window sizes and the A−/A+ stepper.
+// Normalized to the 1920×1080 / TS=1.25 defaults (that setup is identical to v2.10.4);
+// clamped so tiny/huge windows degrade gently instead of emptying/flooding the frame.
+const lblBudget = K => Math.round((40 + 64 * Math.min(K, 6)) * (+$('labelDens').value) *
+  Math.max(0.35, Math.min(2.2, (W * H) / (1920 * 1080) / Math.pow(TS / 1.25, 2))));
 
 // FILTER maxNodes: top-N by degree; outside keep — don't delete, dim 0.10 (principle #2)
 const realCount = nodes.filter(n => !n.ghost).length;
@@ -2789,6 +2805,11 @@ function gesturesToggle(on) {
 // ---- minimap (orientation port: side-map + viewport rect, click = pan) ----
 const mm = $('minimap'), mmCtx = mm.getContext('2d');
 let mmBox = null;
+// v2.10.5 perf: the dot cloud only moves while the sim is warm — during pan/zoom only the
+// viewport rect changes. Dots render into an offscreen sprite invalidated by a content
+// stamp; a frame is then blit + one strokeRect instead of ~1470 fillStyle+fillRect.
+const mmDots = document.createElement('canvas');
+let mmStamp = '';
 function drawMinimap() {
   const vis = nodes.filter(visible);
   if (!vis.length) return;
@@ -2798,11 +2819,22 @@ function drawMinimap() {
   const k = Math.min((mw - 2*pad) / Math.max(x1-x0, 1), (mh - 2*pad) / Math.max(y1-y0, 1));
   const ox = (mw - (x1-x0)*k) / 2 - x0*k, oy = (mh - (y1-y0)*k) / 2 - y0*k;
   mmBox = { k, ox, oy };
-  mmCtx.clearRect(0, 0, mw, mh);
-  for (const n of vis) {
-    mmCtx.fillStyle = n.ghost ? 'rgba(122,120,111,0.4)' : hexA(zoneColor(n.zone), 0.85);
-    mmCtx.fillRect(n.x*k + ox - 0.75, n.y*k + oy - 0.75, 1.5, 1.5);
+  const moving = sim.alpha() > 0.005;
+  const stamp = moving ? '' : [vis.length, layoutName, groupMode, toggles.ghosts,
+    hiddenZones.size, hiddenNodes.size, mw, mh,
+    x0.toFixed(1), x1.toFixed(1), y0.toFixed(1), y1.toFixed(1)].join('|');
+  if (moving || stamp !== mmStamp) {
+    if (mmDots.width !== mw || mmDots.height !== mh) { mmDots.width = mw; mmDots.height = mh; }
+    const dctx = mmDots.getContext('2d');
+    dctx.clearRect(0, 0, mw, mh);
+    for (const n of vis) {
+      dctx.fillStyle = n.ghost ? 'rgba(122,120,111,0.4)' : hexA(zoneColor(n.zone), 0.85);
+      dctx.fillRect(n.x*k + ox - 0.75, n.y*k + oy - 0.75, 1.5, 1.5);
+    }
+    mmStamp = stamp;
   }
+  mmCtx.clearRect(0, 0, mw, mh);
+  mmCtx.drawImage(mmDots, 0, 0);
   // viewport rect: screen → world → minimap
   const [wx0, wy0] = transform.invert([0, 0]), [wx1, wy1] = transform.invert([W, H]);
   mmCtx.strokeStyle = 'rgba(244,243,238,0.75)';
@@ -3317,9 +3349,23 @@ function drawFocus(fm) {
   ctx.drawImage(blurCanvas, 0, 0, blurCanvas.width, blurCanvas.height,
     dpr * (transform.x - _r * bgT.x), dpr * (transform.y - _r * bgT.y),
     canvas.width * _r, canvas.height * _r);
+  // vignette OVER the blit, screen-fixed at the live center — it is deliberately absent
+  // from the blur cache (a baked-in bright center travels with the camera delta and snaps
+  // back on each re-raster: the blinking light patch through ego, live 07-10)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawVignette(ctx);
   ctx.globalAlpha = 1;
   ctx.restore();
   paintFrame(ctx, { only: sharp, tiles: fm === 'tiles' && !!selected, noClear: true, noBg: true, lens });
+}
+// screen-fixed vignette (depth): drawn in the live pass AND over the blitted blur in
+// drawFocus — never baked into the camera-tracking blur cache (see the noBg comment below)
+function drawVignette(g) {
+  const vg = g.createRadialGradient(W/2, H/2, Math.min(W,H)*0.2, W/2, H/2, Math.max(W,H)*0.75);
+  vg.addColorStop(0, 'rgba(255,255,255,0.016)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.28)');
+  g.fillStyle = vg;
+  g.fillRect(0, 0, W, H);
 }
 function paintFrame(g, opts) {
   const only = opts.only || null, muted = !!opts.muted, tiles = !!opts.tiles;
@@ -3330,14 +3376,13 @@ function paintFrame(g, opts) {
   if (!opts.noClear) g.clearRect(0, 0, g.canvas.width, g.canvas.height);
   g.scale(opts.scale || dpr, opts.scale || dpr);   // muted pass goes into the downscaled canvas
   if (!opts.noBg) {
-    // background + soft vignette (depth)
+    // background + soft vignette (depth). The vignette is SCREEN-space and must NOT go
+    // into the muted/blur cache: the cache is blitted with the camera delta during drag,
+    // so a baked-in bright center would travel with the shift and snap back on every
+    // BG_MS re-raster — the «светлое пятно мигает сквозь эго» flash (live, 07-10).
     g.fillStyle = PAGE;
     g.fillRect(0, 0, W, H);
-    const vg = g.createRadialGradient(W/2, H/2, Math.min(W,H)*0.2, W/2, H/2, Math.max(W,H)*0.75);
-    vg.addColorStop(0, 'rgba(255,255,255,0.016)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.28)');
-    g.fillStyle = vg;
-    g.fillRect(0, 0, W, H);
+    if (!muted) drawVignette(g);
   }
   g.translate(transform.x, transform.y);
   g.scale(transform.k, transform.k);
@@ -3657,6 +3702,12 @@ function paintFrame(g, opts) {
   }
 
   // nodes
+  // (v2.10.5 note: Path2D bucketing of circles — the PERF-AUDIT-20260710 backlog #1 — was
+  // BUILT and MEASURED here and reverted: ~1450→120 canvas calls/frame changed nothing
+  // (native call dispatch was never the cost on a GPU-raster canvas), while recording
+  // ~120 Path2D buckets per frame ADDED ~2ms at overview zoom (9.3→11.5ms, 5-repeat A/B).
+  // The real per-frame cost was the string-key churn in the text-metrics caches — fixed in
+  // tileMetrics via the per-node stamp memo. Don't rebuild this without a measurement.)
   for (const n of nodes) {
     if (!visible(n)) continue;
     if (only && !only.has(n.id)) continue;
@@ -3826,8 +3877,16 @@ function paintFrame(g, opts) {
       // truncation to the layout pitch (grid/zones) + a general cap on ambient-name width:
       // a label surviving cull reads in full, zoom widens the pitch → text expands
       const maxPx = plate ? 460 : Math.min(240 * TS, pitch ? Math.max(56, pitch * K - 8) : 240 * TS);
-      const lbl = fitLabel(g, n.label, maxPx);
-      const w = mtw(g, lbl), h = fs * 1.1;
+      // per-node memo under a numeric stamp (same disease as tileMetrics: the global caches
+      // are cheap, their string KEYS are not — a few hundred key-concats per frame)
+      const lstamp = (Math.floor(maxPx / 8) * 8) * 4 + (plate ? 2 : 0);
+      let lc = n._lc;
+      if (!lc || lc.s !== lstamp || lc.ts !== TS) {
+        const lbl = fitLabel(g, n.label, maxPx);
+        n._lc = lc = { s: lstamp, ts: TS, lbl, w: mtw(g, lbl) };
+      }
+      const lbl = lc.lbl;
+      const w = lc.w, h = fs * 1.1;
       // list-shaped layouts (spine rows / facet panels / dendro rim) anchor the name to the
       // node's SIDE — a vertical list of side labels reads as a table of contents
       const anchor = n._lbAnchor;
@@ -4011,35 +4070,56 @@ function cardText(n) {
 }
 // tile card metrics (SCREEN px) — shared by the pre-pass collision check and drawing;
 // call with the card's font already set (600 13*TS system-ui)
+// v2.10.5 perf: the TEXT layout (fitted label, wrapped body lines, label width) is memoized
+// ON the node under a small numeric stamp. The global mtw/fitLabel/wrapText caches already
+// made recompute cheap, but their KEYS embed the full body text (~400 chars) — building and
+// hashing those strings per node per frame WAS the frame cost (profiled 2026-07-10: wrapText
+// key-churn 16.5% + tileMetrics 11.4% + mtw 10.8% + fitLabel 8.7% + bodySnip/cardText concat
+// 7.6% ≈ 55% of pan JS at card zoom). The stamp only changes when the 8px width bucket /
+// line count / TS / layout flips — hit path touches no long strings at all.
 function tileMetrics(g, n) {
   const K = transform.k;
   const nx = Math.round(NX(n) * K + transform.x), ny = Math.round(NY(n) * K + transform.y);
   // body doesn't snap at the threshold: descT lerps card height and line alpha along the zoom ramp —
   // the preview "grows" out of the card continuously instead of switching in a step
-  const body = cardText(n);
   // sub-visible ramp gate (v2.10.2): descRamp goes >0 long before the text is readable —
   // cards used to pay full wrap+draw for lines at alpha ≈0 («desc рендерится, но его не видно»)
-  const _dt = body ? descRamp(K) : 0;
-  const descT = _dt > 0.06 ? _dt : 0;
-  const withDesc = descT > 0;
+  const _dt = descRamp(K);
   const pitch = LAYOUT_PITCH[layoutName];
   const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
   // TEXT cap = column pitch minus card padding and cull gap (otherwise cards
   // exactly on the grid pitch end up slightly wider than the pitch → only every other one survives, shelves get gappy)
   const maxW = Math.max(64, Math.min(280*TS, pitch ? pitch * K - 2*padX - 12 : 280*TS));
-  const label = fitLabel(g, n.label, maxW);
-  let dLines = [];
-  if (withDesc) {
-    const save = g.font;
-    g.font = `${9.5*TS}px system-ui`;   // measure wraps with the BODY font, not the title's
-    const maxLines = K >= BODY_K ? 4 : 2;
-    dLines = wrapText(g, body, Math.max(140*TS, maxW - 4), maxLines);
-    g.font = save;
+  const stamp = (Math.floor(maxW / 8) * 8) * 64 + (_dt > 0.06 ? (K >= BODY_K ? 4 : 2) : 0) * 8
+    + (LAYOUT_PITCH[layoutName] ? 1 : 0);
+  let tc = n._tc;
+  if (!tc || tc.stamp !== stamp || tc.ts !== TS) {
+    const body = cardText(n);
+    const withDesc = !!body && _dt > 0.06;
+    const label = fitLabel(g, n.label, maxW);
+    let dLines = [];
+    if (withDesc) {
+      const save = g.font;
+      g.font = `${9.5*TS}px system-ui`;   // measure wraps with the BODY font, not the title's
+      dLines = wrapText(g, body, Math.max(140*TS, maxW - 4), K >= BODY_K ? 4 : 2);
+      g.font = save;
+    }
+    n._tc = tc = { stamp, ts: TS, label, dLines, lw: mtw(g, label), hasBody: !!body };
   }
-  const w = Math.min(Math.max(mtw(g, label), withDesc ? 200*TS*descT : 0), maxW) + 2*padX;
+  const descT = tc.hasBody && _dt > 0.06 ? _dt : 0;
+  const dLines = descT > 0 ? tc.dLines : EMPTY_LINES;
+  const w = Math.min(Math.max(tc.lw, descT > 0 ? 200*TS*descT : 0), maxW) + 2*padX;
   const h = th + dLines.length*dh*descT + 2*padY;
-  return { label, dLines, descT, x: nx - w/2, y: ny - h/2, w, h, nx, th, padY, dh };
+  // the metrics object is REUSED per node (one alloc, mutated each frame): ~500 fresh
+  // objects/frame showed up as GC churn. Consumers hold it at most one frame (n._tm,
+  // placedTileRects, the b !== n._tm identity check) — all rebuilt every frame.
+  let m = n._tmv || (n._tmv = {});
+  m.label = tc.label; m.dLines = dLines; m.descT = descT;
+  m.x = nx - w/2; m.y = ny - h/2; m.w = w; m.h = h;
+  m.nx = nx; m.th = th; m.padY = padY; m.dh = dh;
+  return m;
 }
+const EMPTY_LINES = [];
 // desc sprite cache (v2.10.3): the card body used to re-draw 2-4 fillText + a fresh
 // createLinearGradient PER CARD PER FRAME — with descs visible that alone dragged the
 // frame back down («с десками как было»). The body text, per-line fade and the last-line
