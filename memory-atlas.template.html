@@ -3767,7 +3767,15 @@ function paintFrame(g, opts) {
   // tile de-clutter (pre-pass): cards are placed greedily by priority
   // (selected > hover > pin > degree); a card that loses its spot is drawn as a plain
   // circle — the node doesn't disappear, text doesn't smear. The lbl ρ budget applies here too.
-  const tileMode = !muted && (tiles || lodK >= TILE_K);
+  // v2.11.1: cards OFF during an active node-drag. Node-drag arms the sim (alphaTarget 0.25),
+  // so positions move every tick — the blit caches that make pan/zoom cheap (bgAt camera-delta,
+  // blurCanvas) are dead, and the full per-card path (pre-pass + drawTile) reruns each warm tick.
+  // At >4-5 cards that caps drag FPS («фпс на драг падает»). Extend the 60fps contract §7 (the
+  // same `dragging` class that already kills the hover path): fall back to circles+labels while
+  // the node is held, snap cards back on drag-end. With tileMode off, skipTiled/tiledFade go
+  // full-alpha, so every node keeps its label — no bare-circle gap.
+  const dragging = canvas.classList.contains('dragging');
+  const tileMode = !muted && !dragging && (tiles || lodK >= TILE_K);
   // single crossfade parameter for the frame's LOD: 0 = circles+labels, 1 = cards;
   // in between — card fades in (alpha=tileT), label fades out (alpha=1-tileT) — the name never disappears
   const tileT = tiles ? 1 : tileRamp(lodK);
