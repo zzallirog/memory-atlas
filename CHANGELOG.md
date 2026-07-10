@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.11.0
+
+**Fast at every frame, readable at every scale.** Two passes over the v2.10 reading
+views after they met a real vault (1341 notes / 6.5k edges / 410 louvain topics).
+
+### Performance (v2.10.1–v2.10.5)
+
+Profiled, not guessed — CDP profiles, canvas-call counters, A/B on the same DATA
+(harness now in `perf/`):
+
+- Per-node text-layout memos under numeric stamps: building and hashing cache keys
+  that embedded the full note body was ~55% of pan JS at card zoom.
+- Card bodies render as content-keyed offscreen sprites (one `drawImage`), the
+  `bodySnip` regex pass is cached — a measured 46ms JS cliff at the card threshold
+  is gone.
+- Edges stroke as per-style `Path2D` buckets; the blur background delta-blits a
+  cached raster (panning under focus no longer re-rasters the whole muted graph).
+- Ego-focus neighbors are plate chips (bodies on demand), not bare text lines.
+- Data budget scales with viewport area / text-scale².
+- Fixes: `#ofit`/`#langBtn` were unstyled AND click-dead (fell out of a hand-written
+  CSS id list); the ego vignette was baked into the camera-tracking blur cache and
+  flashed on re-raster — now screen-fixed.
+- Measured (1920×1080, dpr2): draw callback 12.4→6.4ms at K=1.0, 15.8→9.4ms at
+  K=2.3, 15.1→8.8ms at K=3.25; 1280×800 sits at 4-6ms across all zooms.
+
+### Motion
+
+- Magnet + wikilink particles ON by default at **zero idle cost**: rAF runs only
+  while carriers exist, the magnet arms on cursor movement — a parked cursor burns
+  nothing. Saved views carry motion state.
+
+### Reading at scale (v2.10.6)
+
+- **Capped group axis**: 410 topics no longer mint 410 spine headers / facet panels /
+  hulls — top groups keep sections, the tail merges into one `…` group (grid 24,
+  zones/dendro 18, others 12; zone/root/type/age untouched).
+- **Density-LOD**: card/desc/body ramps run on `max(K, density-equivalent zoom)` from
+  the node count in frame (≤16 = cards, ≤7 = full body preview) — reading distance is
+  scale-free, whatever the layout inflated the world to.
+- Node screen-radius floor (sub-pixel dendro-rim nodes were invisible and
+  unclickable); dendro branch skeleton fills the empty disc; group titles capped in
+  screen terms; ✦ orient animates as a smooth eased tween.
+
+### Docs & bench
+
+- `perf/` measurement harness (frame-bench matrix, focus-cell repeats, splice A/B,
+  CDP pan profile) with methodology notes — including the measured anti-case where
+  Path2D-bucketing circles cut canvas calls 20× and *added* 2ms.
+- `docs/VIEWS.md`: "Reading at any scale" section + new shot.
+
 ## 2.10.0
 
 **Reading, not just navigating.** The complaint this release answers: *"I can see the

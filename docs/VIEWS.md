@@ -69,6 +69,32 @@ blocks into topic shelves:
 - In spine/facets the list rows are never budget-culled — they are the reading
   surface.
 
+## Reading at any scale (v2.11)
+
+Two v2.11 mechanics make every view above survive a real, large vault
+(measured on 1341 notes / 410 louvain topics):
+
+- **Capped group axis.** A high-cardinality axis (410 topics) used to mint 410
+  spine headers / facet panels / hulls — a text wall. Every group-sliced layout
+  now walks a capped axis: the top groups by note count keep their sections, the
+  tail merges into one `…` group routed to the arc/disc (hulls skip it). Caps:
+  grid 24, zones/dendro 18, others 12. Low-cardinality axes (zone / root / type /
+  age) pass through untouched.
+- **Density-LOD.** Card thresholds used to be absolute zoom `K`, but list/tree
+  layouts inflate the world several-fold for label pitch — `K` never reached the
+  card zone at what *is* reading distance there. The card/desc/body ramps now run
+  on `max(K, density-equivalent zoom)` from the node count in frame: ≤16 notes in
+  frame = full cards, ≤7 = full body preview. Scale-free — "a handful of cards on
+  screen" exists on every view × grouping, however far the layout stretched the
+  world.
+
+![spine at reading distance — body cards](shots/view-spine-cards.png)
+
+Also in v2.11: nodes keep a minimum screen radius (a dendro rim at fit used to be
+sub-pixel — invisible and unclickable), the dendro crown hangs on a drawn branch
+skeleton instead of ringing an empty disc, and group titles are capped in screen
+terms instead of growing with zoom.
+
 ## The rest of the left bar
 
 | card | what it does |
