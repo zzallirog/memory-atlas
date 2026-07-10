@@ -59,7 +59,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.11.1"  # perf hotfix: cards off during an active node-drag (warm sim, dead blit caches) — no per-card path while a node is held, snaps back on drag-end
+VERSION = "2.11.2"  # ghost detector skips wikilinks inside code spans (fenced+inline — no false dangles from convention notes); EMB_MODEL honours $ATLAS_EMB_MODEL
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -133,6 +133,16 @@ FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 # [[target]] and [[target|alias]] — take target up to |
 WIKILINK_RE = re.compile(r"\[\[([^\]|#\n]+?)(?:\|[^\]\n]*)?\]\]")
 MDLINK_RE = re.compile(r"\]\(([^)#\s]+?\.md)\)")
+
+# Wikilinks written as SYNTAX EXAMPLES inside code — ``[[wikilinks]]``, `[[<handle>]]`
+# in convention notes that document the link syntax itself — are not real links.
+# Blank code out before scanning so they don't register as dangling ghosts.
+FENCE_RE = re.compile(r"(?ms)^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[^\n]*$")
+INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+
+
+def strip_code_spans(text):
+    return INLINE_CODE_RE.sub(" ", FENCE_RE.sub("\n", text))
 
 
 def norm(key):
@@ -324,7 +334,7 @@ def build_graph(src):
 
     for node in list(nodes):
         stem = node["id"]
-        body = bodies[stem]
+        body = strip_code_spans(bodies[stem])  # code-span wikilinks aren't real links
         own = root_lookup.get(node.get("root"), {})
         targets = [(norm(t), "wiki") for t in WIKILINK_RE.findall(body)]
         targets += [(norm(os.path.basename(t)), "md")
@@ -527,7 +537,7 @@ def detect_structural(nodes, edges, max_motifs=5000):
 
 
 # semantic: embeddings via Ollama loopback (Mac: embeddinggemma/nomic), sha-cache.
-EMB_MODEL = "nomic-embed-text"
+EMB_MODEL = os.environ.get("ATLAS_EMB_MODEL") or "nomic-embed-text"
 EMB_CACHE = os.environ.get("ATLAS_EMB_CACHE") or os.path.join(DATA_HOME, "emb-cache.json")
 OLLAMA = os.environ.get("ATLAS_OLLAMA") or "http://127.0.0.1:11434"
 
@@ -1053,6 +1063,22 @@ def run_self_test():
             self.assertEqual(by["b"]["zone"], "chemistry")
             self.assertEqual(by["top"]["zone"], "notes")   # root-level fallback
             self.assertFalse(by["a"]["orphan"])            # foreign → orphan off
+
+        def test_code_span_wikilinks_not_ghosts(self):
+            # convention notes document the [[wikilink]] syntax inside code — those must
+            # NOT count as dangling ghosts (Daniel: 3 of 13 ghosts were exactly this).
+            self.w("real.md", "---\nname: real\n---\ntarget")
+            self.w("doc.md",
+                   "---\nname: doc\n---\n"
+                   "A real link to [[real]].\n"
+                   "Inline example: `[[inline_ghost]]`.\n"
+                   "```\n[[fenced_ghost]]\n```\n")
+            by, edges = self.graph()
+            self.assertIn("real", by)
+            self.assertNotIn("inline_ghost", by)   # inline code → not a ghost
+            self.assertNotIn("fenced_ghost", by)   # fenced code → not a ghost
+            self.assertTrue(any(e["source"] == "doc" and e["target"] == "real"
+                                for e in edges))
 
         def test_zone_anchors_foreign_circle(self):
             # our own corpus → fixed ZONES (same object); foreign → alphabetical circle

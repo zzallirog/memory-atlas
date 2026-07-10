@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.11.2
+
+Two fixes surfaced by Daniel ([n0mad-ai](https://github.com/n0mad-ai)) running the
+atlas on a large external vault 🍺
+
+- **Ghost detector ignores wikilinks inside code spans.** `[[links]]` written as
+  syntax examples in fenced or inline code — notes that document the wikilink
+  convention itself — no longer register as dangling ghosts.
+- **`EMB_MODEL` is configurable via `$ATLAS_EMB_MODEL`.** A box running a different
+  embedder (e.g. `embeddinggemma`) no longer 404s `/api/embed` and silently degrades
+  to structural-only — set the env var and the semantic layer comes back.
+
 ## 2.11.0
 
 **Fast at every frame, readable at every scale.** Two passes over the v2.10 reading
