@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.10.5"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.10.6"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -1223,10 +1223,36 @@ const groupColor = v => {
   const i = _gSlot.get(v);
   return i !== undefined && i < 8 ? CAT[i] : OTHER;
 };
-const groupLabel = v => groupMode === 'cluster' && String(v).startsWith('c')
+const groupLabel = v => v === LG_REST ? '…'
+  : groupMode === 'cluster' && String(v).startsWith('c')
   ? clusterName(+String(v).slice(1)) : String(v);
+// layout slice of the group axis, cardinality-CAPPED: cluster·topics mints 410 values —
+// which used to mean 410 spine headers / facet panels / hulls (the 2026-07-10 text-wall
+// screens). Top groups by note count keep their sections; the tail merges into one '…'
+// pseudo-group (spine/facets route it to the arc/disc; hulls skip it — a scattered tail
+// has no spatial coherence). Low-cardinality axes (zone/root/type/age) pass through intact.
+const LG_REST = '\x00rest';
+const LG_MAX = { grid: 24, zones: 18, dendro: 18 };   // shelf-like layouts read more sections
+let _lgCache = null;                                   // keyed by maxG; dropped on groupMode change
+function layoutGroups(maxG) {
+  if (_lgCache && _lgCache.maxG === maxG) return _lgCache.res;
+  const counts = new Map();
+  for (const n of nodes) if (!n.ghost) {
+    const v = groupVal(n); counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  const order = groupOrder().filter(z => counts.has(z));
+  let res;
+  if (order.length <= maxG) res = { zs: order.slice(), g: groupVal };
+  else {
+    const keep = new Set(order.slice().sort((a, b) => counts.get(b) - counts.get(a)).slice(0, maxG - 1));
+    const zs = order.filter(z => keep.has(z)); zs.push(LG_REST);
+    res = { zs, g: n => { const v = groupVal(n); return keep.has(v) ? v : LG_REST; } };
+  }
+  _lgCache = { maxG, res };
+  return res;
+}
 function setGroupMode(v) {
-  groupMode = v; _gOrder = _gSlot = null;
+  groupMode = v; _gOrder = _gSlot = null; _lgCache = null;
   const el = document.getElementById('groupMode');
   if (el && el.value !== v) el.value = v;
   saveCfg();
@@ -1337,6 +1363,7 @@ const showGhosts = () => toggles.ghosts;
 // wedges) — hulls would wrap list+arc into one giant blob; titles come via layoutTitles
 const showHulls = () => toggles.hulls && !['semantic', 'spine', 'facets', 'dendro'].includes(layoutName);
 let layoutTitles = [];   // [{x, y, v}] world-space group headers, set by list-shaped layouts
+let layoutDecor = null;  // static world-space Path2D decoration (dendro branch skeleton)
 const showLabels = () => toggles.labels;
 
 // VIEW multipliers (edgeAlphaMul / nodeSizeMul) + value labels
@@ -1702,15 +1729,21 @@ function orientFit(theatrics) {
     orientBusy = false;
   };
   if (!theatrics) { rotateNodes(all, cx, cy, r.theta); done(); return; }
+  // smooth tween to the optimizer's angle (the old 6×95ms random "spins" landed between
+  // frames on an idle rAF — «кнопка фрейм отрабатывает без анимаций», 07-10): a continuous
+  // eased rotation IS the honest animation, the endpoint is still the real optimum
   orientBusy = true; toast(T('✦ подбираю ориентацию…'));
-  let acc = 0, step = 0; const N = 6;             // 6 cosmetic spins over the real result, then settle
-  const spin = () => {
-    const want = step >= N ? r.theta : Math.random() * Math.PI;
+  const DUR = 700, t0 = performance.now();
+  const ease = p => p < 0.5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3) / 2;
+  let acc = 0;
+  const stepFn = () => {
+    const p = Math.min(1, (performance.now() - t0) / DUR);
+    const want = r.theta * ease(p);
     rotateNodes(all, cx, cy, want - acc); acc = want;
-    if (step >= N) { done(); return; }
-    step++; setTimeout(spin, 95);
+    if (p >= 1) { done(); return; }
+    requestAnimationFrame(stepFn);
   };
-  spin();
+  requestAnimationFrame(stepFn);
 }
 document.getElementById('ofit').addEventListener('click', () => orientFit(true));
 
@@ -1730,7 +1763,9 @@ function pick(mx, my) {
   let best = null, bd = Infinity;
   for (const n of nodes) {
     if (!visible(n) || !lensPass(n)) continue;   // what the lens dissolves is not tappable (by-design)
-    const dx = NX(n)-x, dy = NY(n)-y, d2 = dx*dx+dy*dy, r = radius(n)+3;
+    // pick radius mirrors the draw-site screen floor: sub-pixel rim nodes stay clickable
+    const dx = NX(n)-x, dy = NY(n)-y, d2 = dx*dx+dy*dy,
+      r = Math.max(radius(n), 1.7/transform.k)+3;
     if (d2 < r*r && d2 < bd) { bd = d2; best = n; }
   }
   if (best) return best;   // the circle is more precise per intent — priority over text
@@ -2934,13 +2969,17 @@ function layoutTargets(name) {
   for (const n of nodes) delete n._lbAnchor;           // side-anchored labels are layout-owned
   const real = nodes.filter(n => !n.ghost);
   const maxDeg = d3.max(real, n => n.degree) || 1;
+  // capped group axis: every group-sliced branch below reads gv/zsCap, not the raw axis
+  const LG = layoutGroups(LG_MAX[name] || 12);
+  const gv = LG.g, zsCap = LG.zs;
+  layoutDecor = null;
   if (name === 'semantic') {
     for (const n of real) if (n.sx !== undefined) t.set(n.id, [n.sx * R, n.sy * R]);
   } else if (name === 'radial') {
     // groups = ring sectors, hubs toward center (radial port)
     let a0 = -Math.PI / 2;
-    for (const z of groupOrder()) {
-      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
+    for (const z of zsCap) {
+      const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       if (!ns.length) continue;
       const span = 2 * Math.PI * ns.length / real.length;
       ns.forEach((n, i) => {
@@ -2953,7 +2992,7 @@ function layoutTargets(name) {
   } else if (name === 'pack') {
     // nested circles (d3.pack): group ⊃ louvain cluster ⊃ note. Fills the whole area
     // (space-filling), intra-domain structure shows up as cluster sub-circles
-    const groups = d3.groups(real, n => groupVal(n), n => n.cluster);
+    const groups = d3.groups(real, n => gv(n), n => n.cluster);
     const root = d3.hierarchy({ children: groups.map(([, cs]) =>
         ({ children: cs.map(([, ns]) => ({ children: ns.map(n => ({ n })) })) })) })
       .sum(d => d.n ? 6 + d.n.degree : 0);
@@ -2965,12 +3004,12 @@ function layoutTargets(name) {
     // zone synergy: zones = ring arcs (length ∝ note count); arc order is a greedy chain,
     // the most connected zone pairs sit next to each other; within an arc, nodes pulling
     // toward a neighboring zone hug the shared border (inter-zone orientation), hubs toward the inner edge
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
-    const cnt = new Map(zs.map(z => [z, real.filter(n => groupVal(n) === z).length]));
+    const zs = zsCap;
+    const cnt = new Map(zs.map(z => [z, real.filter(n => gv(n) === z).length]));
     const syn = new Map(), pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
     for (const e of edges) {   // synergy over ALL edges (incl. detectors): semantic connectivity
       if (e.user) continue;
-      const a = groupVal(e.source), b = groupVal(e.target);
+      const a = gv(e.source), b = gv(e.target);
       if (a !== b) syn.set(pk(a, b), (syn.get(pk(a, b)) || 0) + 1);
     }
     const S = (a, b) => syn.get(pk(a, b)) || 0;
@@ -3004,11 +3043,11 @@ function layoutTargets(name) {
         let p = 0;
         for (const id of adj.get(n.id) || []) {
           const m = byId.get(id);
-          if (m && groupVal(m) === prev) p--; else if (m && groupVal(m) === next) p++;
+          if (m && gv(m) === prev) p--; else if (m && gv(m) === next) p++;
         }
         return p;
       };
-      const ns = real.filter(n => groupVal(n) === z)
+      const ns = real.filter(n => gv(n) === z)
         .sort((a, b) => pull(a) - pull(b) || b.degree - a.degree);
       ns.forEach((n, i) => {
         const aa = ang + span * (i + 0.5) / ns.length;
@@ -3023,13 +3062,13 @@ function layoutTargets(name) {
     // Anchors sit on their own circle sized from the fattest petal, so neighboring petals
     // almost touch — the whole thing reads as one flower, not clumps in the corners
     const GA = Math.PI * (3 - Math.sqrt(5));
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
-    const maxCnt = d3.max(zs, z => real.filter(n => groupVal(n) === z).length) || 1;
+    const zs = zsCap;
+    const maxCnt = d3.max(zs, z => real.filter(n => gv(n) === z).length) || 1;
     const pitch = 26;
     const petalR = pitch * Math.sqrt(maxCnt + 0.6);
     const aR = zs.length > 1 ? petalR * 1.18 / Math.sin(Math.PI / zs.length) : 0;
     zs.forEach((z, zi) => {
-      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       const za = -Math.PI / 2 + zi * 2 * Math.PI / zs.length;
       const ax = Math.cos(za) * aR, ay = Math.sin(za) * aR;
       ns.forEach((n, i) => {
@@ -3041,12 +3080,12 @@ function layoutTargets(name) {
     // grid by zone: each domain is its own block-"shelf" with a gap, sorted by degree inside;
     // blocks flow in a ribbon and fill the rectangle — scans like a table.
     // pitch = LAYOUT_PITCH.grid: widened 56→76 so label/tile card fits the column
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const zs = zsCap;
     const CELL = LAYOUT_PITCH.grid, GAPB = 130, maxW = 2.4 * R;
     let bx = 0, by = 0, rowH = 0;
     const blocks = [];
     for (const z of zs) {
-      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       const cols = Math.ceil(Math.sqrt(ns.length * 1.7));
       const w = cols * CELL, h = Math.ceil(ns.length / cols) * CELL;
       if (bx + w > maxW && bx > 0) { bx = 0; by += rowH + GAPB; rowH = 0; }
@@ -3061,7 +3100,7 @@ function layoutTargets(name) {
   } else if (name === 'timeline') {
     // time: x = age RANK (not raw days: a log scale crammed fresh notes into the right edge),
     // freshest on the RIGHT, full width used evenly; y = zone lane — "what I touched when"
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const zs = zsCap;
     const orderT = real.slice().sort((a, b) =>
       (a.age_days || 0) - (b.age_days || 0) || (a.id < b.id ? -1 : 1));
     const xIdx = new Map(orderT.map((n, i) => [n.id, i]));
@@ -3069,17 +3108,17 @@ function layoutTargets(name) {
     const laneH = Math.min(170, 2 * R / Math.max(1, zs.length));
     zs.forEach((z, zi) => {
       const lane = (zi - (zs.length - 1) / 2) * laneH;
-      real.filter(n => groupVal(n) === z).forEach((n, i) =>
+      real.filter(n => gv(n) === z).forEach((n, i) =>
         t.set(n.id, [X(xIdx.get(n.id)), lane + ((i * 37 % 100) - 50) / 100 * laneH * 0.6]));
     });
   } else if (name === 'zones') {
     // stacked port: one column per zone, sorted by degree inside.
     // column pitch = LAYOUT_PITCH.zones (46→64) + zone width derived from its column count:
     // a fixed 360 per zone caused overlap on wide zones and empty space on narrow ones
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const zs = zsCap;
     const COLP = LAYOUT_PITCH.zones, GAPZ = 170;
     const packs = zs.map(z => {
-      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       return { ns, cols: Math.max(1, Math.ceil(ns.length / 24)) };
     });
     const tot = d3.sum(packs, p => p.cols * COLP) + GAPZ * (packs.length - 1);
@@ -3094,12 +3133,12 @@ function layoutTargets(name) {
     // ref: arc+spine (v2.10) — central grouped LIST of the strongest notes (readable rows,
     // section headers) + perimeter arc for the rest; edges connect the arc to the list.
     // The spine is the reading surface: every row gets a side-anchored, always-drawn label.
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const zs = zsCap;
     // row budget is SCREEN physics, not taste: at fit the whole spine maps to the viewport
     // height — more rows than pixels/16 = guaranteed smear. 44 rows ≈ 15px pitch at fit.
     const ROWP = 38, HEADH = 76;
     const topPer = Math.max(3, Math.floor(44 / Math.max(1, zs.length)));
-    const groupsNs = zs.map(z => real.filter(n => groupVal(n) === z)
+    const groupsNs = zs.map(z => real.filter(n => gv(n) === z)
       .sort((a, b) => b.degree - a.degree));
     const rowsTotal = groupsNs.reduce((s, ns) => s + Math.min(topPer, ns.length), 0);
     const totH = rowsTotal * ROWP + zs.length * HEADH;
@@ -3128,11 +3167,11 @@ function layoutTargets(name) {
     // ref: In-My-Dreams facet panels (v2.10) — group values sit on the perimeter as readable
     // mini-lists (top notes, side-anchored labels), the long tail fills a center disc in the
     // group's own wedge; membership reads as node→panel direction
-    const zs = groupOrder().filter(z => real.some(n => groupVal(n) === z));
+    const zs = zsCap;
     const GA = Math.PI * (3 - Math.sqrt(5));
     const Rp = R * 1.06, ROWP = 34, TOPN = 5, discR = R * 0.5;   // 5 rows/panel: fit-pitch stays readable
     zs.forEach((z, zi) => {
-      const ns = real.filter(n => groupVal(n) === z).sort((a, b) => b.degree - a.degree);
+      const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       const ang = -Math.PI / 2 + zi * 2 * Math.PI / zs.length;
       const ax = Math.cos(ang) * Rp, ay = Math.sin(ang) * Rp;
       const side = Math.cos(ang) >= -0.05 ? 'right' : 'left';
@@ -3153,7 +3192,7 @@ function layoutTargets(name) {
   } else if (name === 'dendro') {
     // ref: snag-tree (v2.10) — radial dendrogram group ⊃ cluster ⊃ note, every leaf on the
     // rim with an outward side-anchored label: the whole vault as one labeled tree crown
-    const groups = d3.groups(real, n => groupVal(n), n => n.cluster);
+    const groups = d3.groups(real, n => gv(n), n => n.cluster);
     const root = d3.hierarchy({ children: groups.map(([, cs]) =>
         ({ children: cs.map(([, ns]) => ({ children: ns.map(n => ({ n })) })) })) });
     root.count();
@@ -3165,6 +3204,20 @@ function layoutTargets(name) {
       t.set(leaf.data.n.id, [Math.cos(ang) * r, Math.sin(ang) * r]);
       leaf.data.n._lbAnchor = Math.cos(ang) >= 0 ? 'right' : 'left';
     }
+    // branch skeleton: the crown used to float as a label ring around an EMPTY disc
+    // («пустотность», 2026-07-10 screens) — draw the tree's elbows (arc at the parent's
+    // radius + a radial drop to the child) into ONE static world-space Path2D; a frame
+    // costs a single stroke. Collide nudges leaves a few wu off the ideal tips — invisible
+    // at the skeleton's alpha.
+    layoutDecor = new Path2D();
+    root.eachBefore(nd => {
+      if (!nd.parent) return;
+      const p = nd.parent;
+      const a0 = p.x - Math.PI / 2, a1 = nd.x - Math.PI / 2, r0 = p.y || 0, r1 = nd.y;
+      layoutDecor.moveTo(Math.cos(a0) * r0, Math.sin(a0) * r0);
+      if (r0 > 1 && Math.abs(a1 - a0) > 1e-4) layoutDecor.arc(0, 0, r0, a0, a1, a1 < a0);
+      layoutDecor.lineTo(Math.cos(a1) * r1, Math.sin(a1) * r1);
+    });
   }
   // ghosts: at the centroid of real neighbors (a meaningful spot, not random)
   for (const n of nodes) {
@@ -3180,6 +3233,7 @@ function applyLayout(name, instant) {
   saveCfg();
   // force/semantic skip layoutTargets — drop list-layout leftovers here as well
   layoutTitles = [];
+  layoutDecor = null;
   for (const n of nodes) delete n._lbAnchor;
   if (name === 'force') {
     sim.force('link').distance(e => sameZone(e) ? 46 : 110).strength(e => sameZone(e) ? 0.22 : 0.035);
@@ -3418,9 +3472,13 @@ function paintFrame(g, opts) {
   if (showHulls() && !only) {
     const zoneLblBoxes = [];   // de-conflict group labels: overlap → label is nudged up
     const ringMode = layoutName === 'ring';   // ring arc: the hull chord covers the center — don't fill it
-    for (const z of groupOrder()) {
+    // hulls walk the CAPPED axis too (410 louvain hulls = 410 petals + giant title mush per
+    // frame); the '…' tail is skipped — a scattered tail hull would blanket the whole canvas
+    const LGH = layoutGroups(LG_MAX[layoutName] || 12);
+    for (const z of LGH.zs) {
+      if (z === LG_REST) continue;
       // B21: ghost phantoms don't stretch the group outline — hull over written notes only
-      const pts = nodes.filter(n => groupVal(n) === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
+      const pts = nodes.filter(n => LGH.g(n) === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
       if (pts.length < 3) continue;
       const hull = d3.polygonHull(pts);
       if (!hull) continue;
@@ -3482,7 +3540,9 @@ function paintFrame(g, opts) {
       }
       if (!muted) {
         const zl = groupLabel(z).toUpperCase();
-        const zfs = Math.max(12, 14/transform.k)*TS;
+        // world-floor CAPPED in screen terms: the old max(12,…) floor let titles grow
+        // linearly with zoom — the giant CAPS over the graph on the 2026-07-10 screens
+        const zfs = Math.min(20/transform.k, Math.max(12, 14/transform.k))*TS;
         g.font = `500 ${zfs}px ${'"SF Mono", ui-monospace, Menlo, monospace'}`;
         g.textAlign = 'center';
         // anchor = top of hull + constant (an area heuristic on wide flat lane hulls
@@ -3542,10 +3602,19 @@ function paintFrame(g, opts) {
   // (louvain blob layer removed 07-09 — it glitched over dense zones; louvain data itself
   // stays: pack layout + color=cluster still use n.cluster)
 
+  // dendro branch skeleton: one static Path2D, one stroke — fills the «пустой круг»
+  // with the tree the crown actually hangs on (skipped in the ego pass: context only)
+  if (layoutDecor && layoutName === 'dendro' && !only) {
+    g.strokeStyle = `rgba(139,137,131,${muted ? 0.05 : 0.11})`;
+    g.lineWidth = 1 / transform.k;
+    g.stroke(layoutDecor);
+  }
+
   // group headers of the list-shaped layouts (spine sections / facet panel titles):
   // hulls are off there — these carry the group names instead, same halo discipline
   if (!muted && !only && layoutTitles.length && ['spine', 'facets', 'dendro'].includes(layoutName)) {
-    const tfs = Math.max(12, 14 / transform.k) * TS;
+    // same screen-cap as hull titles: section headers used to outgrow the rows at zoom
+    const tfs = Math.min(20 / transform.k, Math.max(12, 14 / transform.k)) * TS;
     g.font = `500 ${tfs}px "SF Mono", ui-monospace, Menlo, monospace`;
     g.textAlign = 'center';
     for (const tl of layoutTitles) {
@@ -3591,7 +3660,17 @@ function paintFrame(g, opts) {
     autoF = Math.max(EDGE_FADE_FLOOR, Math.min(1, 1.5 / Math.max(1, dens)));
     // circles fade "within the viewing radius" later than edges (knee is higher): crowds melt, sparse areas stay bright
     nodeF = Math.max(NODE_FADE_FLOOR, Math.min(1, NODE_FADE_KNEE / Math.max(1, dens)));
+    // scale-free reading LOD: the density-equivalent zoom eases toward its target
+    // (no card popping while panning along a sparse rim); keepalive while converging
+    if (g === ctx) {
+      const dT = densTargetK(onScr);
+      densKS += (dT - densKS) * 0.22;
+      if (Math.abs(dT - densKS) > 0.03) labelAnim = true; else densKS = dT;
+    }
   }
+  // LOD zoom for the card ramps: real zoom OR "few notes in frame" — whichever is closer
+  // to reading distance. Geometry (positions/pitch) stays on transform.k everywhere.
+  const lodK = Math.max(transform.k, densKS);
   const iA = Math.sqrt(autoF) * (0.6 + 0.4 * zf);   // intra-zone edges fade softer: the zone's texture stays
   const edgeBuckets = new Map();
   for (const e of edges) {
@@ -3688,10 +3767,10 @@ function paintFrame(g, opts) {
   // tile de-clutter (pre-pass): cards are placed greedily by priority
   // (selected > hover > pin > degree); a card that loses its spot is drawn as a plain
   // circle — the node doesn't disappear, text doesn't smear. The lbl ρ budget applies here too.
-  const tileMode = !muted && (tiles || transform.k >= TILE_K);
+  const tileMode = !muted && (tiles || lodK >= TILE_K);
   // single crossfade parameter for the frame's LOD: 0 = circles+labels, 1 = cards;
   // in between — card fades in (alpha=tileT), label fades out (alpha=1-tileT) — the name never disappears
-  const tileT = tiles ? 1 : tileRamp(transform.k);
+  const tileT = tiles ? 1 : tileRamp(lodK);
   let tileSkip = null;
   const placedTileRects = [];
   if (tileMode) {
@@ -3730,10 +3809,13 @@ function paintFrame(g, opts) {
   for (const n of nodes) {
     if (!visible(n)) continue;
     if (only && !only.has(n.id)) continue;
-    const r = radius(n), nx = NX(n), ny = NY(n);
+    // screen-radius FLOOR: big-world layouts (dendro rim ≈ 4.6k wu) fit at k≈0.1 where a
+    // 2.5-14wu circle is sub-pixel — «ноды такие маленькие что я их даже не вижу» (07-10).
+    // The floor lives at the DRAW site only: radius() stays world-true for the forces.
+    const r = Math.max(radius(n), (n.ghost ? 1.1 : 1.7) / transform.k), nx = NX(n), ny = NY(n);
     if (muted) {                                                 // background pass: a flat dot, everything under blur
       g.globalAlpha = (n.ghost ? 0.3 : 0.55) * bgFade(transform.k);
-      g.beginPath(); g.arc(nx, ny, Math.min(r, BG_RCAP / transform.k), 0, 2*Math.PI);
+      g.beginPath(); g.arc(nx, ny, Math.max(Math.min(r, BG_RCAP / transform.k), 1.1 / transform.k), 0, 2*Math.PI);
       g.fillStyle = nodeColor(n); g.fill();
       g.globalAlpha = 1;
       continue;
@@ -4009,6 +4091,22 @@ const DESC_W = 0.6;   // width of the desc ramp
 const BODY_K = 3.2;   // closer still: the card grows to 4 lines of body
 const tileRamp = K => Math.min(1, Math.max(0, (K - TILE_K) / TILE_W));
 const descRamp = K => Math.min(1, Math.max(0, (K - DESC_K) / DESC_W));
+// scale-free reading LOD (v2.10.6): the k-thresholds above assume the force-scale world
+// (R≈780); list/tree layouts inflate the world several-fold for label pitch, so k never
+// reaches TILE_K at what IS reading distance there — «другой масштаб, который не
+// компенсируется зумом» (07-10). Node count in frame is scale-free: a handful of notes
+// on screen = reading distance, whatever the layout/group axis blew the world up to.
+// «3-6 на экране = развернуть чип в превью» — full body preview at ≤7 in frame.
+const DENS_FULL = 7, DENS_CARDS = 16, DENS_OFF = 34;
+let densKS = 0;   // smoothed density-equivalent zoom; max(k, densKS) drives the card ramps
+function densTargetK(m) {
+  if (m >= DENS_OFF || m < 1) return 0;
+  if (m <= DENS_FULL) return BODY_K + 0.5;
+  if (m <= DENS_CARDS)   // full cards → full body as the frame empties 16→7
+    return (TILE_K + TILE_W) +
+      (DENS_CARDS - m) / (DENS_CARDS - DENS_FULL) * (BODY_K + 0.5 - TILE_K - TILE_W);
+  return (TILE_K + TILE_W) * (DENS_OFF - m) / (DENS_OFF - DENS_CARDS);
+}
 // blur background (muted pass): a screen-space radius cap + zoom falloff — at close zoom
 // world-radius × k used to bloat the background "context" into giant soap bubbles louder than the content
 const BG_RCAP = 30;                                   // screen px, cap on bg-dot radius
@@ -4098,18 +4196,21 @@ function cardText(n) {
 // line count / TS / layout flips — hit path touches no long strings at all.
 function tileMetrics(g, n) {
   const K = transform.k;
+  // ramp semantics run on the LOD zoom (real k OR density-equivalent — scale-free reading);
+  // geometry below (positions, pitch→px) stays on the real k
+  const KL = Math.max(K, densKS);
   const nx = Math.round(NX(n) * K + transform.x), ny = Math.round(NY(n) * K + transform.y);
   // body doesn't snap at the threshold: descT lerps card height and line alpha along the zoom ramp —
   // the preview "grows" out of the card continuously instead of switching in a step
   // sub-visible ramp gate (v2.10.2): descRamp goes >0 long before the text is readable —
   // cards used to pay full wrap+draw for lines at alpha ≈0 («desc рендерится, но его не видно»)
-  const _dt = descRamp(K);
+  const _dt = descRamp(KL);
   const pitch = LAYOUT_PITCH[layoutName];
   const padX = 9, th = 16*TS, padY = 6, dh = 12*TS;
   // TEXT cap = column pitch minus card padding and cull gap (otherwise cards
   // exactly on the grid pitch end up slightly wider than the pitch → only every other one survives, shelves get gappy)
   const maxW = Math.max(64, Math.min(280*TS, pitch ? pitch * K - 2*padX - 12 : 280*TS));
-  const stamp = (Math.floor(maxW / 8) * 8) * 64 + (_dt > 0.06 ? (K >= BODY_K ? 4 : 2) : 0) * 8
+  const stamp = (Math.floor(maxW / 8) * 8) * 64 + (_dt > 0.06 ? (KL >= BODY_K ? 4 : 2) : 0) * 8
     + (LAYOUT_PITCH[layoutName] ? 1 : 0);
   let tc = n._tc;
   if (!tc || tc.stamp !== stamp || tc.ts !== TS) {
@@ -4120,7 +4221,7 @@ function tileMetrics(g, n) {
     if (withDesc) {
       const save = g.font;
       g.font = `${9.5*TS}px system-ui`;   // measure wraps with the BODY font, not the title's
-      dLines = wrapText(g, body, Math.max(140*TS, maxW - 4), K >= BODY_K ? 4 : 2);
+      dLines = wrapText(g, body, Math.max(140*TS, maxW - 4), KL >= BODY_K ? 4 : 2);
       g.font = save;
     }
     n._tc = tc = { stamp, ts: TS, label, dLines, lw: mtw(g, label), hasBody: !!body };
