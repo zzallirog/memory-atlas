@@ -97,7 +97,7 @@ docs/QUICKSTART.md            # the friendly walkthrough
 
 ## Changelog
 
-Latest: **2.11.2 — reading at any scale** ([release](https://github.com/zzallirog/memory-atlas/releases/latest)). Full per-version history in **[CHANGELOG.md](CHANGELOG.md)**.
+Latest: **2.12.0 — trilingual UI (RU · EN · UK)** ([release](https://github.com/zzallirog/memory-atlas/releases/latest)). Full per-version history in **[CHANGELOG.md](CHANGELOG.md)**.
 
 ## License
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.12.0
+
+**Trilingual UI (RU · EN · UK).** Ukrainian joins the interface. The bar's language
+button now cycles RU → EN → UK (reload-on-switch, settings survive).
+
+- **`i18nUK` dictionary.** Every UI string, hint, toast and legend carries a Ukrainian
+  translation — 326 keys, at parity with the EN overlay. RU stays the canonical markup;
+  EN and UK are dictionary overlays applied on load.
+- **3-way language button.** The bar button shows the next language and advances
+  RU → EN → UK; the 10s idle auto-hide is unchanged.
+
 ## 2.11.2
 
 Two fixes surfaced by Daniel ([n0mad-ai](https://github.com/n0mad-ai)) running the

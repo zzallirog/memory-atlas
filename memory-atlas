@@ -59,7 +59,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.11.2"  # ghost detector skips wikilinks inside code spans (fenced+inline — no false dangles from convention notes); EMB_MODEL honours $ATLAS_EMB_MODEL
+VERSION = "2.12.0"  # trilingual UI: Ukrainian (i18nUK) added — bar language button cycles RU → EN → UK
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
