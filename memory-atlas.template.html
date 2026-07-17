@@ -2022,33 +2022,45 @@ canvas.addEventListener('contextmenu', ev => {
 // top-left; the two artifacts never collide). Polish (zoom-transparency, magnet-hover) = later slices.
 const hoverPins = [];
 function createHoverPin(n) {
-  if (hoverPins.some(h => h.id === n.id)) return;   // no dup card
+  const ex = hoverPins.find(h => h.id === n.id);
+  if (ex) { if (ex.card.parentNode) ex.card.parentNode.appendChild(ex.card); return; }   // dup → raise to top
   const esc = t => (t || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   let box = document.getElementById('hoverpins');
   if (!box) {
     box = document.createElement('div'); box.id = 'hoverpins';
-    box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:300px;';
+    // left of #panel (330px @ right:14) → right bar keeps priority (z5 > z4), no collision — user's "сдвигал ховер"
+    box.style.cssText = 'position:fixed;top:64px;right:358px;z-index:4;display:flex;flex-direction:column;gap:8px;width:322px;max-height:calc(100vh - 80px);overflow:auto;';
     document.body.appendChild(box);
   }
+  const raw = (typeof BODIES !== 'undefined' && BODIES[n.id]) ? String(BODIES[n.id]).replace(/^---[\s\S]*?---\s*/, '') : (n.desc || '');
+  const bodyHtml = (typeof window.mdRender === 'function' && raw) ? window.mdRender(raw) : ('<p>' + esc(raw) + '</p>');
+  const lname = id => { const m = byId.get(id); return m ? (m.label || id) : id; };
+  const lrow = (ids, mark) => (ids && ids.length)
+    ? '<div style="margin-top:5px;font-size:11px;opacity:.85"><b style="color:#8fb3ff">' + mark + ids.length + '</b> '
+      + ids.slice(0, 8).map(id => '<a data-go="' + esc(id) + '" style="color:#8fb3ff;cursor:pointer">' + esc(lname(id)) + '</a>').join(' · ')
+      + (ids.length > 8 ? ' …' : '') + '</div>' : '';
   const card = document.createElement('div');
-  card.style.cssText = 'background:rgba(20,22,28,.94);border:1px solid #2a3340;border-radius:10px;padding:9px 11px;backdrop-filter:blur(8px);box-shadow:0 6px 24px rgba(0,0,0,.42);opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease;font:12px system-ui;color:#cdd6e0;';
-  card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:#8fb3ff">📍 ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
-    + (n.desc ? '<div style="margin-top:6px;opacity:.85;line-height:1.45">' + esc(n.desc) + '</div>' : '')
-    + '<div style="margin-top:6px;opacity:.5;font-size:11px">degree ' + (n.degree || 0) + '</div>'
-    + '<div style="margin-top:8px;display:flex;gap:6px">'                          // #9 slice1: more BTNS — hover-pin = mini right-bar natively
-    +   '<button data-read style="flex:1;cursor:pointer;background:#22406e;color:#dce8ff;border:0;border-radius:6px;padding:5px 0;font:11px system-ui">▤ ' + T('читать') + '</button>'
-    +   '<button data-pinn style="cursor:pointer;background:#2a3340;color:#cdd6e0;border:0;border-radius:6px;padding:5px 9px;font:11px system-ui" title="pin node">📌</button>'
-    + '</div>';
+  card.style.cssText = 'background:rgba(18,20,26,.96);border:1px solid #2a3340;border-radius:10px;padding:10px 12px;backdrop-filter:blur(10px);box-shadow:0 6px 24px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease;font:12px system-ui;color:#cdd6e0;';
+  card.innerHTML =
+    '<div data-hd style="display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer"><b style="color:#8fb3ff">📍 ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
+    + '<div style="margin-top:3px;font-size:11px;opacity:.5">' + esc(n.zone || '') + ' · deg ' + (n.degree || 0) + '</div>'
+    + '<div class="hpbody" style="margin-top:8px;max-height:42vh;overflow:auto;line-height:1.5;opacity:.92">' + bodyHtml + '</div>'
+    + lrow(outLinks.get(n.id), '→') + lrow(inLinks.get(n.id), '←')
+    + '<div style="margin-top:9px"><button data-read style="width:100%;cursor:pointer;background:#22406e;color:#dce8ff;border:0;border-radius:6px;padding:6px 0;font:11px system-ui">▤ ' + T('читать') + ' · ' + T('править') + '</button></div>';
   box.appendChild(card);
   requestAnimationFrame(() => { card.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
   const h = { id: n.id, card };
   hoverPins.push(h);
-  card.querySelector('[data-x]').onclick = () => {
+  card.querySelector('[data-x]').onclick = (e) => {
+    e.stopPropagation();
     card.style.opacity = '0'; card.style.transform = 'translateY(-6px)';
     setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 280);
   };
+  card.querySelector('[data-hd]').onclick = () => {   // click header = wake: raise to top + flash border (synergy with right bar)
+    box.appendChild(card); card.style.borderColor = '#3a6ea5'; setTimeout(() => { card.style.borderColor = '#2a3340'; }, 600);
+  };
   const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
-  const pb = card.querySelector('[data-pinn]'); if (pb) pb.onclick = () => togglePin(n, true);
+  card.querySelectorAll('[data-go]').forEach(a => a.onclick = () => { if (window.openInBrowse) openInBrowse(a.dataset.go); });
   toast('📍 hover-pin: ' + (n.label || n.id));
 }
 
@@ -4742,6 +4754,7 @@ if (params.get('q')) {
     }
     return h;
   }
+  try { window.mdRender = mdRender; } catch (e) {}
   function renderTable(rows) {
     rows = rows.filter(r => !/^\|[\s:|-]+\|?\s*$/.test(r));
     let h = '<table>';
