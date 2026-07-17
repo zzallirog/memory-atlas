@@ -187,6 +187,25 @@
   @keyframes floatIn { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: none; } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes sheetIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+  /* ak: ida-box fade vocabulary on graph side. Cascade fires ONLY on node change (panel.anim), not on re-render */
+  #panel.open.anim #panelBody>*{animation:idaFieldIn .5s cubic-bezier(.2,.75,.2,1) both}
+  #panel.open.anim #panelBody>*:nth-child(1){animation-delay:.04s}
+  #panel.open.anim #panelBody>*:nth-child(2){animation-delay:.09s}
+  #panel.open.anim #panelBody>*:nth-child(3){animation-delay:.14s}
+  #panel.open.anim #panelBody>*:nth-child(4){animation-delay:.19s}
+  #panel.open.anim #panelBody>*:nth-child(5){animation-delay:.24s}
+  #panel.open.anim #panelBody>*:nth-child(6){animation-delay:.28s}
+  #panel.open.anim #panelBody>*:nth-child(7){animation-delay:.32s}
+  #panel.open.anim #panelBody>*:nth-child(n+8){animation-delay:.35s}
+  #help.on .sheet>*,#settings.on .sheet>*,#regen.on .sheet>*{animation:idaFieldIn .44s cubic-bezier(.2,.75,.2,1) both}
+  #help.on .sheet>*:nth-child(2),#settings.on .sheet>*:nth-child(2),#regen.on .sheet>*:nth-child(2){animation-delay:.06s}
+  #help.on .sheet>*:nth-child(3),#settings.on .sheet>*:nth-child(3),#regen.on .sheet>*:nth-child(3){animation-delay:.12s}
+  #help.on .sheet>*:nth-child(n+4),#settings.on .sheet>*:nth-child(n+4),#regen.on .sheet>*:nth-child(n+4){animation-delay:.17s}
+  @media (prefers-reduced-motion:reduce){
+    #panel.open,#panel.open.anim #panelBody>*,#help.on,#regen.on,#settings.on,
+    #help.on .sheet,#regen.on .sheet,#settings.on .sheet,
+    #help.on .sheet>*,#settings.on .sheet>*,#regen.on .sheet>*{animation:none!important}
+  }
 
   #bar {
     position: absolute; left: 14px; bottom: 12px; right: 14px; z-index: 5;
@@ -2104,6 +2123,8 @@ function selectNode(n, opts) {
   const panel = document.getElementById('panel');
   document.body.classList.toggle('panel-open', !!n);
   if (!n) { panel.classList.remove('open'); requestDraw(); return; }
+  const _pAnim = panel.dataset.pid !== n.id; panel.dataset.pid = n.id;
+  panel.classList.toggle('anim', _pAnim);
   panel.classList.add('open');
   const userPairs = new Set(overlay.edges.map(e => negKey(e.source, e.target)));
   // target preview right in the row + scoring: ghost goes down, live ones — by target connectivity.
