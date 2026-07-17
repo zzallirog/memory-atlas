@@ -22,6 +22,7 @@
     --ghost: #c98500;
     --mono: "SF Mono", ui-monospace, Menlo, monospace;
     --shadow: 0 8px 28px rgba(0,0,0,0.45);
+    --panelw: 330px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
@@ -36,6 +37,7 @@
     position: absolute; top: 14px; left: 14px; bottom: 46px; z-index: 5;
     display: flex; flex-direction: column; gap: 10px; width: 264px;
     overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+    transition: opacity .45s cubic-bezier(.2,.75,.2,1), transform .45s cubic-bezier(.2,.75,.2,1), filter .45s cubic-bezier(.2,.75,.2,1);
   }
   #hud::-webkit-scrollbar { display: none; }
   #hud .card { flex: none; }
@@ -110,7 +112,8 @@
   .lg .n { color: var(--muted); margin-left: auto; font: 10px var(--mono); }
 
   #panel {
-    position: absolute; top: 14px; right: 14px; bottom: 46px; width: 330px; z-index: 5;
+    position: absolute; top: 14px; right: 14px; bottom: 46px; width: var(--panelw); z-index: 5;
+    transition: width .45s cubic-bezier(.2,.75,.2,1), top .45s cubic-bezier(.2,.75,.2,1);
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     box-shadow: var(--shadow);
@@ -442,7 +445,12 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow);
   }
-  body.panel-open #minimap { right: 358px; }
+  body.panel-open #minimap { right: calc(var(--panelw) + 28px); transition: right .45s cubic-bezier(.2,.75,.2,1); }
+  /* #9 task1 reader-mode: select = left HUD fades out, right panel widens (auto; exit = deselect / esc) */
+  body.reader #hud { opacity: 0; transform: translateX(-18px); filter: blur(1.2px); pointer-events: none; }
+  body.reader { --panelw: min(520px, 44vw); }
+  body.reader #panel { top: 64px; }
+  @media (prefers-reduced-motion:reduce){ #hud, #panel, body.panel-open #minimap { transition: none; } }
   /* help overlay (`?`) */
   #help {
     position: absolute; inset: 0; z-index: 50; display: none; overflow-y: auto;
@@ -2062,7 +2070,7 @@ function createHoverPin(n) {
   if (!box) {
     box = document.createElement('div'); box.id = 'hoverpins';
     // left of #panel (330px @ right:14) → right bar keeps priority (z5 > z4), no collision — user's "сдвигал ховер"
-    box.style.cssText = 'position:fixed;top:64px;right:358px;z-index:4;display:flex;flex-direction:column;gap:8px;width:322px;max-height:calc(100vh - 80px);overflow:auto;';
+    box.style.cssText = 'position:fixed;top:64px;right:calc(var(--panelw, 330px) + 28px);z-index:4;display:flex;flex-direction:column;gap:8px;width:322px;max-height:calc(100vh - 80px);overflow:auto;';
     document.body.appendChild(box);
   }
   const raw = (typeof BODIES !== 'undefined' && BODIES[n.id]) ? String(BODIES[n.id]).replace(/^---[\s\S]*?---\s*/, '') : (n.desc || '');
@@ -2139,6 +2147,7 @@ function selectNode(n, opts) {
   if (keepSet) rebuildKeep();
   const panel = document.getElementById('panel');
   document.body.classList.toggle('panel-open', !!n);
+  document.body.classList.toggle('reader', !!n);
   if (!n) { panel.classList.remove('open'); requestDraw(); return; }
   const _pAnim = panel.dataset.pid !== n.id; panel.dataset.pid = n.id;
   panel.classList.toggle('anim', _pAnim);
