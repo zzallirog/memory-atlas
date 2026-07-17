@@ -2008,8 +2008,37 @@ canvas.addEventListener('click', ev => {
 canvas.addEventListener('contextmenu', ev => {
   ev.preventDefault();
   const n = pick(ev.clientX, ev.clientY);
-  if (n) togglePin(n, ev.ctrlKey);
+  if (n) { if (pinSet.has(n.id) && !ev.ctrlKey) createHoverPin(n); else togglePin(n, ev.ctrlKey); }   // #9: 2-й rmb по пиннутой ноде → hover-pin (верх-право), 1-й → обычный pin
 });
+
+// #9 spine slice: hover-preview-pin — second RMB on an already-pinned node spawns a
+// floating preview card in a top-right stack (node-pin marker stays on the graph / pinsCard
+// top-left; the two artifacts never collide). Polish (zoom-transparency, magnet-hover) = later slices.
+const hoverPins = [];
+function createHoverPin(n) {
+  if (hoverPins.some(h => h.id === n.id)) return;   // no dup card
+  const esc = t => (t || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  let box = document.getElementById('hoverpins');
+  if (!box) {
+    box = document.createElement('div'); box.id = 'hoverpins';
+    box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:300px;';
+    document.body.appendChild(box);
+  }
+  const card = document.createElement('div');
+  card.style.cssText = 'background:rgba(20,22,28,.94);border:1px solid #2a3340;border-radius:10px;padding:9px 11px;backdrop-filter:blur(8px);box-shadow:0 6px 24px rgba(0,0,0,.42);opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease;font:12px system-ui;color:#cdd6e0;';
+  card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:#8fb3ff">\U0001F4CD ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
+    + (n.desc ? '<div style="margin-top:6px;opacity:.85;line-height:1.45">' + esc(n.desc) + '</div>' : '')
+    + '<div style="margin-top:6px;opacity:.5;font-size:11px">degree ' + (n.degree || 0) + '</div>';
+  box.appendChild(card);
+  requestAnimationFrame(() => { card.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
+  const h = { id: n.id, card };
+  hoverPins.push(h);
+  card.querySelector('[data-x]').onclick = () => {
+    card.style.opacity = '0'; card.style.transform = 'translateY(-6px)';
+    setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 280);
+  };
+  toast('\U0001F4CD hover-pin: ' + (n.label || n.id));
+}
 
 let selected = null;
 let selT = 0;         // moment of selection: focus-blur fades in, doesn't snap (fade-in ~180ms)
@@ -2639,6 +2668,7 @@ function togglePin(n, multi) {
   if (!has) pinCams[n.id] = { k: transform.k };   // view capture at pin time
   if (multi) setPins(has ? pinIds.filter(i => i !== n.id) : [...pinIds, n.id]);
   else setPins(has && pinIds.length === 1 ? [] : [n.id]);
+  toast(pinSet.has(n.id) ? ('📌 ' + (n.label || n.id)) : ('📌✕ ' + (n.label || n.id)));   // rmb-pin feedback: видно, сработал ли правый клик
   // context delivery: camera sticky-tweens to the node; unpin does NOT bring the camera back; stay = don't touch
   if (!has && camPolicy() !== 'stay') d3.select(canvas).transition().duration(450).call(zoom.transform,
     d3.zoomIdentity.translate(W/2, H/2).scale(Math.max(transform.k, 1.2)).translate(-n.x, -n.y));
