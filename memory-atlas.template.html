@@ -188,21 +188,30 @@
   }
   #tooltip .tlinks b, .hpcard .tlinks b { color: var(--ink-2); font-weight: 500; }
   /* #9 hover-pin card = tooltip design language (task 10: pins inherit mouse-hover design) */
-  .hpcard{background:var(--surface-solid);border:1px solid var(--border-hi);border-radius:10px;padding:9px 12px;
-    font-size:12.5px;color:var(--ink);box-shadow:var(--shadow);opacity:0;transform:translateY(7px) scale(.997);filter:blur(1.2px);
+  .hpcard{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.07)),rgba(20,20,19,0.64);backdrop-filter:blur(20px) saturate(1.18);-webkit-backdrop-filter:blur(20px) saturate(1.18);border:1px solid var(--border-hi);border-radius:10px;padding:9px 12px;
+    font-size:12.5px;color:var(--ink);pointer-events:auto;box-shadow:0 10px 34px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.07);opacity:0;transform:translateY(7px) scale(.997);filter:blur(1.2px);
     transition:opacity .38s cubic-bezier(.2,.75,.2,1),transform .38s cubic-bezier(.2,.75,.2,1),filter .38s cubic-bezier(.2,.75,.2,1),border-color .3s}
   .hpcard.in{opacity:1;transform:none;filter:none}
   .hpcard .hphd{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer}
   .hpcard .hphd b{font-weight:600}
   .hpcard .hpx{cursor:pointer;opacity:.55;transition:opacity .15s}
+  .hpcard .hphctl{display:inline-flex;align-items:center;gap:9px}
+  .hpcard .hpi{cursor:pointer;opacity:.5;transition:opacity .15s;font-size:12px;line-height:1}
+  .hpcard .hpi:hover{opacity:1}
+  .hpcard .hpdet{display:flex;flex-wrap:wrap;gap:9px;margin-top:5px}
+  .hpcard .hpdet .hpd{display:inline-flex;align-items:center;gap:4px;font:10px var(--mono);color:var(--ink-2)}
+  .hpcard .hptags .ttx{cursor:pointer;margin-left:3px;opacity:.55}
+  .hpcard .hptags .ttx:hover{opacity:1;color:var(--accent)}
+  .hpcard .hptags .ttadd{cursor:pointer;border-style:dashed;opacity:.7}
+  .hpcard .hptags .ttadd:hover{opacity:1;color:var(--accent)}
+  .hpcard.folded .hpbody,.hpcard.folded .tdesc,.hpcard.folded .tlinks,.hpcard.folded .hpdet,.hpcard.folded .hptags{display:none}
   .hpcard .hpx:hover{opacity:1}
   .hpcard .hpbody{margin-top:8px;max-height:42vh;overflow:auto;line-height:1.5;font-size:11.5px;color:var(--ink-2);border-top:1px solid var(--grid);padding-top:6px}
   .hpcard .tlinks a{color:var(--accent);cursor:pointer}
-  .hpcard .hpact{margin-top:9px}
-  .hpcard .hpact .abtn{width:100%;border-color:var(--accent);color:var(--ink)}
-  #hoverpins{opacity:var(--hpz,1);transition:opacity .3s ease}
-  body.panel-open #hoverpins{opacity:calc(var(--hpz,1)*.45)}
-  #hoverpins:hover{opacity:1}
+  .hpcard .hpact{margin-top:9px;display:flex;gap:6px}
+  .hpcard .hpact .abtn{flex:1;border-color:var(--accent);color:var(--ink)}
+  #hoverpins{position:fixed;inset:0;z-index:12;pointer-events:none}
+  /* hover-pins: translucency lives in the card background (aero glass) — never element-opacity, so text never flickers on enter/leave and the right bar no longer dims them */
   @media (prefers-reduced-motion:reduce){.hpcard{transition:none;opacity:1;transform:none;filter:none}#hoverpins{transition:none}}
   @keyframes floatIn { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: none; } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -2107,13 +2116,13 @@ canvas.addEventListener('click', ev => {
 canvas.addEventListener('contextmenu', ev => {
   ev.preventDefault();
   const n = pick(ev.clientX, ev.clientY);
-  if (n) { if (pinSet.has(n.id) && !ev.ctrlKey) createHoverPin(n); else togglePin(n, ev.ctrlKey); }   // #9: 2-й rmb по пиннутой ноде → hover-pin (верх-право), 1-й → обычный pin
+  if (n) { if (pinSet.has(n.id) && !ev.ctrlKey) createHoverPin(n, ev); else togglePin(n, ev.ctrlKey); }   // #9: 2-й rmb по пиннутой ноде → hover-pin (верх-право), 1-й → обычный pin
 });
 
 // #9 task2: hover-pin stack opacity ~ zoom (how visible the node itself is); CSS dims it further when #panel is open
 function hpZoomSync() {
   const box = document.getElementById('hoverpins'); if (!box || !box.childElementCount) return;
-  const o = Math.min(1, 0.45 + 0.55 * Math.max(0, Math.min(1, (transform.k - 0.7) / 1.5)));
+  const o = Math.min(1, 0.7 + 0.3 * Math.max(0, Math.min(1, (transform.k - 0.7) / 1.5)));
   box.style.setProperty('--hpz', o.toFixed(3));
 }
 window.hpZoomSync = hpZoomSync;
@@ -2121,7 +2130,18 @@ window.hpZoomSync = hpZoomSync;
 // floating preview card in a top-right stack (node-pin marker stays on the graph / pinsCard
 // top-left; the two artifacts never collide). Polish (zoom-transparency, magnet-hover) = later slices.
 const hoverPins = [];
-function createHoverPin(n) {
+function hpFixedRects(exc){var o=[];for(var i=0;i<hoverPins.length;i++){var h=hoverPins[i];if(h.card===exc)continue;if(h.card.style.position!=='fixed')continue;o.push(h.card.getBoundingClientRect());}return o;}
+const HP_AVOID_PANEL=false;/* #hp-anchor: true = floating pins dodge the open right #panel; false = allow deliberate placement over it */
+function hpPlace(card,x,y,exc,avoid){card.style.position='fixed';card.style.margin='0';var W=card.offsetWidth||322,H=card.offsetHeight||140,vw=window.innerWidth,vh=window.innerHeight,pad=6;var minX=14,maxX=Math.max(minX,vw-14-W),minY=56,maxY=Math.max(minY,vh-52-H);x=x<minX?minX:(x>maxX?maxX:x);y=y<minY?minY:(y>maxY?maxY:y);if(avoid){var others=hpFixedRects(exc);for(var i=0;i<40;i++){var hit=null;for(var j=0;j<others.length;j++){var r=others[j];if(x<r.right+pad&&x+W>r.left-pad&&y<r.bottom+pad&&y+H>r.top-pad){hit=r;break;}}if(!hit)break;y=hit.bottom+pad;if(y>maxY){y=minY;x=x+Math.round(W*0.55);if(x>maxX){x=maxX;break;}}}}card.style.left=Math.round(x)+'px';card.style.top=Math.round(y)+'px';}
+const HP_LS='atlas_hoverpins_v1';let hpRestoring=false;
+function hpSave(){if(hpRestoring)return;try{localStorage.setItem(HP_LS,JSON.stringify(hoverPins.map(h=>({id:h.id,l:h.card.style.left,t:h.card.style.top}))));}catch(e){}}
+function hpRestore(){let raw;try{raw=localStorage.getItem(HP_LS);}catch(e){return;}if(!raw)return;let arr;try{arr=JSON.parse(raw);}catch(e){return;}if(!Array.isArray(arr)||!arr.length)return;hpRestoring=true;try{for(var i=0;i<arr.length;i++){var it=arr[i];if(!it||!byId.has(it.id))continue;createHoverPin(byId.get(it.id));var h=hoverPins[hoverPins.length-1];if(h&&h.card&&it.l){h.card.style.position='fixed';h.card.style.margin='0';h.card.style.left=it.l;h.card.style.top=it.t;}}}finally{hpRestoring=false;}hpSave();}
+window.hpRestore=hpRestore;if(document.readyState==='complete'){setTimeout(function(){try{hpRestore();}catch(e){}},250);}else{window.addEventListener('load',function(){setTimeout(function(){try{hpRestore();}catch(e){}},250);});}
+function hpDetectors(n){var by={};for(var i=0;i<edges.length;i++){var e=edges[i];if(e.source.id===n.id||e.target.id===n.id){var k=e.kind||'?';by[k]=(by[k]||0)+1;}}var keys=Object.keys(by);if(!keys.length)return '';keys.sort(function(a,b){return by[b]-by[a];});return '<div class="hpdet" title="'+T('рядом · детекторы')+'">'+keys.map(function(k){var st=(typeof EDGE_STYLES!=='undefined'&&EDGE_STYLES[k])||{};return '<span class="hpd" title="'+k+'"><span class="kdot" style="border-color:'+(st.c||'#8b8983')+';border-top-style:'+(st.dash?'dashed':'solid')+'"></span>'+by[k]+'</span>';}).join('')+'</div>';}
+function hpEsc(t){return (t||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function pushPinTags(n,tags,card){n.tags=tags.slice();if(typeof byId!=='undefined'&&byId.get(n.id))byId.get(n.id).tags=tags.slice();renderPinTags(card,n);if(window.hpTagApi&&n.path){window.hpTagApi(n.path,tags).then(function(r){if(typeof toast==='function')toast(r&&r.ok?T('🏷 сохранено'):T('🏷 локально (нет сервера)'));});}else if(typeof toast==='function'){toast(T('🏷 локально'));}}
+function renderPinTags(card,n){var box=card.querySelector('[data-tagbox]');if(!box)return;var editable=/^https?:$/.test(location.protocol);var tags=(n.tags||[]).slice();box.innerHTML=tags.map(function(t,ix){return '<span class="tt"><span class="sw" style="background:'+(typeof tagColor==='function'?tagColor(t):'#888')+'"></span>'+hpEsc(t)+(editable?'<span class="ttx" data-rm="'+ix+'">×</span>':'')+'</span>';}).join('')+(editable?'<span class="tt ttadd" data-add title="'+T('добавить тег')+'">＋</span>':'');if(!editable)return;box.querySelectorAll('[data-rm]').forEach(function(el){el.onclick=function(ev){ev.stopPropagation();var t2=tags.slice();t2.splice(+el.dataset.rm,1);pushPinTags(n,t2,card);};});var add=box.querySelector('[data-add]');if(add)add.onclick=function(ev){ev.stopPropagation();var v=prompt(T('тег:'));if(v&&v.trim()){var t2=tags.slice();t2.push(v.trim());pushPinTags(n,t2,card);}};}
+function createHoverPin(n, ev) {
   const ex = hoverPins.find(h => h.id === n.id);
   if (ex) { if (ex.card.parentNode) ex.card.parentNode.appendChild(ex.card); return; }   // dup → raise to top
   const esc = t => (t || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -2129,36 +2149,38 @@ function createHoverPin(n) {
   if (!box) {
     box = document.createElement('div'); box.id = 'hoverpins';
     // left of #panel (330px @ right:14) → right bar keeps priority (z5 > z4), no collision — user's "сдвигал ховер"
-    box.style.cssText = 'position:fixed;top:64px;right:calc(var(--panelw, 330px) + 28px);z-index:4;display:flex;flex-direction:column;gap:8px;width:322px;max-height:calc(100vh - 80px);overflow:auto;';
+    box.style.cssText = 'position:fixed;inset:0;z-index:12;pointer-events:none;';
     document.body.appendChild(box);
   }
   const raw = (typeof BODIES !== 'undefined' && BODIES[n.id]) ? String(BODIES[n.id]).replace(/^---[\s\S]*?---\s*/, '') : (n.desc || '');
   const bodyHtml = (typeof window.mdRender === 'function' && raw) ? window.mdRender(raw) : ('<p>' + esc(raw) + '</p>');
   const lname = id => { const m = byId.get(id); return m ? (m.label || id) : id; };
-  const lrow = (ids, mark) => (ids && ids.length)
-    ? '<div class="tlinks"><b>' + mark + ids.length + '</b> '
-      + ids.slice(0, 8).map(id => '<a data-go="' + esc(id) + '">' + esc(lname(id)) + '</a>').join(' · ')
-      + (ids.length > 8 ? ' …' : '') + '</div>' : '';
+  const lrow = (ids, mark) => { const u = [...new Set((ids || []).filter(id => byId.has(id)))]; return u.length
+    ? '<div class="tlinks"><b>' + mark + u.length + '</b> '
+      + u.slice(0, 8).map(id => '<a data-go="' + esc(id) + '">' + esc(lname(id)) + '</a>').join(' · ')
+      + (u.length > 8 ? ' …' : '') + '</div>' : ''; };
   const hpTags = (typeof nodeTags === 'function') ? nodeTags(n) : [];
   const card = document.createElement('div');
   card.className = 'hpcard';
   card.innerHTML =
-    '<div data-hd class="hphd"><b>📍 ' + esc(n.label || n.id) + '</b><span data-x class="hpx">✕</span></div>'
-    + '<div class="tmeta">' + esc(n.zone || '') + ' · ' + esc(n.type || '') + ' · deg ' + (n.degree || 0) + '</div>'
+    '<div data-hd class="hphd"><b>📍 ' + esc(n.label || n.id) + '</b><span class="hphctl"><span data-copy class="hpi" title="' + T('копировать') + '">⧉</span><span data-fold class="hpi" title="' + T('свернуть') + '">▾</span><span data-x class="hpx">✕</span></span></div>'
+    + '<div class="tmeta">' + esc(n.zone || '') + ' · ' + esc(n.type || '') + ' · deg ' + (n.degree || 0) + '</div>' + hpDetectors(n)
     + (n.desc ? '<div class="tdesc">' + esc(n.desc) + '</div>' : '')
     + '<div class="hpbody">' + bodyHtml + '</div>'
-    + (hpTags.length ? '<div class="ttags">' + hpTags.map(t => '<span class="tt"><span class="sw" style="background:' + tagColor(t) + '"></span>' + esc(t) + '</span>').join('') + '</div>' : '')
+    + '<div class="ttags hptags" data-tagbox></div>'
     + lrow(outLinks.get(n.id), '→') + lrow(inLinks.get(n.id), '←')
-    + '<div class="hpact"><button data-read class="abtn">▤ ' + T('читать') + ' · ' + T('править') + '</button></div>';
+    + '<div class="hpact"><button data-bar class="abtn">⇥ ' + T('в бар') + '</button><button data-read class="abtn">▤ ' + T('читать') + '</button></div>';
   box.appendChild(card);
   hpZoomSync();
+  card.style.width = '322px';
+  { const _sx = (ev && ev.clientX != null) ? ev.clientX - 24 : (window.innerWidth - 360); const _sy = (ev && ev.clientY != null) ? ev.clientY - 14 : 72; hpPlace(card, _sx, _sy, card, true); hpSave(); }
   requestAnimationFrame(() => card.classList.add('in'));
   const h = { id: n.id, card };
   hoverPins.push(h);
   card.querySelector('[data-x]').onclick = (e) => {
     e.stopPropagation();
     card.classList.remove('in');
-    setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 380);
+    setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); hpSave(); }, 380);
   };
   (function () {   // header = drag to move (detach to fixed) OR click to wake; drag covers "corner" — drop it anywhere
     const hd = card.querySelector('[data-hd]');
@@ -2182,21 +2204,17 @@ function createHoverPin(n) {
       down = false; card.style.transition = '';
       try { hd.releasePointerCapture(e.pointerId); } catch (_) {}
       if (!moved) { box.appendChild(card); card.style.borderColor = 'var(--accent)'; setTimeout(() => { card.style.borderColor = ''; }, 600); return; }
-      // #9 task3: magnet to the nearest corner (right column stays clear of the open #panel)
+      // drop where released — no magnet, no auto-collision; user arranges pins freely. clamp so header/✕ stay on-screen
       const r = card.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
-      const panelL = document.body.classList.contains('panel-open')
-        ? document.getElementById('panel').getBoundingClientRect().left : vw - 14;
-      const xL = 14, xR = Math.max(xL, panelL - 8 - r.width);
-      const yT = 64, yB = Math.max(yT, vh - 58 - r.height);
-      const tx = (r.left + r.width / 2 < vw / 2) ? xL : xR;
-      const ty = (r.top + r.height / 2 < vh / 2) ? yT : yB;
-      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        card.style.transition = 'left .35s cubic-bezier(.2,.75,.2,1), top .35s cubic-bezier(.2,.75,.2,1)';
-        setTimeout(() => { card.style.transition = ''; }, 420);
-      }
-      card.style.left = tx + 'px'; card.style.top = ty + 'px';
+      const nx = Math.max(6, Math.min(r.left, vw - 46)), ny = Math.max(46, Math.min(r.top, vh - 42));
+      card.style.left = Math.round(nx) + 'px'; card.style.top = Math.round(ny) + 'px';
+      hpSave();
     });
   })();
+  renderPinTags(card, n);
+  { const cp = card.querySelector('[data-copy]'); if (cp) cp.onclick = (e) => { e.stopPropagation(); const t = (typeof BODIES !== 'undefined' && BODIES[n.id]) ? String(BODIES[n.id]) : (n.desc || ''); if (typeof copyText === 'function') copyText(t, T('нота')); else if (navigator.clipboard) navigator.clipboard.writeText(t); }; }
+  { const fo = card.querySelector('[data-fold]'); if (fo) fo.onclick = (e) => { e.stopPropagation(); const f = card.classList.toggle('folded'); fo.textContent = f ? '▸' : '▾'; }; }
+  const bbar = card.querySelector('[data-bar]'); if (bbar) bbar.onclick = () => { const nn = (typeof byId !== 'undefined' && byId.get(n.id)) || n; if (typeof selectNode === 'function') selectNode(nn); };
   const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
   card.querySelectorAll('[data-go]').forEach(a => a.onclick = () => { if (window.openInBrowse) openInBrowse(a.dataset.go); });
   toast('📍 hover-pin: ' + (n.label || n.id));
@@ -5057,6 +5075,7 @@ if (params.get('q')) {
       });
     }
   }
+  window.hpTagApi = async function (path, tags) { try { return await api('POST', '/api/tags', { path, tags }); } catch (e) { return { ok: false, error: String(e) }; } };
   async function setTags(n, tags, msgKey) {
     try { await api('POST', '/api/tags', { path: n.file, tags });
         if (bBy[n.id]) bBy[n.id].tags = tags.slice();
@@ -5086,10 +5105,39 @@ if (params.get('q')) {
       + '<textarea id="nnBody" spellcheck="false" placeholder="' + T('необязательно') + '"></textarea></label>'
       + '<div class="edrow"><button class="abtn save" id="nnCreate">✔ ' + T('создать') + '</button>'
       + '<button class="abtn" id="nnCancel">✕ ' + T('отмена') + '</button></div>'
+      + '<div class="nnimp" style="margin-top:11px;border-top:1px solid var(--grid);padding-top:10px">'
+      + '<div class="fn">＋ ' + T('импорт документа') + '</div>'
+      + '<input id="nnFile" type="file" style="display:none">'
+      + '<button class="abtn" id="nnPick">📎 ' + T('выбрать файл…') + '</button>'
+      + '<div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:10px">'
+      + '<label style="font-size:11px;display:inline-flex;gap:4px;align-items:center"><input type="radio" name="nnmode" value="convert" checked> ' + T('конвертировать в .md') + '</label>'
+      + '<label style="font-size:11px;display:inline-flex;gap:4px;align-items:center"><input type="radio" name="nnmode" value="keep"> ' + T('оставить как есть') + '</label></div>'
+      + '<div id="nnImpName" class="edhint"></div></div>'
       + '<div class="edhint">' + T('правка пишется в .md на диске') + '</div></div>';
     document.getElementById('nnTitle').focus();
     document.getElementById('nnCancel').onclick = () => { prev.innerHTML = '<div class="empty">' + T('← выбери файл') + '</div>'; };
     document.getElementById('nnCreate').onclick = createNote;
+    const _nnPick = document.getElementById('nnPick'), _nnFile = document.getElementById('nnFile');
+    if (_nnPick && _nnFile) {
+      _nnPick.onclick = () => _nnFile.click();
+      _nnFile.onchange = async (ev) => {
+        const f = ev.target.files[0]; if (!f) return;
+        const mode = (document.querySelector('input[name=nnmode]:checked') || {}).value || 'convert';
+        const group = document.getElementById('nnZone').value.trim();
+        const nm = document.getElementById('nnImpName'); nm.textContent = T('импортирую…') + ' ' + f.name;
+        let data;
+        try { const buf = new Uint8Array(await f.arrayBuffer()); let bin = ''; const CH = 8192; for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH)); data = btoa(bin); }
+        catch (e) { nm.textContent = 'read: ' + e.message; return; }
+        let res;
+        try { res = await api('POST', '/api/import', { filename: f.name, data, mode, group }); }
+        catch (e) { nm.textContent = 'import: ' + e.message; return; }
+        if (!res || !res.ok) { nm.textContent = 'import: ' + ((res && res.error) || 'fail'); return; }
+        const warns = (res.warnings || []).join(' · ');
+        toast('✔ ' + T('импортировано') + (res.converter ? (' (' + res.converter + ')') : ''));
+        try { sessionStorage.setItem('atlasSel', String(res.id).replace(/-/g, '_')); sessionStorage.setItem('atlasTab', 'browse'); await api('POST', '/api/regen'); location.reload(); }
+        catch (e) { nm.textContent = T('на диске — обнови граф') + (warns ? (' · ' + warns) : ''); markStale(); }
+      };
+    }
     ['nnTitle', 'nnZone', 'nnTags'].forEach(id => document.getElementById(id).addEventListener('keydown',
       ev => { if (ev.key === 'Enter') { ev.preventDefault(); createNote(); } }));
   }
