@@ -2056,9 +2056,30 @@ function createHoverPin(n) {
     card.style.opacity = '0'; card.style.transform = 'translateY(-6px)';
     setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 280);
   };
-  card.querySelector('[data-hd]').onclick = () => {   // click header = wake: raise to top + flash border (synergy with right bar)
-    box.appendChild(card); card.style.borderColor = '#3a6ea5'; setTimeout(() => { card.style.borderColor = '#2a3340'; }, 600);
-  };
+  (function () {   // header = drag to move (detach to fixed) OR click to wake; drag covers "corner" — drop it anywhere
+    const hd = card.querySelector('[data-hd]');
+    let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, down = false;
+    hd.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('[data-x]')) return;   // ✕ is not a drag handle
+      const r = card.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; moved = false; down = true;
+      card.style.width = r.width + 'px';
+      try { hd.setPointerCapture(e.pointerId); } catch (_) {}
+      card.style.transition = 'none';
+    });
+    hd.addEventListener('pointermove', (e) => {
+      if (!down) return;
+      if (!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) < 4) return;   // threshold → distinguish click from drag
+      if (!moved) { moved = true; card.style.position = 'fixed'; card.style.zIndex = 6; card.style.margin = '0'; }
+      card.style.left = (ox + e.clientX - sx) + 'px';
+      card.style.top = (oy + e.clientY - sy) + 'px';
+    });
+    hd.addEventListener('pointerup', (e) => {
+      down = false; card.style.transition = '';
+      try { hd.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (!moved) { box.appendChild(card); card.style.borderColor = '#3a6ea5'; setTimeout(() => { card.style.borderColor = '#2a3340'; }, 600); }   // no drag = click → wake/raise
+    });
+  })();
   const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
   card.querySelectorAll('[data-go]').forEach(a => a.onclick = () => { if (window.openInBrowse) openInBrowse(a.dataset.go); });
   toast('📍 hover-pin: ' + (n.label || n.id));
