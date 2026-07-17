@@ -576,6 +576,11 @@
     border-radius:7px;padding:5px 10px;color:var(--accent);font-size:.72rem;cursor:pointer;white-space:nowrap;
     box-shadow:0 4px 16px rgba(0,0,0,.42);display:none;animation:idaFieldIn .15s ease both}
   #atlasextract:hover{background:var(--surf0)}
+  #wlac{position:absolute;z-index:10000;background:#181825;border:1px solid var(--surf0);border-radius:7px;
+    padding:3px;min-width:160px;max-width:340px;box-shadow:0 6px 20px rgba(0,0,0,.45);display:none;max-height:230px;overflow-y:auto}
+  #wlac .wlac-row{padding:5px 9px;border-radius:5px;cursor:pointer;color:var(--text);font:12px var(--mono);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #wlac .wlac-row.sel,#wlac .wlac-row:hover{background:var(--surf0);color:var(--accent)}
   #atlasctx{position:fixed;z-index:9999;background:#181825;border:1px solid rgba(57,135,229,.3);
     border-radius:8px;padding:4px;box-shadow:0 6px 20px rgba(0,0,0,.42);backdrop-filter:blur(4px);min-width:150px;animation:idaFieldIn .18s ease both}
   #atlasctx .ci{padding:7px 12px;border-radius:5px;cursor:pointer;color:#cdd6f4;font-size:.8rem;transition:background .12s,color .12s}
@@ -4736,6 +4741,16 @@ if (params.get('q')) {
     mv.querySelector('[data-b]').onclick = () => wrapSel(ta, '**');
     mv.querySelector('[data-i]').onclick = () => wrapSel(ta, '*');
     mv.querySelector('[data-wl]').onclick = () => wrapSel(ta, '[[', ']]');
+    ta.addEventListener('input', () => wlacScan(ta));   // #3: [[ автокомплит
+    ta.addEventListener('keydown', ev => {
+      if (!wlacItems.length || !wlacEl || wlacEl.style.display === 'none') return;
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); wlacSel = (wlacSel + 1) % wlacItems.length; wlacRender(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); wlacSel = (wlacSel - 1 + wlacItems.length) % wlacItems.length; wlacRender(); }
+      else if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); wlacPick(wlacSel); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); wlacHide(); }
+    });
+    ta.addEventListener('blur', () => setTimeout(wlacHide, 150));
+    ta.addEventListener('scroll', () => { if (wlacItems.length) wlacRender(); });
     mv.querySelector('[data-save]').onclick = async (ev) => {
       const b = ev.currentTarget; b.classList.add('saving'); b.textContent = T('сохраняю…');
       try { const res = await api('POST', '/api/save', { path: n.file, body: ta.value });
@@ -4908,6 +4923,57 @@ if (params.get('q')) {
       sessionStorage.setItem('atlasSel', res.id.replace(/-/g, '_')); sessionStorage.setItem('atlasTab', 'browse');   // node id = norm(slug): '-'→'_'
       await api('POST', '/api/regen'); location.reload();
     } catch (e) { toast(T('на диске — обнови граф')); markStale(); }
+  }
+  // ---- #3 [[ автокомплит вики-линков (Obsidian-паритет): печать [[ в редакторе → флоат-список
+  //      заголовков У КАРЕТКИ → стрелки/Enter/Tab/клик вставляют [[Заголовок]] (алиас для multi-word). ----
+  let wlacEl, wlacTa, wlacStart = 0, wlacItems = [], wlacSel = 0;
+  function wlacHide() { if (wlacEl) wlacEl.style.display = 'none'; wlacItems = []; }
+  function caretXY(ta) {   // mirror-div: клон стилей textarea → координата каретки
+    const div = document.createElement('div'), cs = getComputedStyle(ta);
+    ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing', 'textTransform',
+     'paddingTop', 'paddingLeft', 'paddingRight', 'paddingBottom', 'borderWidth', 'boxSizing'].forEach(p => div.style[p] = cs[p]);
+    div.style.position = 'absolute'; div.style.visibility = 'hidden';
+    div.style.whiteSpace = 'pre-wrap'; div.style.wordWrap = 'break-word'; div.style.width = ta.clientWidth + 'px';
+    div.textContent = ta.value.slice(0, ta.selectionStart);
+    const span = document.createElement('span'); span.textContent = '​'; div.appendChild(span);
+    document.body.appendChild(div);
+    const r = ta.getBoundingClientRect(), lh = parseInt(cs.lineHeight) || 16;
+    const xy = { x: r.left + window.scrollX + span.offsetLeft - ta.scrollLeft,
+                 y: r.top + window.scrollY + span.offsetTop - ta.scrollTop + lh };
+    document.body.removeChild(div); return xy;
+  }
+  function wlacRender() {
+    if (!wlacEl) { wlacEl = document.createElement('div'); wlacEl.id = 'wlac'; document.body.appendChild(wlacEl); }
+    if (!wlacItems.length) return wlacHide();
+    wlacEl.innerHTML = wlacItems.map((n, i) =>
+      '<div class="wlac-row' + (i === wlacSel ? ' sel' : '') + '" data-i="' + i + '">' + besc(n.name) + '</div>').join('');
+    wlacEl.querySelectorAll('.wlac-row').forEach(r => r.onmousedown = ev => { ev.preventDefault(); wlacPick(+r.dataset.i); });
+    const xy = caretXY(wlacTa);
+    wlacEl.style.left = Math.round(xy.x) + 'px'; wlacEl.style.top = Math.round(xy.y + 4) + 'px';
+    wlacEl.style.display = 'block';
+    const s = wlacEl.querySelector('.wlac-row.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
+  }
+  function wlacScan(ta) {
+    wlacTa = ta;
+    const pos = ta.selectionStart, before = ta.value.slice(0, pos), open = before.lastIndexOf('[[');
+    if (open < 0) return wlacHide();
+    const between = before.slice(open + 2);
+    if (between.indexOf(']]') >= 0 || between.indexOf('\n') >= 0 || between.length > 40) return wlacHide();
+    wlacStart = open;
+    const q = between.trim().toLowerCase();
+    let ns = D.nodes.filter(n => n.type !== 'missing' && n.name);
+    if (q) ns = ns.filter(n => n.name.toLowerCase().indexOf(q) >= 0);
+    ns.sort((a, b) => a.name.length - b.name.length);
+    wlacItems = ns.slice(0, 8); wlacSel = 0; wlacRender();
+  }
+  function wlacPick(i) {
+    const n = wlacItems[i]; if (!n || !wlacTa) return wlacHide();
+    const ta = wlacTa, pos = ta.selectionStart, v = ta.value;
+    const tgt = /\s/.test(n.name) ? (n.id + '|' + n.name) : n.name;   // multi-word → алиас (norm-resolvable)
+    const ins = '[[' + tgt + ']]';
+    ta.value = v.slice(0, wlacStart) + ins + v.slice(pos);
+    const c = wlacStart + ins.length; ta.focus(); ta.selectionStart = ta.selectionEnd = c;
+    wlacHide();
   }
   if (EDIT) {
     const ctx = document.createElement('div'); ctx.id = 'atlasctx'; ctx.style.display = 'none';
