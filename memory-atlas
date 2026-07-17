@@ -593,8 +593,10 @@ def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
     return {nid: cache[k] for nid, k in keys.items()}
 
 
-def detect_semantic(nodes, vecs, threshold=0.75, top_k=3):
-    """cosine between zones ≥ threshold, top-k per source. vecs: id → vector."""
+def detect_semantic(nodes, vecs, threshold=0.75, top_k=3, within_zone=False):
+    """cosine between zones ≥ threshold, top-k per source. vecs: id → vector.
+    within_zone=True снимает зонный гейт — для плоского одногруппного вульта
+    (глоссарий в одну папку), где без этого semantic даёт ноль рёбер."""
     def l2(v):
         s = sum(x * x for x in v) ** 0.5 or 1.0
         return [x / s for x in v]
@@ -607,7 +609,7 @@ def detect_semantic(nodes, vecs, threshold=0.75, top_k=3):
         va = normed[a]
         cands = []
         for b in ids:
-            if b == a or zone_of[a] == zone_of[b]:
+            if b == a or (not within_zone and zone_of[a] == zone_of[b]):
                 continue
             score = sum(x * y for x, y in zip(va, normed[b]))
             if score >= threshold:
@@ -709,7 +711,8 @@ def run_detectors(nodes, edges, bodies, src, args):
         if vecs:
             if getattr(args, "semantic_cross", True):
                 merge("semantic", detect_semantic(nodes, vecs, args.semantic_threshold,
-                                                  args.semantic_top_k))
+                                                  args.semantic_top_k,
+                                                  getattr(args, "semantic_within_zone", False)))
             if getattr(args, "search_vecs", False):
                 args._vecs_payload = quantize_vecs(vecs)
             # semantic layout: node.sx/sy for the "semantic" layout mode in the template
@@ -862,6 +865,9 @@ def main():
     ap.add_argument("--no-semantic-cross", dest="semantic_cross", action="store_false")
     ap.add_argument("--semantic-threshold", type=float, default=0.75)
     ap.add_argument("--semantic-top-k", type=int, default=3)
+    ap.add_argument("--semantic-within-zone", action="store_true",
+                    help="снять зонный гейт semantic — рёбра внутри одной группы "
+                         "(для плоского одногруппного вульта: глоссарий в одну папку)")
     ap.add_argument("--no-tag-cross", dest="tag_cross", action="store_false")
     ap.add_argument("--tag-threshold", type=float, default=0.5)
     ap.add_argument("--tag-top-k", type=int, default=3)
@@ -1354,6 +1360,18 @@ def run_self_test():
             pairs = {tuple(sorted((e["source"], e["target"]))) for e in out}
             self.assertIn(("a", "b"), pairs)
             self.assertNotIn(("a", "c"), pairs)        # orthogonal
+
+        def test_detect_semantic_within_zone(self):
+            # b,c одна зона (work), близкие векторы; дефолт — зонный гейт скипает,
+            # within_zone=True — ребро внутри группы появляется (плоский глоссарий)
+            vecs = {"a": [1.0, 0.0], "b": [0.0, 1.0], "c": [0.05, 0.99]}
+            ns = self._two_zone_nodes()
+            default = {tuple(sorted((e["source"], e["target"]))) for e in
+                       detect_semantic(ns, vecs, threshold=0.75, top_k=3)}
+            self.assertNotIn(("b", "c"), default)              # same zone gated out
+            within = {tuple(sorted((e["source"], e["target"]))) for e in
+                      detect_semantic(ns, vecs, threshold=0.75, top_k=3, within_zone=True)}
+            self.assertIn(("b", "c"), within)                  # gate lifted
 
         def test_detect_structural_optin_shape(self):
             ns = self._two_zone_nodes() + [
