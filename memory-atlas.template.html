@@ -1978,8 +1978,14 @@ function tipNode(n) {
 function tipPlace(ev) {
   tooltip.style.display = 'block';
   const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-  tooltip.style.left = Math.min(ev.clientX + 14, W - tw - 10) + 'px';
-  tooltip.style.top = Math.min(ev.clientY + 14, H - th - 10) + 'px';
+  let minL = 10, top = Math.min(ev.clientY + 14, H - th - 10);
+  const hud = document.getElementById('hud');   // #9 collision: don't let the tooltip sit under the left HUD
+  if (hud && hud.offsetParent !== null) {
+    const hr = hud.getBoundingClientRect();
+    if (top < hr.bottom + 8 && top + th > hr.top) minL = hr.right + 8;   // vertical overlap → push right of HUD
+  }
+  tooltip.style.left = Math.max(minL, Math.min(ev.clientX + 14, W - tw - 10)) + 'px';
+  tooltip.style.top = top + 'px';
 }
 canvas.addEventListener('mousemove', ev => {
   if (canvas.classList.contains('dragging')) return;   // drag path: zero hover work
@@ -2026,7 +2032,7 @@ function createHoverPin(n) {
   }
   const card = document.createElement('div');
   card.style.cssText = 'background:rgba(20,22,28,.94);border:1px solid #2a3340;border-radius:10px;padding:9px 11px;backdrop-filter:blur(8px);box-shadow:0 6px 24px rgba(0,0,0,.42);opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease;font:12px system-ui;color:#cdd6e0;';
-  card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:#8fb3ff">\U0001F4CD ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
+  card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:#8fb3ff">📍 ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
     + (n.desc ? '<div style="margin-top:6px;opacity:.85;line-height:1.45">' + esc(n.desc) + '</div>' : '')
     + '<div style="margin-top:6px;opacity:.5;font-size:11px">degree ' + (n.degree || 0) + '</div>';
   box.appendChild(card);
@@ -2037,7 +2043,7 @@ function createHoverPin(n) {
     card.style.opacity = '0'; card.style.transform = 'translateY(-6px)';
     setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 280);
   };
-  toast('\U0001F4CD hover-pin: ' + (n.label || n.id));
+  toast('📍 hover-pin: ' + (n.label || n.id));
 }
 
 let selected = null;
