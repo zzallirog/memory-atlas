@@ -200,7 +200,10 @@
   .hpcard .tlinks a{color:var(--accent);cursor:pointer}
   .hpcard .hpact{margin-top:9px}
   .hpcard .hpact .abtn{width:100%;border-color:var(--accent);color:var(--ink)}
-  @media (prefers-reduced-motion:reduce){.hpcard{transition:none;opacity:1;transform:none;filter:none}}
+  #hoverpins{opacity:var(--hpz,1);transition:opacity .3s ease}
+  body.panel-open #hoverpins{opacity:calc(var(--hpz,1)*.45)}
+  #hoverpins:hover{opacity:1}
+  @media (prefers-reduced-motion:reduce){.hpcard{transition:none;opacity:1;transform:none;filter:none}#hoverpins{transition:none}}
   @keyframes floatIn { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: none; } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes sheetIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -1775,7 +1778,7 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const zoom = d3.zoom().scaleExtent([0.05, 24]).on('zoom', ev => { transform = ev.transform; requestDraw(); });
+const zoom = d3.zoom().scaleExtent([0.05, 24]).on('zoom', ev => { transform = ev.transform; requestDraw(); if (window.hpZoomSync) hpZoomSync(); });
 
 // visible screen rect: HUD on the left and the node panel on the right eat space —
 // fit targets the remainder, the graph doesn't hide under glass (complaint: "clump behind the panel")
@@ -1913,8 +1916,16 @@ function orientFit(theatrics) {
 document.getElementById('ofit').addEventListener('click', () => orientFit(true));
 
 // node visibility: zone not hidden, node not hidden (context menu), ghost by toggle
+const hideFade = new Map();   // #9 task7: hide fades out on canvas — id -> t0, alpha ramps to 0 over 380ms
+function hideA(n) {
+  const t0 = hideFade.get(n.id); if (t0 === undefined) return 1;
+  const p = (performance.now() - t0) / 380;
+  if (p >= 1) { hideFade.delete(n.id); return 0; }
+  requestDraw();
+  return Math.pow(1 - p, 2);
+}
 function visible(n) {
-  return !hiddenZones.has(n.zone) && !hiddenNodes.has(n.id) && (!n.ghost || showGhosts());
+  return !hiddenZones.has(n.zone) && (!hiddenNodes.has(n.id) || hideFade.has(n.id)) && (!n.ghost || showGhosts());
 }
 const NX = n => n.x + (n._mx || 0), NY = n => n.y + (n._my || 0);   // magnet render-offset
 // hit rects of the current frame's drawn labels/tiles (SCREEN css-px, written by paintFrame):
@@ -2058,6 +2069,13 @@ canvas.addEventListener('contextmenu', ev => {
   if (n) { if (pinSet.has(n.id) && !ev.ctrlKey) createHoverPin(n); else togglePin(n, ev.ctrlKey); }   // #9: 2-й rmb по пиннутой ноде → hover-pin (верх-право), 1-й → обычный pin
 });
 
+// #9 task2: hover-pin stack opacity ~ zoom (how visible the node itself is); CSS dims it further when #panel is open
+function hpZoomSync() {
+  const box = document.getElementById('hoverpins'); if (!box || !box.childElementCount) return;
+  const o = Math.min(1, 0.45 + 0.55 * Math.max(0, Math.min(1, (transform.k - 0.7) / 1.5)));
+  box.style.setProperty('--hpz', o.toFixed(3));
+}
+window.hpZoomSync = hpZoomSync;
 // #9 spine slice: hover-preview-pin — second RMB on an already-pinned node spawns a
 // floating preview card in a top-right stack (node-pin marker stays on the graph / pinsCard
 // top-left; the two artifacts never collide). Polish (zoom-transparency, magnet-hover) = later slices.
@@ -2092,6 +2110,7 @@ function createHoverPin(n) {
     + lrow(outLinks.get(n.id), '→') + lrow(inLinks.get(n.id), '←')
     + '<div class="hpact"><button data-read class="abtn">▤ ' + T('читать') + ' · ' + T('править') + '</button></div>';
   box.appendChild(card);
+  hpZoomSync();
   requestAnimationFrame(() => card.classList.add('in'));
   const h = { id: n.id, card };
   hoverPins.push(h);
@@ -2121,7 +2140,20 @@ function createHoverPin(n) {
     hd.addEventListener('pointerup', (e) => {
       down = false; card.style.transition = '';
       try { hd.releasePointerCapture(e.pointerId); } catch (_) {}
-      if (!moved) { box.appendChild(card); card.style.borderColor = 'var(--accent)'; setTimeout(() => { card.style.borderColor = ''; }, 600); }   // no drag = click → wake/raise
+      if (!moved) { box.appendChild(card); card.style.borderColor = 'var(--accent)'; setTimeout(() => { card.style.borderColor = ''; }, 600); return; }
+      // #9 task3: magnet to the nearest corner (right column stays clear of the open #panel)
+      const r = card.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+      const panelL = document.body.classList.contains('panel-open')
+        ? document.getElementById('panel').getBoundingClientRect().left : vw - 14;
+      const xL = 14, xR = Math.max(xL, panelL - 8 - r.width);
+      const yT = 64, yB = Math.max(yT, vh - 58 - r.height);
+      const tx = (r.left + r.width / 2 < vw / 2) ? xL : xR;
+      const ty = (r.top + r.height / 2 < vh / 2) ? yT : yB;
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        card.style.transition = 'left .35s cubic-bezier(.2,.75,.2,1), top .35s cubic-bezier(.2,.75,.2,1)';
+        setTimeout(() => { card.style.transition = ''; }, 420);
+      }
+      card.style.left = tx + 'px'; card.style.top = ty + 'px';
     });
   })();
   const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
@@ -2265,7 +2297,7 @@ document.getElementById('panelBody').addEventListener('click', ev => {
   else if (el.dataset.copydesc) copyText(n.desc, 'desc');
   else if (el.dataset.opened) openInEditor(n);
   else if (el.dataset.pinbtn) togglePin(n, true);
-  else if (el.dataset.hide) { hiddenNodes.add(n.id); $('hiddenCnt').textContent = hiddenNodes.size; selectNode(null); toast(T('скрыта до перезагрузки (вернуть — в ?)')); }
+  else if (el.dataset.hide) { hiddenNodes.add(n.id); hideFade.set(n.id, performance.now()); requestDraw(); $('hiddenCnt').textContent = hiddenNodes.size; selectNode(null); toast(T('скрыта до перезагрузки (вернуть — в ?)')); }
   else if (el.dataset.frame) frameEgo(n);
   else if (el.dataset.timelens) toggleTimeLens(n);
   else if (el.dataset.addtag) addTagTo([n.id], el.dataset.addtag);
@@ -4132,6 +4164,7 @@ function paintFrame(g, opts) {
     // significant ones (focus/pin/search/top-N hub) keep their brightness — landmarks never disappear
     if (nodeF < 1 && na === 1 && !(isFocus || pinSet.has(n.id) || searchHit(n) || (keepSet && keepSet.has(n.id))))
       na *= nodeF;
+    na *= hideA(n);
     g.globalAlpha = na;
     if (isFocus) { g.shadowColor = nodeColor(n); g.shadowBlur = 14; }
     g.beginPath();
