@@ -2694,8 +2694,8 @@ function togglePin(n, multi) {
   else setPins(has && pinIds.length === 1 ? [] : [n.id]);
   toast(pinSet.has(n.id) ? ('📌 ' + (n.label || n.id)) : ('📌✕ ' + (n.label || n.id)));   // rmb-pin feedback: видно, сработал ли правый клик
   // context delivery: camera sticky-tweens to the node; unpin does NOT bring the camera back; stay = don't touch
-  if (!has && camPolicy() !== 'stay') d3.select(canvas).transition().duration(450).call(zoom.transform,
-    d3.zoomIdentity.translate(W/2, H/2).scale(Math.max(transform.k, 1.2)).translate(-n.x, -n.y));
+  if (!has) d3.select(canvas).transition().duration(450).call(zoom.transform,   // rmb-pin ALWAYS pans to the node (context delivery) — decoupled from cam policy so cam=stay kills LMB-resize but keeps this move
+    d3.zoomIdentity.translate(W/2, H/2).scale(transform.k).translate(-n.x, -n.y));  // keep current zoom → pan, NOT resize ("двигает без смены камеры")
 }
 function renderPins() {
   const card = $('pinsCard');
