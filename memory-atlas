@@ -3,7 +3,10 @@
 
 Topology: emerge (D3-force on canvas, cluster colors, hulls, live-search)
 + Understand-Anything (deterministic [[wikilinks]] + frontmatter parser).
-No LLM, no server. light/work zones come from membership in MEMORY.md / MEMORY-work.md.
+No LLM; viewing needs no server. EDITING (in-browser edit/rename/zone/tags → writeback
+to .md) is opt-in via the atlas-serve sidecar — a deliberate break of the old "no server"
+claim, active only while the page is served over http. light/work zones come from
+membership in MEMORY.md / MEMORY-work.md.
 
 Usage: memory-atlas [--src [NAME=]DIR ...] [--out FILE] [--no-open] [--lang ru|en]
        # --src is repeatable: first root = primary (index-based zones), extra roots

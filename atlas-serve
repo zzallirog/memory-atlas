@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""atlas-serve — локальный сайдкар правки для memory-atlas.
+
+Атлас сам по себе — статичный HTML («No LLM, no server»). ПРОСМОТР так и остаётся
+без сервера. Но ПРАВКА/переименование/перенос-зоны/теги требуют записи в .md —
+чего статичная страница из file:// не может. Этот сайдкар — тот самый native-бэкенд
+(сознательная жертва клайма «no server», только на время правки):
+
+  atlas-serve --vault DIR --atlas atlas.html [--port 8137] [--regen-cmd "..."]
+
+Открой напечатанный http://127.0.0.1:PORT/ — атлас приедет С ТОГО ЖЕ origin, правка
+включится сама (страница видит http:// и живой /api). Открыть тот же файл как file://
+= правка молча выключена (view-only, без мёртвых кнопок).
+
+Контракт body ТОЧНО как у генератора: FM_RE режет frontmatter, body = хвост после
+блока (включая `# title`). Save сохраняет frontmatter, меняя только заданные поля.
+Все пути валидируются ВНУТРИ vault (обход `..` отбивается), сервер слушает 127.0.0.1.
+"""
+import argparse, json, os, re, sys, unicodedata, subprocess
+from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)   # идентично memory-atlas:132
+
+def slug(s, maxlen=80):
+    """Юникод-безопасный slug — тот же, что в atlas-import (кириллица цела)."""
+    s = str(s).strip().lower()
+    s = re.sub(r"\s+", "-", s)
+    s = "".join(ch for ch in s if ch.isalnum() or ch in "-_.")
+    s = re.sub(r"-{2,}", "-", s).strip("-._")
+    return (s or "note")[:maxlen]
+
+def split_fm(text):
+    """(fm_block|None, body). body = хвост после frontmatter, как у генератора."""
+    t = text.lstrip("﻿")
+    m = FM_RE.match(t)
+    if not m:
+        return None, t
+    return m.group(1), t[m.end():]
+
+def parse_tags(block):
+    if not block:
+        return []
+    tm = re.search(r"^\s*tags:[^\S\n]*(.*)$", block, re.M)
+    if not tm:
+        return []
+    inline = tm.group(1).strip()
+    if inline and inline not in ("[]", "|", ">"):
+        return [x.strip().strip("\"'[]") for x in inline.split(",") if x.strip().strip("[] ")]
+    out = []
+    for ln in block[tm.end():].splitlines():
+        lm = re.match(r"^\s*-\s*(.+)$", ln)
+        if lm:
+            out.append(lm.group(1).strip().strip("\"'"))
+        elif ln.strip() and re.match(r"^\S", ln):
+            break
+    return out
+
+def get_kv(block, key):
+    if not block:
+        return ""
+    m = re.search(r"^\s*" + key + r":\s*(.+)$", block, re.M)
+    return m.group(1).strip().strip("\"'") if m else ""
+
+def set_kv(block, key, value_line):
+    """Заменить строку `key: ...` в блоке ИЛИ дописать. Прочие поля целы."""
+    block = block or ""
+    pat = re.compile(r"^(\s*)" + key + r":.*$", re.M)
+    if pat.search(block):
+        return pat.sub(lambda mm: mm.group(1) + key + ": " + value_line, block, count=1)
+    sep = "" if (not block or block.endswith("\n")) else "\n"
+    return block + sep + key + ": " + value_line
+
+def build_fm(block, title=None, tags=None):
+    """Собрать frontmatter-блок, обновив только заданные поля."""
+    b = block
+    if b is None:
+        # ноты без frontmatter: синтезируем минимальный, если есть что писать
+        b = ""
+    if title is not None:
+        b = set_kv(b, "title", title)
+    if tags is not None:
+        b = set_kv(b, "tags", "[" + ", ".join(tags) + "]")
+    return b
+
+def compose(block, body):
+    if block is None or block.strip() == "":
+        return body
+    return "---\n" + block + "\n---\n" + body
+
+
+class Store:
+    def __init__(self, vault):
+        self.vault = Path(vault).resolve()
+
+    def resolve(self, rel):
+        """rel → abs .md ВНУТРИ vault; иначе ValueError (защита от обхода)."""
+        rel = (rel or "").lstrip("/")
+        p = (self.vault / rel).resolve()
+        if p != self.vault and self.vault not in p.parents:
+            raise ValueError("path escapes vault")
+        if p.suffix.lower() != ".md":
+            raise ValueError("not a .md")
+        return p
+
+    def relof(self, p):
+        return str(Path(p).resolve().relative_to(self.vault))
+
+    def read(self, rel):
+        p = self.resolve(rel)
+        text = p.read_text(encoding="utf-8", errors="replace")
+        block, body = split_fm(text)
+        return {"ok": True, "path": self.relof(p),
+                "title": get_kv(block, "title") or get_kv(block, "name"),
+                "tags": parse_tags(block), "source": get_kv(block, "source"),
+                "body": body}
+
+    def save(self, rel, body, title=None, tags=None):
+        p = self.resolve(rel)
+        block, _ = split_fm(p.read_text(encoding="utf-8", errors="replace"))
+        block = build_fm(block, title=title, tags=tags)
+        p.write_text(compose(block, body), encoding="utf-8")
+        return self.read(rel)
+
+    def rename(self, rel, title):
+        p = self.resolve(rel)
+        block, body = split_fm(p.read_text(encoding="utf-8", errors="replace"))
+        block = build_fm(block, title=title)
+        # первый H1 → новый заголовок
+        body = re.sub(r"^#\s+.*$", "# " + title, body, count=1, flags=re.M)
+        newname = slug(title)
+        dest = p.with_name(newname + ".md")
+        k = 2
+        while dest.exists() and dest != p:
+            dest = p.with_name(f"{newname}-{k}.md"); k += 1
+        p.write_text(compose(block, body), encoding="utf-8")
+        if dest != p:
+            os.replace(p, dest)
+        return {"ok": True, "path": self.relof(dest), "id": dest.stem}
+
+    def set_tags(self, rel, tags):
+        p = self.resolve(rel)
+        block, body = split_fm(p.read_text(encoding="utf-8", errors="replace"))
+        block = build_fm(block, tags=tags)
+        p.write_text(compose(block, body), encoding="utf-8")
+        return self.read(rel)
+
+    def move(self, rel, group):
+        p = self.resolve(rel)
+        group = (group or "").strip().strip("/")
+        dest_dir = (self.vault / group).resolve() if group else self.vault
+        if dest_dir != self.vault and self.vault not in dest_dir.parents:
+            raise ValueError("group escapes vault")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / p.name
+        k = 2
+        while dest.exists() and dest != p:
+            dest = dest_dir / f"{p.stem}-{k}.md"; k += 1
+        if dest != p:
+            os.replace(p, dest)
+        return {"ok": True, "path": self.relof(dest), "id": dest.stem}
+
+    def create(self, group, title, tags=None, body=""):
+        """Новая нота с нуля. Frontmatter ТОЧНО как у atlas-import.write_note
+        (title/tags/source), зона = подпапка (создаётся, если новая), имя = slug(title)
+        с дедуп-суффиксом. Путь валидируется ВНУТРИ vault (как move)."""
+        title = (title or "").strip()
+        if not title:
+            raise ValueError("title required")
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+        tags = [t for t in (tags or []) if t]
+        group = (group or "").strip().strip("/")
+        dest_dir = (self.vault / group).resolve() if group else self.vault
+        if dest_dir != self.vault and self.vault not in dest_dir.parents:
+            raise ValueError("group escapes vault")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        base = slug(title)
+        name, k = base, 2
+        while (dest_dir / f"{name}.md").exists():
+            name = f"{base}-{k}"; k += 1
+        lines = ["---", f"title: {title}"]
+        if tags:
+            lines.append("tags: [" + ", ".join(tags) + "]")
+        lines += ["source: atlas", "---", "", f"# {title}", ""]
+        if body:
+            lines.append(body)
+        dest = dest_dir / f"{name}.md"
+        dest.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+        res = self.read(self.relof(dest))
+        res["id"] = dest.stem
+        res["created"] = True
+        return res
+
+
+def make_handler(store, atlas_path, regen_cmd):
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, payload, ctype="application/json"):
+            body = payload if isinstance(payload, bytes) else json.dumps(payload, ensure_ascii=False).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype + ("; charset=utf-8" if "json" in ctype or "html" in ctype else ""))
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json_body(self):
+            n = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(n) or b"{}")
+
+        def do_GET(self):
+            u = urlparse(self.path)
+            if u.path in ("/", "/index.html"):
+                if not atlas_path or not os.path.exists(atlas_path):
+                    return self._send(404, b"atlas file not found (--atlas)", "text/plain")
+                return self._send(200, Path(atlas_path).read_bytes(), "text/html")
+            if u.path == "/api/health":
+                return self._send(200, {"ok": True, "vault": str(store.vault)})
+            if u.path == "/api/note":
+                rel = parse_qs(u.query).get("path", [""])[0]
+                try:
+                    return self._send(200, store.read(rel))
+                except Exception as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+            return self._send(404, {"ok": False, "error": "no route"})
+
+        def do_POST(self):
+            u = urlparse(self.path)
+            try:
+                d = self._json_body()
+                if u.path == "/api/save":
+                    return self._send(200, store.save(d["path"], d.get("body", ""),
+                                                       title=d.get("title"), tags=d.get("tags")))
+                if u.path == "/api/rename":
+                    return self._send(200, store.rename(d["path"], d["title"]))
+                if u.path == "/api/tags":
+                    return self._send(200, store.set_tags(d["path"], d.get("tags", [])))
+                if u.path == "/api/move":
+                    return self._send(200, store.move(d["path"], d.get("group", "")))
+                if u.path == "/api/create":
+                    return self._send(200, store.create(d.get("group", ""), d.get("title", ""),
+                                                        tags=d.get("tags"), body=d.get("body", "")))
+                if u.path == "/api/regen":
+                    if not regen_cmd:
+                        return self._send(400, {"ok": False, "error": "no --regen-cmd"})
+                    r = subprocess.run(regen_cmd, shell=True, capture_output=True, text=True)
+                    return self._send(200, {"ok": r.returncode == 0, "rc": r.returncode,
+                                            "err": r.stderr[-400:]})
+                return self._send(404, {"ok": False, "error": "no route"})
+            except KeyError as e:
+                return self._send(400, {"ok": False, "error": f"missing field {e}"})
+            except Exception as e:
+                return self._send(400, {"ok": False, "error": str(e)})
+    return H
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Локальный сайдкар правки для memory-atlas")
+    ap.add_argument("--vault", required=True, help="корень вульта (что правим)")
+    ap.add_argument("--atlas", default="", help="HTML атласа для отдачи на / (обычно из --out генератора)")
+    ap.add_argument("--port", type=int, default=8137)
+    ap.add_argument("--regen-cmd", default="", help="shell-команда регенерации (POST /api/regen)")
+    args = ap.parse_args()
+
+    vault = os.path.expanduser(args.vault)
+    if not os.path.isdir(vault):
+        print(f"нет папки вульта: {vault}", file=sys.stderr); sys.exit(2)
+    atlas = os.path.expanduser(args.atlas) if args.atlas else ""
+    store = Store(vault)
+    handler = make_handler(store, atlas, args.regen_cmd)
+    srv = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    print(f"atlas-serve: http://127.0.0.1:{args.port}/  vault={store.vault}"
+          + (f"  atlas={atlas}" if atlas else "  (нет --atlas: только /api)"))
+    print("правка включится в браузере сама (страница видит http:// + /api). Ctrl-C — стоп.")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nстоп.")
+
+
+if __name__ == "__main__":
+    main()

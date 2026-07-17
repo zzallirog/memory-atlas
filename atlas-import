@@ -73,11 +73,22 @@ def chunk_headings(text):
 
 def chunk_glossary(text):
     """Глоссарий: короткая строка-термин + следующий блок-определение.
-    Термин = строка ≤60 симв, не пустая, за ней непустой блок; НЕ оканчивается точкой абзаца.
-    Также ловит 'Термін — визначення' и 'Термін: визначення' в одной строке."""
+    Также ловит 'Термін — визначення' / 'Термін: визначення' в одной строке.
+    КОНСЕРВАЦИЯ: любая непустая строка становится заголовком ноты. Длинные термины
+    (>6 слів) и термины без определения НЕ теряются — иначе плоская пдфка роняла бы
+    их молча. term_like используется ТОЛЬКО как граница тела, не как условие записи."""
     lines = [l.rstrip() for l in text.splitlines()]
     out, i, n = [], 0, len(lines)
     inline_re = re.compile(r"^\s*([^\n]{2,60}?)\s*[—:–-]\s+(.{15,})$")
+    def term_like(s):
+        return len(s) <= 60 and len(s.split()) <= 6 and not s.endswith((".", "!", "?", ",", ";"))
+    def entry_start(s):
+        # начало новой статьи: короткий термин ИЛИ inline «Термін — визначення» (≤6 слів
+        # у термина). Без inline-ветки статьи без пустой строки-разделителя слипались.
+        if term_like(s):
+            return True
+        mi2 = inline_re.match(s)
+        return bool(mi2 and len(mi2.group(1).split()) <= 6)
     while i < n:
         raw = lines[i]
         s = raw.strip()
@@ -86,19 +97,14 @@ def chunk_glossary(text):
         mi = inline_re.match(raw)
         if mi and len(mi.group(1).split()) <= 6:
             out.append((mi.group(1).strip(), mi.group(2).strip())); i += 1; continue
-        # кандидат-термин: коротко, ≤6 слов, без финальной пунктуации предложения
-        is_term = (len(s) <= 60 and len(s.split()) <= 6 and not s.endswith((".", "!", "?", ",", ";")))
-        if is_term:
-            body, j = [], i + 1
-            while j < n and lines[j].strip():
-                # следующий короткий кандидат-термин обрывает определение
-                nx = lines[j].strip()
-                if len(nx) <= 60 and len(nx.split()) <= 6 and not nx.endswith((".", "!", "?", ",", ";")) and body:
-                    break
-                body.append(lines[j]); j += 1
-            if body:
-                out.append((s, "\n".join(body).strip())); i = j; continue
-        i += 1
+        # любая непустая строка = заголовок ноты; тело — до начала следующей статьи
+        body, j = [], i + 1
+        while j < n and lines[j].strip():
+            if entry_start(lines[j].strip()) and body:
+                break
+            body.append(lines[j]); j += 1
+        out.append((s, "\n".join(body).strip()))   # defless => тело "", но нота есть
+        i = j
     return out
 
 def chunk_blank(text, min_chars=120):
