@@ -831,6 +831,11 @@ def validate_data(data):
                          f"{e.get(end)!r} references no node")
 
 
+def lang_token(lang):
+    # the '__LANG__' slot in the template; uk must survive (never collapse into ru)
+    return "'%s'" % (lang if lang in ("ru", "en", "uk") else "ru")
+
+
 def render(data, out, d3js=None, tpl=None, lang="ru"):
     if d3js is None:
         if not os.path.exists(D3_PATH):
@@ -853,7 +858,7 @@ def render(data, out, d3js=None, tpl=None, lang="ru"):
     # </script> inside desc would break the inline script — escape the slash
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     html = tpl.replace("/*__D3__*/", d3js).replace("\"__DATA__\"", payload) \
-              .replace("'__LANG__'", "'en'" if lang == "en" else "'ru'")
+              .replace("'__LANG__'", lang_token(lang))
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
@@ -875,9 +880,9 @@ def main():
     ap.add_argument("--demo", action="store_true",
                     help="built-in demo vault: 2 clusters + hidden ghost bridge (shared_ref)")
     ap.add_argument("--no-open", action="store_true")
-    ap.add_argument("--lang", choices=["ru", "en"], default=None,
+    ap.add_argument("--lang", choices=["ru", "en", "uk"], default=None,
                     help="starting UI language; without the flag — by system locale "
-                         "(ru/uk → ru, otherwise en); the toggle in the bar persists across rebuilds")
+                         "(ru → ru, uk → uk, otherwise en); the toggle in the bar persists across rebuilds")
     ap.add_argument("--self-test", action="store_true")
     # cross-zone detectors (flag names = graph-lab CLI, including their asymmetry:
     # five --no-X-cross default-on, structural opt-in)
@@ -898,6 +903,9 @@ def main():
     ap.add_argument("--structural-cross", action="store_true")
     ap.add_argument("--structural-max-motifs", type=int, default=5000)
     ap.add_argument("--no-detectors", action="store_true", help="wikilink graph only")
+    ap.add_argument("--fast-regen", action="store_true",
+                    help="semantic+wiki only: skip O(n^2) tag/temporal and git-session detectors "
+                         "(auto-sync on large vaults; the emb-cache keeps semantic fast)")
     ap.add_argument("--search-vecs", action="store_true",
                     help="int8 embeddings in DATA (client-side semantic search)")
     args = ap.parse_args()
@@ -911,7 +919,9 @@ def main():
         # the choice in the UI toggle persists and overrides this default from the second run on
         env_lang = (os.environ.get("LC_ALL") or os.environ.get("LANG") or
                     (locale.getlocale()[0] or ""))
-        args.lang = "ru" if env_lang.lower().startswith(("ru", "uk")) else "en"
+        # uk locale starts in UK, not RU (a Ukrainian user must never be defaulted into Russian)
+        low = env_lang.lower()
+        args.lang = "ru" if low.startswith("ru") else "uk" if low.startswith("uk") else "en"
 
     if args.demo:
         args.src = [os.environ.get("ATLAS_DEMO") or
@@ -925,6 +935,14 @@ def main():
         # only the honest bridges: shared_ref (ghost) + tag_overlap.
         args.temporal_cross = False
         args.session_cross = False
+
+    if args.fast_regen:
+        # auto-sync path on large vaults: tag/temporal are O(n^2) and session shells out
+        # to git — all three grow painful at ~2300 notes; semantic rides the sha emb-cache
+        args.tag_cross = False
+        args.temporal_cross = False
+        args.session_cross = False
+        args.structural_cross = False
 
     if not args.src and DEFAULT_SRC:
         args.src = [DEFAULT_SRC]
@@ -1161,6 +1179,28 @@ def run_self_test():
             out = detect_temporal(ns, window_s=86400.0, top_k=2)
             per_b = [e for e in out if "b" in (e["source"], e["target"])]
             self.assertLessEqual(len(per_b), 2)
+
+        def test_fast_regen_skips_heavy_detectors(self):
+            # --fast-regen: tag/temporal/session must not fire; wiki (+shared_ref/semantic) survive.
+            # two zones with identical tags + mtimes would produce tag_overlap/temporal edges otherwise
+            self.w("z1/a.md", "---\nname: a\ntags:\n  - x\n  - y\n---\n[[b]]")
+            self.w("z2/b.md", "---\nname: b\ntags:\n  - x\n  - y\n---\ntext")
+            r = subprocess.run(
+                [sys.executable, os.path.realpath(__file__), "--src", self.src,
+                 "--dump-data", "-", "--fast-regen"],
+                capture_output=True, text=True, timeout=60,
+                env={**os.environ, "ATLAS_OLLAMA": "http://127.0.0.1:1"})   # semantic degrades gracefully
+            self.assertEqual(r.returncode, 0, r.stderr)
+            kinds = {e.get("kind") for e in json.loads(r.stdout)["edges"]}
+            self.assertLessEqual(kinds, {"wiki", "shared_ref", "semantic"},
+                                 f"heavy detector leaked through --fast-regen: {kinds}")
+
+        def test_lang_token_uk_survives(self):
+            # a Ukrainian user must never be defaulted into Russian: uk is its own token
+            self.assertEqual(lang_token("uk"), "'uk'")
+            self.assertEqual(lang_token("en"), "'en'")
+            self.assertEqual(lang_token("ru"), "'ru'")
+            self.assertEqual(lang_token("xx"), "'ru'")   # unknown → canonical markup language
 
         def test_dump_data_pipeline(self):
             # --dump-data - prints pure DATA JSON on stdout (the pipeline source end)
