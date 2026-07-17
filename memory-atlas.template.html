@@ -4855,7 +4855,12 @@ if (params.get('q')) {
     }
   }
   async function setTags(n, tags, msgKey) {
-    try { await api('POST', '/api/tags', { path: n.file, tags }); toast('✔ ' + T(msgKey)); markStale(); await loadTags(n);
+    try { await api('POST', '/api/tags', { path: n.file, tags });
+        if (bBy[n.id]) bBy[n.id].tags = tags.slice();
+        if (typeof byId !== 'undefined' && byId.get(n.id)) byId.get(n.id).tags = tags.slice();   // #4: graph node stays in sync, no stale tag until regen
+        if (typeof renderTags === 'function') renderTags();
+        if (typeof requestDraw === 'function') requestDraw();
+        toast('✔ ' + T(msgKey)); markStale(); await loadTags(n);
       const inp = document.getElementById('etagAdd'); if (inp) inp.focus(); }
     catch (e) { toast('tags: ' + e.message); }
   }
@@ -4906,14 +4911,25 @@ if (params.get('q')) {
   //      → граф получает ребро источник→концепт. Корпус растёт в граф через ЧТЕНИЕ. ----
   let extractBtn;
   function hideExtract() { if (extractBtn) extractBtn.style.display = 'none'; }
-  function maybeShowExtract() {
+  function maybeShowExtract(_e) {
     if (!EDIT || curId == null) return hideExtract();
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) return hideExtract();
-    const txt = sel.toString().trim();
-    const mv = document.getElementById('mdview');
-    if (!txt || !mv || !mv.contains(sel.anchorNode)) return hideExtract();
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const ta = document.querySelector('#mdview .ed');
+    let txt, rect;
+    if (ta && ta.selectionEnd > ta.selectionStart) {   // edit-mode: textarea selection (getSelection() is blind to it)
+      txt = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+      const b = ta.getBoundingClientRect();
+      const px = (_e && _e.clientX != null) ? _e.clientX : b.left + 12;
+      const py = (_e && _e.clientY != null) ? _e.clientY : b.top + 12;
+      rect = { left: px - window.scrollX, bottom: py - window.scrollY };
+    } else {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return hideExtract();
+      txt = sel.toString().trim();
+      const mv = document.getElementById('mdview');
+      if (!txt || !mv || !mv.contains(sel.anchorNode)) return hideExtract();
+      rect = sel.getRangeAt(0).getBoundingClientRect();
+    }
+    if (!txt) return hideExtract();
     if (!extractBtn) {
       extractBtn = document.createElement('button');
       extractBtn.id = 'atlasextract'; extractBtn.type = 'button';
@@ -4927,7 +4943,10 @@ if (params.get('q')) {
     extractBtn.style.display = 'block';
   }
   async function extractConcept() {
-    const sel = window.getSelection(); const txt = (sel ? sel.toString() : '').trim();
+    const ta = document.querySelector('#mdview .ed');
+    const txt = (ta && ta.selectionEnd > ta.selectionStart)
+      ? ta.value.slice(ta.selectionStart, ta.selectionEnd).trim()
+      : ((window.getSelection() ? window.getSelection().toString() : '').trim());
     const src = bBy[curId]; if (!txt || !src) return hideExtract();
     const title = (txt.split('\n')[0].trim() || txt).slice(0, 80);
     hideExtract();
@@ -5070,7 +5089,8 @@ if (params.get('q')) {
       nb.title = T('новая заметка'); nb.textContent = '＋';
       nb.onclick = openNewNote; srch.appendChild(nb);
     }
-    prev.addEventListener('mouseup', () => setTimeout(maybeShowExtract, 0));   // #1: выделение в теле ноты → «＋ заметка из выделения»
+    prev.addEventListener('mouseup', (e) => setTimeout(() => maybeShowExtract(e), 0));   // #1: выделение в теле ноты (превью И textarea) → «＋ заметка из выделения»
+    prev.addEventListener('keyup', (e) => { if (e.shiftKey || /^Arrow/.test(e.key)) setTimeout(() => maybeShowExtract(e), 0); });
     document.addEventListener('mousedown', ev => { if (!extractBtn || ev.target !== extractBtn) hideExtract(); });
   }
 
