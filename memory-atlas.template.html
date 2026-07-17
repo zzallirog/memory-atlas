@@ -2034,7 +2034,11 @@ function createHoverPin(n) {
   card.style.cssText = 'background:rgba(20,22,28,.94);border:1px solid #2a3340;border-radius:10px;padding:9px 11px;backdrop-filter:blur(8px);box-shadow:0 6px 24px rgba(0,0,0,.42);opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease;font:12px system-ui;color:#cdd6e0;';
   card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:#8fb3ff">📍 ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
     + (n.desc ? '<div style="margin-top:6px;opacity:.85;line-height:1.45">' + esc(n.desc) + '</div>' : '')
-    + '<div style="margin-top:6px;opacity:.5;font-size:11px">degree ' + (n.degree || 0) + '</div>';
+    + '<div style="margin-top:6px;opacity:.5;font-size:11px">degree ' + (n.degree || 0) + '</div>'
+    + '<div style="margin-top:8px;display:flex;gap:6px">'                          // #9 slice1: more BTNS — hover-pin = mini right-bar natively
+    +   '<button data-read style="flex:1;cursor:pointer;background:#22406e;color:#dce8ff;border:0;border-radius:6px;padding:5px 0;font:11px system-ui">▤ ' + T('читать') + '</button>'
+    +   '<button data-pinn style="cursor:pointer;background:#2a3340;color:#cdd6e0;border:0;border-radius:6px;padding:5px 9px;font:11px system-ui" title="pin node">📌</button>'
+    + '</div>';
   box.appendChild(card);
   requestAnimationFrame(() => { card.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
   const h = { id: n.id, card };
@@ -2043,6 +2047,8 @@ function createHoverPin(n) {
     card.style.opacity = '0'; card.style.transform = 'translateY(-6px)';
     setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 280);
   };
+  const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
+  const pb = card.querySelector('[data-pinn]'); if (pb) pb.onclick = () => togglePin(n, true);
   toast('📍 hover-pin: ' + (n.label || n.id));
 }
 
