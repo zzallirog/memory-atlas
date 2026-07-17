@@ -159,9 +159,9 @@
     box-shadow: var(--shadow);
     animation: floatIn .16s cubic-bezier(.2,.85,.3,1.12) both;
   }
-  #tooltip .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 3px; }
+  #tooltip .tmeta, .hpcard .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 3px; }
   #tooltip .tg-mark { color: var(--ghost); font: 10px var(--mono); }
-  #tooltip .tdesc {
+  #tooltip .tdesc, .hpcard .tdesc {
     color: var(--ink-2); font-size: 11.5px; line-height: 1.45; margin-top: 5px;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   }
@@ -173,17 +173,31 @@
   }
   #panel .bodysnip { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px;
     border-left: 2px solid var(--grid); padding-left: 8px; }
-  #tooltip .ttags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  #tooltip .ttags .tt {
+  #tooltip .ttags, .hpcard .ttags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  #tooltip .ttags .tt, .hpcard .ttags .tt {
     display: inline-flex; align-items: center; gap: 4px; font: 9.5px var(--mono);
     padding: 1px 6px; border-radius: 10px; border: 1px solid var(--grid); color: var(--ink-2);
   }
-  #tooltip .ttags .tt .sw { width: 6px; height: 6px; border-radius: 50%; }
-  #tooltip .tlinks {
+  #tooltip .ttags .tt .sw, .hpcard .ttags .tt .sw { width: 6px; height: 6px; border-radius: 50%; }
+  #tooltip .tlinks, .hpcard .tlinks {
     color: var(--muted); font: 10px/1.5 var(--mono); margin-top: 4px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 336px;
   }
-  #tooltip .tlinks b { color: var(--ink-2); font-weight: 500; }
+  #tooltip .tlinks b, .hpcard .tlinks b { color: var(--ink-2); font-weight: 500; }
+  /* #9 hover-pin card = tooltip design language (task 10: pins inherit mouse-hover design) */
+  .hpcard{background:var(--surface-solid);border:1px solid var(--border-hi);border-radius:10px;padding:9px 12px;
+    font-size:12.5px;color:var(--ink);box-shadow:var(--shadow);opacity:0;transform:translateY(7px) scale(.997);filter:blur(1.2px);
+    transition:opacity .38s cubic-bezier(.2,.75,.2,1),transform .38s cubic-bezier(.2,.75,.2,1),filter .38s cubic-bezier(.2,.75,.2,1),border-color .3s}
+  .hpcard.in{opacity:1;transform:none;filter:none}
+  .hpcard .hphd{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer}
+  .hpcard .hphd b{font-weight:600}
+  .hpcard .hpx{cursor:pointer;opacity:.55;transition:opacity .15s}
+  .hpcard .hpx:hover{opacity:1}
+  .hpcard .hpbody{margin-top:8px;max-height:42vh;overflow:auto;line-height:1.5;font-size:11.5px;color:var(--ink-2);border-top:1px solid var(--grid);padding-top:6px}
+  .hpcard .tlinks a{color:var(--accent);cursor:pointer}
+  .hpcard .hpact{margin-top:9px}
+  .hpcard .hpact .abtn{width:100%;border-color:var(--accent);color:var(--ink)}
+  @media (prefers-reduced-motion:reduce){.hpcard{transition:none;opacity:1;transform:none;filter:none}}
   @keyframes floatIn { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: none; } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes sheetIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -489,11 +503,11 @@
   }
   /* panel action buttons + link suppress */
   #panel .acts { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 10px; }
-  #panel .abtn {
+  #panel .abtn, .hpcard .abtn {
     cursor: pointer; border: 1px solid var(--grid); background: none; color: var(--ink-2);
     border-radius: 6px; font: 10px var(--mono); padding: 3px 8px;
   }
-  #panel .abtn:hover { border-color: var(--accent); color: var(--ink); }
+  #panel .abtn:hover, .hpcard .abtn:hover { border-color: var(--accent); color: var(--ink); }
   #panel .abtn.on { border-color: var(--accent); color: var(--ink); background: rgba(57,135,229,0.12); }
   #panel .lnkrow { display: flex; align-items: center; flex-wrap: wrap; }
   #panel .lnkrow .lnk { flex: 1; }
@@ -2055,25 +2069,28 @@ function createHoverPin(n) {
   const bodyHtml = (typeof window.mdRender === 'function' && raw) ? window.mdRender(raw) : ('<p>' + esc(raw) + '</p>');
   const lname = id => { const m = byId.get(id); return m ? (m.label || id) : id; };
   const lrow = (ids, mark) => (ids && ids.length)
-    ? '<div style="margin-top:5px;font-size:11px;opacity:.85"><b style="color:#8fb3ff">' + mark + ids.length + '</b> '
-      + ids.slice(0, 8).map(id => '<a data-go="' + esc(id) + '" style="color:#8fb3ff;cursor:pointer">' + esc(lname(id)) + '</a>').join(' · ')
+    ? '<div class="tlinks"><b>' + mark + ids.length + '</b> '
+      + ids.slice(0, 8).map(id => '<a data-go="' + esc(id) + '">' + esc(lname(id)) + '</a>').join(' · ')
       + (ids.length > 8 ? ' …' : '') + '</div>' : '';
+  const hpTags = (typeof nodeTags === 'function') ? nodeTags(n) : [];
   const card = document.createElement('div');
-  card.style.cssText = 'background:rgba(18,20,26,.96);border:1px solid #2a3340;border-radius:10px;padding:10px 12px;backdrop-filter:blur(10px);box-shadow:0 6px 24px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease;font:12px system-ui;color:#cdd6e0;';
+  card.className = 'hpcard';
   card.innerHTML =
-    '<div data-hd style="display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer"><b style="color:#8fb3ff">📍 ' + esc(n.label || n.id) + '</b><span data-x style="cursor:pointer;opacity:.55">✕</span></div>'
-    + '<div style="margin-top:3px;font-size:11px;opacity:.5">' + esc(n.zone || '') + ' · deg ' + (n.degree || 0) + '</div>'
-    + '<div class="hpbody" style="margin-top:8px;max-height:42vh;overflow:auto;line-height:1.5;opacity:.92">' + bodyHtml + '</div>'
+    '<div data-hd class="hphd"><b>📍 ' + esc(n.label || n.id) + '</b><span data-x class="hpx">✕</span></div>'
+    + '<div class="tmeta">' + esc(n.zone || '') + ' · ' + esc(n.type || '') + ' · deg ' + (n.degree || 0) + '</div>'
+    + (n.desc ? '<div class="tdesc">' + esc(n.desc) + '</div>' : '')
+    + '<div class="hpbody">' + bodyHtml + '</div>'
+    + (hpTags.length ? '<div class="ttags">' + hpTags.map(t => '<span class="tt"><span class="sw" style="background:' + tagColor(t) + '"></span>' + esc(t) + '</span>').join('') + '</div>' : '')
     + lrow(outLinks.get(n.id), '→') + lrow(inLinks.get(n.id), '←')
-    + '<div style="margin-top:9px"><button data-read style="width:100%;cursor:pointer;background:#22406e;color:#dce8ff;border:0;border-radius:6px;padding:6px 0;font:11px system-ui">▤ ' + T('читать') + ' · ' + T('править') + '</button></div>';
+    + '<div class="hpact"><button data-read class="abtn">▤ ' + T('читать') + ' · ' + T('править') + '</button></div>';
   box.appendChild(card);
-  requestAnimationFrame(() => { card.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
+  requestAnimationFrame(() => card.classList.add('in'));
   const h = { id: n.id, card };
   hoverPins.push(h);
   card.querySelector('[data-x]').onclick = (e) => {
     e.stopPropagation();
-    card.style.opacity = '0'; card.style.transform = 'translateY(-6px)';
-    setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 280);
+    card.classList.remove('in');
+    setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); }, 380);
   };
   (function () {   // header = drag to move (detach to fixed) OR click to wake; drag covers "corner" — drop it anywhere
     const hd = card.querySelector('[data-hd]');
@@ -2096,7 +2113,7 @@ function createHoverPin(n) {
     hd.addEventListener('pointerup', (e) => {
       down = false; card.style.transition = '';
       try { hd.releasePointerCapture(e.pointerId); } catch (_) {}
-      if (!moved) { box.appendChild(card); card.style.borderColor = '#3a6ea5'; setTimeout(() => { card.style.borderColor = '#2a3340'; }, 600); }   // no drag = click → wake/raise
+      if (!moved) { box.appendChild(card); card.style.borderColor = 'var(--accent)'; setTimeout(() => { card.style.borderColor = ''; }, 600); }   // no drag = click → wake/raise
     });
   })();
   const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
