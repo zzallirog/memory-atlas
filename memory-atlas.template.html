@@ -63,6 +63,14 @@
   }
   #search::placeholder { color: var(--muted); }
   #search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  mark.shl { background: rgba(240,180,90,.32); color: inherit; border-radius: 2px; padding: 0 1px;
+    animation: shlPulse 1.15s cubic-bezier(.2,.7,.3,1); }
+  @keyframes shlPulse {
+    0%   { background: rgba(240,180,90,.95); box-shadow: 0 0 0 4px rgba(240,180,90,.5); }
+    60%  { background: rgba(240,180,90,.5);  box-shadow: 0 0 0 2px rgba(240,180,90,.2); }
+    100% { background: rgba(240,180,90,.32); box-shadow: 0 0 0 0 transparent; }
+  }
+  .bodysnip mark.shl { font-weight: 600; }
   .row { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
   .row label { color: var(--muted); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; min-width: 44px; }
   .row select {
@@ -1811,6 +1819,37 @@ function bodySnip(n, cap) {
   _bsC.set(key, out);
   return out;
 }
+
+// Сниппет тела, центрированный на первом вхождении search-терма + <mark> на всех вхождениях.
+// Магнитится к куску в длинном файле: окно ±win вокруг матча, а не начало тела.
+function hlSnip(n, terms, win) {
+  const full = bodySnip(n, 6000);          // чистый плоский текст (frontmatter/markdown сняты)
+  if (!full) return '';
+  const low = full.toLowerCase();
+  let pos = -1;
+  for (const t of terms) {
+    if (!t) continue;
+    const p = low.indexOf(t.toLowerCase());
+    if (p >= 0 && (pos < 0 || p < pos)) pos = p;
+  }
+  let seg, pre = '', suf = '';
+  if (pos < 0) {                            // терм не в теле — обычное начало
+    seg = full.slice(0, win); if (full.length > win) suf = '…';
+  } else {
+    const start = Math.max(0, pos - Math.floor(win / 3));
+    const end = Math.min(full.length, start + win);
+    seg = full.slice(start, end);
+    if (start > 0) pre = '…';
+    if (end < full.length) suf = '…';
+  }
+  let html = esc(seg);
+  for (const t of terms) {                  // маркируем в уже-эскейпнутом тексте
+    if (!t) continue;
+    const et = esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (et) html = html.replace(new RegExp('(' + et + ')', 'gi'), '<mark class="shl">$1</mark>');
+  }
+  return pre + html + suf;
+}
 function tipNode(n) {
   const lname = id => { const m = byId.get(id); return m ? m.label : id; };
   const lline = (ids, mark) => ids.length
@@ -1867,6 +1906,7 @@ let lensT = 0;        // moment of tag-lens change: its blur fades in the same w
 const navHist = [];   // port of GraphState.pushHistory: b/⌫ = back through selections
 let histLock = false;
 function selectNode(n, opts) {
+  searchHL = (opts && opts.hl) ? opts.hl : [];   // подсветка живёт только для search-выбора
   if (n && selected && n !== selected && !histLock) {
     navHist.push(selected.id);
     if (navHist.length > 50) navHist.shift();
@@ -1956,7 +1996,7 @@ function selectNode(n, opts) {
     })()}
     ${n.ghost ? '' : `<span class="readbrowse" data-read="${esc(n.id)}">${T('▤ читать полностью')}</span>`}
     ${n.desc ? `<div class="desc">${esc(n.desc)}</div>` : ''}
-    ${(() => { const b = bodySnip(n, 420); return b ? `<div class="bodysnip">${esc(b)}</div>` : ''; })()}
+    ${(() => { const b = searchHL.length ? hlSnip(n, searchHL, 460) : esc(bodySnip(n, 420)); return b ? `<div class="bodysnip">${b}</div>` : ''; })()}
     ${links(outLinks.get(n.id), 'links out')}
     ${links(inLinks.get(n.id), 'links in')}
     ${crossSec}`;
@@ -2056,6 +2096,7 @@ const searchEl = document.getElementById('search');
 const sdrop = document.getElementById('sdrop');
 let sHits = [], sSel = -1, sSeq = 0;
 const BODIES = (DATA.browse && DATA.browse.bodies) || {};
+let searchHL = [];   // термы последнего search-hit — подсвечиваются в теле выбранной ноты
 // B19/S3: matches() used to be called per-node PER-FRAME with string concatenation — now the match set
 // is rebuilt ONCE per input (including tier-2 body hits: canvas and dropdown see the
 // same thing), frames read the Set. Bodies are lowercased lazily and cached.
@@ -2129,9 +2170,10 @@ function renderDrop(divider) {
 function pickHit(i) {
   const h = sHits[i];
   if (!h) return;
+  const hl = query.slice();                 // сохранить термы ДО очистки — для подсветки в теле
   searchEl.value = ''; query = []; rebuildMatch(); renderLens();
   hideDrop(); searchEl.blur();
-  selectNode(h.n);
+  selectNode(h.n, { hl });
   flyToNeighbourhood(h.n, true);
 }
 searchEl.addEventListener('keydown', ev => {
