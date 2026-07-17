@@ -362,6 +362,22 @@ def build_graph(src):
                 add_edge(stem, tkey, kind)
     nodes.extend(ghosts.values())
 
+    # membership edges (карта1 — taxonomy skeleton): node.part_of → parent.
+    # part_of names a parent note in frontmatter; resolve it like a wikilink target.
+    # Distinct kind "part_of" so the client can lay out a CLEAN hierarchy (dendro/radial,
+    # group=tier) separate from context edges (semantic/tag/temporal) — the two-level map:
+    # membership ≠ context-degree, a child may have more context edges to a foreign parent
+    # yet keep its taxonomic home. See EDITOR-ROADMAP #8.
+    for node in nodes:
+        po = (node.get("part_of") or "").strip()
+        if not po:
+            continue
+        own = root_lookup.get(node.get("root"), {})
+        pkey = norm(po)
+        hit = own.get(pkey) or lookup.get(pkey)
+        if hit:
+            add_edge(node["id"], hit, "part_of")
+
     # heat ∈ [0,1]: 1 = fresh (age 0), 0 = oldest
     max_age = max((n["age_days"] for n in nodes if not n["ghost"]), default=1) or 1
     for n in nodes:
