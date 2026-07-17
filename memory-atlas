@@ -62,7 +62,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.12.0"  # trilingual UI: Ukrainian (i18nUK) added — bar language button cycles RU → EN → UK
+VERSION = "2.13.0"  # editor: hover-pin overhaul (glass, free-place, reload-persist, tag edit, counts) + document import (markitdown / keep)
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
