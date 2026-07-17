@@ -168,3 +168,39 @@
 `file://`. План: (1) локнуть спеку, (2) спайн-слайс = ремап кнопок + разделение двух пин-артефактов,
 (3) полишь (анимации/прозрачность-по-зуму/стек-углы) слайсами, каждый → deploy → swappy юзера.
 Развилка спайна: подтвердить button-map + углы стека ДО кода.
+
+---
+
+## 🆕 Сессия 2026-07-18 (Fable, хендоф HANDOFF-COLD-2026-07-18 → 8 фаз, оси юзера: ida-box фейды · разгрузка кнопок · Мишина модель)
+
+Все правки — python-патчеры (`scratchpad/patch_*.py` сессии 578c27d4) + `.bak-*`; self-test 48→**50**;
+кнопка-проб харнес `probe_buttons.py` (инвентарь `<button>`: visibility/pointer-events) —
+бейзлайн vs финал: **0 потерянных кнопок**.
+
+- **ak-кит** (`e83713c`): ida-box фейд-словарь на граф-стороне — idaFieldIn-каскад #panelBody
+  (stagger nth-child, фирит ТОЛЬКО на смену ноды — паттерн animPass), sheets-каскад,
+  reduced-motion гейт. ⚠ headless-верифай: macOS Reduce Motion ТЕЧЁТ в headless Chrome —
+  render_atlas.py теперь эмулирует no-preference (Emulation.setEmulatedMedia).
+- **задача 10** (`2fa062a`, `+fix .abtn scope`): hover-pin = дизайн мышь-тултипа — расшарен CSS
+  `#tooltip .tmeta/.tdesc/.ttags/.tlinks` на `.hpcard`, тег-чипы цветные, спавн/деспавн ida-фейдом.
+- **задача 1** (`9acbcaa`): reader-mode — select = левый HUD уезжает фейдом, `#panel` растёт
+  330→520px через `--panelw` (миникарта+hover-стек следуют), top=64 (не наезжает на viewtabs);
+  выход deselect/esc. Авто (юзер: «автоматом»).
+- **задачи 2+3+7** (`aba8fce`): прозрачность hover-стека ∝ зум (`--hpz`) + dim при открытой панели
+  (hover будит); драг-релиз = снап в ближайший угол (правая колонка объезжает панель);
+  hide-ноды = 380ms ease-out фейд на канвасе (hideFade map, visible() держит на время фейда).
+- **задачи 6+8** (`f4fa08d`): бар дремлет на idle 10s (langBtn-таймер расшарен, stats живой);
+  HUD: секции после «вид» + карты zones/kinds/tags/legend/views = `.pw` за «⚙ ещё…» (persist
+  `CFG.hudFold`, свёрнуто по дефолту — Мишин минимум: поиск+вид); кнопка «📍 hover» в панели.
+- **задача 5** (`97a5aff`): «категория · авто» — единая ось zone/cluster: CAT_AXIS = zone при >1
+  реальной зоне, иначе louvain (плоский корпус Миши получает структуру сам); первая опция
+  color/group, персист сырым значением (round-trip).
+- **задача 11** (`e818cb0`): browse context-меню — «◌ в граф» + «📌 pin» всегда, edit/＋нота
+  под EDIT-гейтом; pin из browse через граф-scope togglePin.
+- **задача 9** (`774f626`): `--fast-regen` = wiki+shared_ref+semantic, O(n²) tag/temporal и
+  git-session выключены (авто-синк на 2300 нот). **+ UK-фикс** (user-ukraine-no-ru-defaults):
+  `--lang uk` легален, локаль uk → uk (был uk→ru в ДВУХ местах: locale-auto + lang_token
+  подстановки '__LANG__'); тесты test_fast_regen_skips_heavy_detectors + test_lang_token_uk_survives.
+
+**Очередь хендофа:** закрыты 1,2,3,5,6,7,8,10,11 (9 из 11). Осталось: **4** (tier-инференс А/В/С
+на 2300 — воркфлоу «3 опуса», юзер триггерит) и полишь по swappy-фидбеку.
