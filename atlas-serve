@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)   # идентично memory-atlas:132
+MAX_BODY = 64 * 1024 * 1024   # import ships base64 documents; notes are tiny next to that
 
 def slug(s, maxlen=80):
     """Юникод-безопасный slug — тот же, что в atlas-import (кириллица цела)."""
@@ -90,6 +91,24 @@ def compose(block, body):
     return "---\n" + block + "\n---\n" + body
 
 
+# Typed API error so a handler can answer with the RIGHT status. Everything used to
+# collapse into 400, which left no way to express "409 — changed on disk".
+class ApiErr(Exception):
+    def __init__(self, code, msg):
+        super().__init__(msg)
+        self.code, self.msg = code, msg
+
+
+def write_atomic(path, text):
+    """Write via temp file + os.replace. A direct write_text() that dies mid-flight
+    leaves the note TRUNCATED — the editor would eat the very thing it is editing."""
+    path = Path(path)
+    tmp = path.with_name(path.name + ".atlas-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return int(path.stat().st_mtime)
+
+
 class Store:
     def __init__(self, vault):
         self.vault = Path(vault).resolve()
@@ -99,9 +118,17 @@ class Store:
         rel = (rel or "").lstrip("/")
         p = (self.vault / rel).resolve()
         if p != self.vault and self.vault not in p.parents:
-            raise ValueError("path escapes vault")
+            raise ApiErr(400, "path escapes vault")
         if p.suffix.lower() != ".md":
-            raise ValueError("not a .md")
+            raise ApiErr(400, "not a .md")
+        parts = Path(rel).parts
+        # Vault rules, not politeness: dotfiles are config (.obsidian/ holds the live graph
+        # settings — an editor writing there rewrites the user's tool), and raw/ is the
+        # immutable source layer every note cites for provenance.
+        if any(seg.startswith(".") for seg in parts):
+            raise ApiErr(400, "hidden paths refused")
+        if "raw" in parts:
+            raise ApiErr(403, "raw/ is immutable (vault rule)")
         return p
 
     def relof(self, p):
@@ -114,13 +141,19 @@ class Store:
         return {"ok": True, "path": self.relof(p),
                 "title": get_kv(block, "title") or get_kv(block, "name"),
                 "tags": parse_tags(block), "source": get_kv(block, "source"),
-                "body": body}
+                "body": body, "mtime": int(p.stat().st_mtime)}
 
-    def save(self, rel, body, title=None, tags=None):
+    def save(self, rel, body, title=None, tags=None, mtime=None, force=False):
+        """Optimistic concurrency: the client echoes back the mtime it loaded. If the file
+        moved on since (second tab, Obsidian, a git pull), refuse with 409 instead of
+        silently overwriting — a lost edit is invisible, and the note is the user's work."""
         p = self.resolve(rel)
+        disk = int(p.stat().st_mtime)
+        if not force and mtime and int(mtime) != disk:
+            raise ApiErr(409, "changed on disk — reload or pass force")
         block, _ = split_fm(p.read_text(encoding="utf-8", errors="replace"))
         block = build_fm(block, title=title, tags=tags)
-        p.write_text(compose(block, body), encoding="utf-8")
+        write_atomic(p, compose(block, body))
         return self.read(rel)
 
     def rename(self, rel, title):
@@ -134,7 +167,7 @@ class Store:
         k = 2
         while dest.exists() and dest != p:
             dest = p.with_name(f"{newname}-{k}.md"); k += 1
-        p.write_text(compose(block, body), encoding="utf-8")
+        write_atomic(p, compose(block, body))
         if dest != p:
             os.replace(p, dest)
         return {"ok": True, "path": self.relof(dest), "id": dest.stem}
@@ -143,7 +176,7 @@ class Store:
         p = self.resolve(rel)
         block, body = split_fm(p.read_text(encoding="utf-8", errors="replace"))
         block = build_fm(block, tags=tags)
-        p.write_text(compose(block, body), encoding="utf-8")
+        write_atomic(p, compose(block, body))
         return self.read(rel)
 
     def move(self, rel, group):
@@ -187,7 +220,7 @@ class Store:
         if body:
             lines.append(body)
         dest = dest_dir / f"{name}.md"
-        dest.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+        write_atomic(dest, "\n".join(lines).rstrip("\n") + "\n")
         res = self.read(self.relof(dest))
         res["id"] = dest.stem
         res["created"] = True
@@ -279,7 +312,7 @@ class Store:
         if body:
             lines.append(body)
         note = dest_dir / (name + ".md")
-        note.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+        write_atomic(note, "\n".join(lines).rstrip("\n") + "\n")
         res = self.read(self.relof(note))
         res.update({"id": note.stem, "created": True, "converter": converter,
                     "mode": mode, "kept": kept_name, "warnings": warnings})
@@ -302,6 +335,10 @@ def make_handler(store, atlas_path, regen_cmd, md_bin=None):
 
         def _json_body(self):
             n = int(self.headers.get("Content-Length", 0))
+            # /api/import legitimately carries a whole base64 document, so the cap is
+            # generous — but unbounded means one request can pin the process's memory.
+            if n > MAX_BODY:
+                raise ApiErr(413, f"body too large ({n} > {MAX_BODY})")
             return json.loads(self.rfile.read(n) or b"{}")
 
         def do_GET(self):
@@ -318,6 +355,8 @@ def make_handler(store, atlas_path, regen_cmd, md_bin=None):
                 rel = parse_qs(u.query).get("path", [""])[0]
                 try:
                     return self._send(200, store.read(rel))
+                except ApiErr as e:
+                    return self._send(e.code, {"ok": False, "error": e.msg})
                 except Exception as e:
                     return self._send(400, {"ok": False, "error": str(e)})
             return self._send(404, {"ok": False, "error": "no route"})
@@ -328,7 +367,8 @@ def make_handler(store, atlas_path, regen_cmd, md_bin=None):
                 d = self._json_body()
                 if u.path == "/api/save":
                     return self._send(200, store.save(d["path"], d.get("body", ""),
-                                                       title=d.get("title"), tags=d.get("tags")))
+                                                       title=d.get("title"), tags=d.get("tags"),
+                                                       mtime=d.get("mtime"), force=d.get("force")))
                 if u.path == "/api/rename":
                     return self._send(200, store.rename(d["path"], d["title"]))
                 if u.path == "/api/tags":
@@ -349,6 +389,8 @@ def make_handler(store, atlas_path, regen_cmd, md_bin=None):
                     return self._send(200, {"ok": r.returncode == 0, "rc": r.returncode,
                                             "err": r.stderr[-400:]})
                 return self._send(404, {"ok": False, "error": "no route"})
+            except ApiErr as e:
+                return self._send(e.code, {"ok": False, "error": e.msg})
             except KeyError as e:
                 return self._send(400, {"ok": False, "error": f"missing field {e}"})
             except Exception as e:
