@@ -113,6 +113,24 @@ class Store:
     def __init__(self, vault):
         self.vault = Path(vault).resolve()
 
+    def search_log(self, rec):
+        """Append one search event as JSONL next to the vault — never inside it.
+
+        The page cannot write to disk on its own, so this is the only way a real search
+        history survives a reload. It is diagnostics, not content: it goes to a dotfile
+        beside the notes so it never becomes a node, never syncs as a note, and can be
+        deleted without touching the vault. Nothing here ever writes a LINK — a link is
+        only created when the user accepts one.
+        """
+        if not isinstance(rec, dict):
+            raise Bad(400, "record must be an object")
+        keep = {k: rec.get(k) for k in ("q", "rank", "id", "shown", "miss", "ts")}
+        keep["q"] = str(keep.get("q") or "")[:200]
+        path = self.vault.parent / (self.vault.name + ".search-log.jsonl")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(keep, ensure_ascii=False) + "\n")
+        return {"ok": True}
+
     def resolve(self, rel):
         """rel → abs .md ВНУТРИ vault; иначе ValueError (защита от обхода)."""
         rel = (rel or "").lstrip("/")
@@ -365,6 +383,8 @@ def make_handler(store, atlas_path, regen_cmd, md_bin=None):
             u = urlparse(self.path)
             try:
                 d = self._json_body()
+                if u.path == "/api/searchlog":
+                    return self._send(200, store.search_log(d))
                 if u.path == "/api/save":
                     return self._send(200, store.save(d["path"], d.get("body", ""),
                                                        title=d.get("title"), tags=d.get("tags"),

@@ -64,7 +64,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.16.0"  # measured default embedder + lexical fusion + per-corpus threshold calibration
+VERSION = "2.17.0"  # search-miss log, pool dice, hover-peek HUD над пинами
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
