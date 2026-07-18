@@ -214,7 +214,7 @@
   /* the card is a column: header pinned, everything else in ONE scroll region. The body used
      to carry its own 42vh scroller, so a long note scrolled inside a card that itself grew
      past the viewport — two scrollbars, neither reaching the links below. */
-  .hpcard{display:flex;flex-direction:column;max-height:78vh}
+  .hpcard{display:flex;flex-direction:column;max-height:78vh}   /* fallback; hpFit() caps it to the space actually below the card */
   .hpcard .hphd{flex:none}
   .hpcard .hpscroll{overflow:auto;min-height:0;overscroll-behavior:contain}
   .hpcard .hpbody{margin-top:8px;line-height:1.5;font-size:11.5px;color:var(--ink-2);border-top:1px solid var(--grid);padding-top:6px}
@@ -2125,6 +2125,8 @@ canvas.addEventListener('mousemove', ev => {
   const n = pick(ev.clientX, ev.clientY);
   if (n !== hovered) { hovered = n; if (n) tipNode(n); requestDraw(); }
   if (toggles.magnet) requestDraw();
+  // a node whose card is already open does not need a tooltip repeating the same content
+  if (n && hoverPins.some(h => h.id === n.id)) { tipHide(); return; }
   if (n) tipPlace(ev); else tipHide();
 });
 canvas.addEventListener('mouseleave', () => { cursorW = null; hovered = null; tipHide(); requestDraw(); });
@@ -2177,6 +2179,7 @@ function hpCloseTop() {
 function hpClose(h) {
   if (!h || h.closing) return;
   h.closing = true;
+  if (hpTetherId === h.id) { hpTetherId = null; requestDraw(); }
   h.card.classList.remove('in');
   setTimeout(() => {
     h.card.remove();
@@ -2187,10 +2190,13 @@ function hpClose(h) {
 }
 function hpFixedRects(exc){var o=[];for(var i=0;i<hoverPins.length;i++){var h=hoverPins[i];if(h.card===exc)continue;if(h.card.style.position!=='fixed')continue;o.push(h.card.getBoundingClientRect());}return o;}
 const HP_AVOID_PANEL=false;/* #hp-anchor: true = floating pins dodge the open right #panel; false = allow deliberate placement over it */
-function hpPlace(card,x,y,exc,avoid){card.style.position='fixed';card.style.margin='0';var W=card.offsetWidth||322,H=card.offsetHeight||140,vw=window.innerWidth,vh=window.innerHeight,pad=6;var minX=14,maxX=Math.max(minX,vw-14-W),minY=56,maxY=Math.max(minY,vh-52-H);x=x<minX?minX:(x>maxX?maxX:x);y=y<minY?minY:(y>maxY?maxY:y);if(avoid){var others=hpFixedRects(exc);for(var i=0;i<40;i++){var hit=null;for(var j=0;j<others.length;j++){var r=others[j];if(x<r.right+pad&&x+W>r.left-pad&&y<r.bottom+pad&&y+H>r.top-pad){hit=r;break;}}if(!hit)break;y=hit.bottom+pad;if(y>maxY){y=minY;x=x+Math.round(W*0.55);if(x>maxX){x=maxX;break;}}}}card.style.left=Math.round(x)+'px';card.style.top=Math.round(y)+'px';}
+// A card's height cap has to follow where the card SITS: a flat 78vh clips a card dropped
+// low on the screen, because the cap knows nothing about its top offset.
+function hpFit(card){var top=parseFloat(card.style.top)||card.getBoundingClientRect().top;card.style.maxHeight=Math.max(160,window.innerHeight-top-16)+'px';}
+function hpPlace(card,x,y,exc,avoid){card.style.position='fixed';card.style.margin='0';var W=card.offsetWidth||322,H=card.offsetHeight||140,vw=window.innerWidth,vh=window.innerHeight,pad=6;var minX=14,maxX=Math.max(minX,vw-14-W),minY=56,maxY=Math.max(minY,vh-52-H);x=x<minX?minX:(x>maxX?maxX:x);y=y<minY?minY:(y>maxY?maxY:y);if(avoid){var others=hpFixedRects(exc);for(var i=0;i<40;i++){var hit=null;for(var j=0;j<others.length;j++){var r=others[j];if(x<r.right+pad&&x+W>r.left-pad&&y<r.bottom+pad&&y+H>r.top-pad){hit=r;break;}}if(!hit)break;y=hit.bottom+pad;if(y>maxY){y=minY;x=x+Math.round(W*0.55);if(x>maxX){x=maxX;break;}}}}card.style.left=Math.round(x)+'px';card.style.top=Math.round(y)+'px';hpFit(card);}
 const HP_LS='atlas_hoverpins_v1';let hpRestoring=false;
 function hpSave(){if(hpRestoring)return;try{localStorage.setItem(HP_LS,JSON.stringify(hoverPins.map(h=>({id:h.id,l:h.card.style.left,t:h.card.style.top}))));}catch(e){}}
-function hpRestore(){let raw;try{raw=localStorage.getItem(HP_LS);}catch(e){return;}if(!raw)return;let arr;try{arr=JSON.parse(raw);}catch(e){return;}if(!Array.isArray(arr)||!arr.length)return;hpRestoring=true;try{for(var i=0;i<arr.length;i++){var it=arr[i];if(!it||!byId.has(it.id))continue;createHoverPin(byId.get(it.id));var h=hoverPins[hoverPins.length-1];if(h&&h.card&&it.l){h.card.style.position='fixed';h.card.style.margin='0';h.card.style.left=it.l;h.card.style.top=it.t;}}}finally{hpRestoring=false;}hpSave();}
+function hpRestore(){let raw;try{raw=localStorage.getItem(HP_LS);}catch(e){return;}if(!raw)return;let arr;try{arr=JSON.parse(raw);}catch(e){return;}if(!Array.isArray(arr)||!arr.length)return;hpRestoring=true;try{for(var i=0;i<arr.length;i++){var it=arr[i];if(!it||!byId.has(it.id))continue;createHoverPin(byId.get(it.id));var h=hoverPins[hoverPins.length-1];if(h&&h.card&&it.l){h.card.style.position='fixed';h.card.style.margin='0';h.card.style.left=it.l;h.card.style.top=it.t;hpFit(h.card);}}}finally{hpRestoring=false;}hpSave();}
 window.hpRestore=hpRestore;if(document.readyState==='complete'){setTimeout(function(){try{hpRestore();}catch(e){}},250);}else{window.addEventListener('load',function(){setTimeout(function(){try{hpRestore();}catch(e){}},250);});}
 // (hpDetectors removed: the pin's unlabelled count histogram «54 5 2 1 1» is now the
 // panel's own «рядом · детекторы · N» section, built by pnlCross)
@@ -2272,6 +2278,8 @@ function createHoverPin(n, ev) {
   hpSave();   // AFTER the push: saving before it persisted every pin except the one just made,
               // so a fresh pin never survived a reload unless the user happened to drag it
   hpRaise(card);   // a new pin opens on top of the stack, never under an older one
+  card.addEventListener('mouseenter', () => { hpTetherId = n.id; requestDraw(); });
+  card.addEventListener('mouseleave', () => { if (hpTetherId === n.id) { hpTetherId = null; requestDraw(); } });
   card.querySelector('[data-x]').onclick = (e) => { e.stopPropagation(); hpClose(h); };
   // Pointerdown anywhere on a card raises it. Two overlapping pins used to swallow each
   // other's controls silently — the ✕ you aimed at was simply under the other card.
@@ -2308,6 +2316,7 @@ function createHoverPin(n, ev) {
       const r = card.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
       const nx = Math.max(6, Math.min(r.left, vw - 46)), ny = Math.max(46, Math.min(r.top, vh - 42));
       card.style.left = Math.round(nx) + 'px'; card.style.top = Math.round(ny) + 'px';
+      hpFit(card);   // dropped low on the screen → the cap follows the card down
       hpSave();
     });
   })();
@@ -4705,6 +4714,34 @@ function paintFrame(g, opts) {
     }
     g.restore();
   }
+  g.restore();
+  drawPinTether(g);
+}
+// A floating card says nothing about WHICH dot it came from — with three cards open the
+// mapping lives only in the user's head. Hovering a card draws a hairline to its node and
+// rings it. Quiet by default (nothing is drawn until you point at a card), one relation at a
+// time, and it dies with the hover — the tie is answered exactly when it is asked for.
+let hpTetherId = null;
+function drawPinTether(g) {
+  if (!hpTetherId) return;
+  const h = hoverPins.find(p => p.id === hpTetherId);
+  const n = byId.get(hpTetherId);
+  if (!h || !n || n.x === undefined || !visible(n)) return;
+  const r = h.card.getBoundingClientRect();
+  const p = transform.apply([n.x, n.y]);
+  if (p[0] > r.left && p[0] < r.right && p[1] > r.top && p[1] < r.bottom) return;   // node under its own card: nothing to tie
+  // anchor on the card edge facing the node, so the line never crosses the card
+  const ax = Math.max(r.left, Math.min(p[0], r.right));
+  const ay = Math.max(r.top, Math.min(p[1], r.bottom));
+  g.save();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.strokeStyle = 'rgba(57,135,229,0.55)';
+  g.lineWidth = 1;
+  g.setLineDash([5, 4]);
+  g.beginPath(); g.moveTo(ax, ay); g.lineTo(p[0], p[1]); g.stroke();
+  g.setLineDash([]);
+  g.beginPath(); g.arc(p[0], p[1], 9, 0, 2 * Math.PI);
+  g.strokeStyle = 'rgba(57,135,229,0.9)'; g.lineWidth = 1.6; g.stroke();
   g.restore();
 }
 // tile-LOD threshold: from this zoom on, circles become cards (screen-constant font size = readable).
