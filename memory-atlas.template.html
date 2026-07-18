@@ -834,6 +834,11 @@ body.hudfold #hud .pw { display: none; }
   gap: 6px; padding: 6px 0 2px; margin-top: -2px; pointer-events: none;
   background: linear-gradient(to top, var(--page) 55%, transparent); }
 #hudFoot > * { pointer-events: auto; }
+/* ...but an explicit pointer-events:auto on a descendant SURVIVES pointer-events:none on the
+   ancestor. With the HUD faded out in reader mode, these invisible pills went on eating every
+   click in that strip — a transparent wall over the canvas. The hidden state has to win. */
+body.reader:not(.hudkeep) #hudFoot, body.reader:not(.hudkeep) #hudFoot > * { pointer-events: none; }
+body.panels-hidden #hudFoot > * { pointer-events: none; }
 #hudMore, #hudAuto {
   cursor: pointer; user-select: none; font: 10px var(--mono); letter-spacing: .04em;
   color: var(--muted); background: var(--surface); border: 1px solid var(--grid);
