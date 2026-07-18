@@ -122,7 +122,7 @@
   #panel.open { display: block; animation: panelIn .22s cubic-bezier(.2,.8,.25,1) both; }
   @keyframes panelIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
   #panel h2 { font-size: 14px; color: var(--ink); word-break: break-word; padding-right: 22px; line-height: 1.3; }
-  #panel .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0 10px; }
+  :is(#panel, .hpcard) .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0 10px; }
   .chip {
     display: inline-flex; align-items: center; gap: 5px;
     font: 10px var(--mono); letter-spacing: .04em;
@@ -131,22 +131,22 @@
   }
   .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
   .chip.ghostchip { border-color: var(--ghost); color: var(--ghost); }
-  #panel .meta { color: var(--muted); font: 10.5px/1.7 var(--mono); margin-bottom: 10px; }
-  #panel .desc {
+  :is(#panel, .hpcard) .meta { color: var(--muted); font: 10.5px/1.7 var(--mono); margin-bottom: 10px; }
+  :is(#panel, .hpcard) .desc {
     color: var(--ink-2); margin-bottom: 12px; white-space: pre-wrap;
     border-left: 2px solid var(--grid); padding-left: 10px; font-size: 12.5px;
   }
-  #panel h3 {
+  :is(#panel, .hpcard) h3 {
     font: 10px var(--mono); color: var(--muted); text-transform: uppercase;
     letter-spacing: .08em; margin: 12px 0 4px;
   }
-  #panel .lnk {
+  :is(#panel, .hpcard) .lnk {
     display: block; color: var(--accent); text-decoration: none;
     padding: 2px 6px; margin: 0 -6px; border-radius: 5px;
     word-break: break-all; cursor: pointer; font-size: 12px;
   }
-  #panel .lnk:hover { background: rgba(57,135,229,0.12); }
-  #panel .lnk .gm { color: var(--ghost); font-size: 10px; font-family: var(--mono); }
+  :is(#panel, .hpcard) .lnk:hover { background: rgba(57,135,229,0.12); }
+  :is(#panel, .hpcard) .lnk .gm { color: var(--ghost); font-size: 10px; font-family: var(--mono); }
   #panel .close {
     position: absolute; top: 10px; right: 12px; cursor: pointer;
     color: var(--muted); font-size: 15px; background: none; border: none;
@@ -162,9 +162,9 @@
     box-shadow: var(--shadow);
     animation: floatIn .16s cubic-bezier(.2,.85,.3,1.12) both;
   }
-  #tooltip .tmeta, .hpcard .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 3px; }
+  #tooltip .tmeta { color: var(--muted); font: 10px var(--mono); margin-top: 3px; }
   #tooltip .tg-mark { color: var(--ghost); font: 10px var(--mono); }
-  #tooltip .tdesc, .hpcard .tdesc {
+  #tooltip .tdesc {
     color: var(--ink-2); font-size: 11.5px; line-height: 1.45; margin-top: 5px;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   }
@@ -176,41 +176,66 @@
   }
   #panel .bodysnip { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px;
     border-left: 2px solid var(--grid); padding-left: 8px; }
-  #tooltip .ttags, .hpcard .ttags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  #tooltip .ttags .tt, .hpcard .ttags .tt {
+  #tooltip .ttags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  #tooltip .ttags .tt {
     display: inline-flex; align-items: center; gap: 4px; font: 9.5px var(--mono);
     padding: 1px 6px; border-radius: 10px; border: 1px solid var(--grid); color: var(--ink-2);
   }
-  #tooltip .ttags .tt .sw, .hpcard .ttags .tt .sw { width: 6px; height: 6px; border-radius: 50%; }
-  #tooltip .tlinks, .hpcard .tlinks {
+  #tooltip .ttags .tt .sw { width: 6px; height: 6px; border-radius: 50%; }
+  #tooltip .tlinks {
     color: var(--muted); font: 10px/1.5 var(--mono); margin-top: 4px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 336px;
   }
-  #tooltip .tlinks b, .hpcard .tlinks b { color: var(--ink-2); font-weight: 500; }
+  #tooltip .tlinks b { color: var(--ink-2); font-weight: 500; }
   /* #9 hover-pin card = tooltip design language (task 10: pins inherit mouse-hover design) */
   .hpcard{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.07)),rgba(20,20,19,0.64);backdrop-filter:blur(20px) saturate(1.18);-webkit-backdrop-filter:blur(20px) saturate(1.18);border:1px solid var(--border-hi);border-radius:10px;padding:9px 12px;
     font-size:12.5px;color:var(--ink);pointer-events:auto;box-shadow:0 10px 34px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.07);opacity:0;transform:translateY(7px) scale(.997);filter:blur(1.2px);
     transition:opacity .38s cubic-bezier(.2,.75,.2,1),transform .38s cubic-bezier(.2,.75,.2,1),filter .38s cubic-bezier(.2,.75,.2,1),border-color .3s}
   .hpcard.in{opacity:1;transform:none;filter:none}
-  .hpcard .hphd{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer}
+  .hpcard .hphd{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:grab}
+  .hpcard.dragging .hphd{cursor:grabbing}
   .hpcard .hphd b{font-weight:600}
-  .hpcard .hpx{cursor:pointer;opacity:.55;transition:opacity .15s}
-  .hpcard .hphctl{display:inline-flex;align-items:center;gap:9px}
-  .hpcard .hpi{cursor:pointer;opacity:.5;transition:opacity .15s;font-size:12px;line-height:1}
-  .hpcard .hpi:hover{opacity:1}
-  .hpcard .hpdet{display:flex;flex-wrap:wrap;gap:9px;margin-top:5px}
-  .hpcard .hpdet .hpd{display:inline-flex;align-items:center;gap:4px;font:10px var(--mono);color:var(--ink-2)}
-  .hpcard .hptags .ttx{cursor:pointer;margin-left:3px;opacity:.55}
-  .hpcard .hptags .ttx:hover{opacity:1;color:var(--accent)}
-  .hpcard .hptags .ttadd{cursor:pointer;border-style:dashed;opacity:.7}
-  .hpcard .hptags .ttadd:hover{opacity:1;color:var(--accent)}
-  .hpcard.folded .hpbody,.hpcard.folded .tdesc,.hpcard.folded .tlinks,.hpcard.folded .hpdet,.hpcard.folded .hptags{display:none}
+  /* ✕ and ▾ were 13px glyphs with no padding — a coin-flip target on a card you are also
+     allowed to drag. Same glyph, a 22px square to aim at, and the hit area is the button. */
+  .hpcard .hphctl{display:inline-flex;align-items:center;gap:2px;margin-right:-4px}
+  .hpcard .hpx,.hpcard .hpi{cursor:pointer;opacity:.5;transition:opacity .15s,background .15s;font-size:12px;line-height:1;
+    width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px}
+  .hpcard .hpx:hover,.hpcard .hpi:hover{opacity:1;background:rgba(255,255,255,.08)}
+  .hpcard .hpx:hover{color:#e66767}
+  .hpcard .hpx:focus-visible,.hpcard .hpi:focus-visible{outline:2px solid var(--accent);outline-offset:1px;opacity:1}
+  /* raise-to-front acknowledges itself: one accent pulse, no layout move */
+  .hpcard.nudge{animation:hpNudge .42s cubic-bezier(.2,.8,.3,1) both}
+  @keyframes hpNudge{0%{box-shadow:0 10px 34px rgba(0,0,0,.55),0 0 0 0 var(--accent)}
+    45%{box-shadow:0 10px 34px rgba(0,0,0,.55),0 0 0 3px var(--accent-dim)}
+    100%{box-shadow:0 10px 34px rgba(0,0,0,.55),0 0 0 0 transparent}}
+  @media (prefers-reduced-motion:reduce){.hpcard.nudge{animation:none;border-color:var(--accent)}}
+  .hpcard.folded .hpscroll{display:none}
   .hpcard .hpx:hover{opacity:1}
-  .hpcard .hpbody{margin-top:8px;max-height:42vh;overflow:auto;line-height:1.5;font-size:11.5px;color:var(--ink-2);border-top:1px solid var(--grid);padding-top:6px}
-  .hpcard .tlinks a{color:var(--accent);cursor:pointer}
-  .hpcard .hpact{margin-top:9px;display:flex;gap:6px}
-  .hpcard .hpact .abtn{flex:1;border-color:var(--accent);color:var(--ink)}
+  /* the card is a column: header pinned, everything else in ONE scroll region. The body used
+     to carry its own 42vh scroller, so a long note scrolled inside a card that itself grew
+     past the viewport — two scrollbars, neither reaching the links below. */
+  .hpcard{display:flex;flex-direction:column;max-height:78vh}
+  .hpcard .hphd{flex:none}
+  .hpcard .hpscroll{overflow:auto;min-height:0;overscroll-behavior:contain}
+  .hpcard .hpbody{margin-top:8px;line-height:1.5;font-size:11.5px;color:var(--ink-2);border-top:1px solid var(--grid);padding-top:6px}
+  /* the pin renders the panel's blocks — trim their panel-sized spacing to a 322px card */
+  .hpcard .acts{margin:6px 0 8px}
+  .hpcard h3{margin:10px 0 3px}
+  .hpcard .meta{margin-bottom:7px}
+  .hpcard .desc{margin-bottom:8px}
+  .hpcard .lnkmore{color:var(--muted);font:10px var(--mono);padding:2px 0 0}
+  .hpcard .chips{margin:7px 0 6px}
   #hoverpins{position:fixed;inset:0;z-index:12;pointer-events:none}
+  /* pins are GRAPH artifacts: on browse/dash they hung over the reader pane. Fade the whole
+     stack away (container-level, not per-card — card opacity is what used to flicker text),
+     positions survive, returning to the graph fades them back in place. */
+  #hoverpins.away{opacity:0;visibility:hidden;transition:opacity .3s cubic-bezier(.2,.75,.2,1),visibility 0s .3s}
+  /* NOTE: hpZoomSync() writes --hpz on every zoom event, but since the aero-glass rewrite
+     nothing READS it — zoom-transparency is dead code, not a working feature. Left dead on
+     purpose: reviving it as container opacity would fade the TEXT too, which is exactly what
+     moving translucency into the background was meant to stop. Reviving it properly means
+     driving the background alpha alone. */
+  #hoverpins{transition:opacity .3s cubic-bezier(.2,.75,.2,1)}
   /* hover-pins: translucency lives in the card background (aero glass) — never element-opacity, so text never flickers on enter/leave and the right bar no longer dims them */
   @media (prefers-reduced-motion:reduce){.hpcard{transition:none;opacity:1;transform:none;filter:none}#hoverpins{transition:none}}
   @keyframes floatIn { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: none; } }
@@ -261,14 +286,19 @@
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-radius: 8px; padding: 5px 12px; font: 10.5px var(--mono);
   }
-  #bar button:hover { border-color: var(--accent); color: var(--ink); }
+  #bar button:hover { border-color: var(--accent); color: var(--ink); box-shadow: 0 0 8px rgba(57,135,229,.16); }
   /* bar groups: [camera] [data] [settings] — segments, not a scatter of identical buttons
      (#bar-scoped: the id keeps these ahead of the #bar button base rule) */
   .bgrp { display: flex; pointer-events: none; flex: none; }
-  #bar .bgrp button { border-radius: 0; }
+  #bar .bgrp button { border-radius: 0; position: relative; }
   #bar .bgrp button:first-child { border-radius: 8px 0 0 8px; }
   #bar .bgrp button:last-child { border-radius: 0 8px 8px 0; }
-  #bar .bgrp button + button { border-left-width: 0; }
+  /* segments overlap by one border instead of dropping the left one: a dropped border left
+     the hovered button's LEFT edge painted by the grey neighbour, so the accent hover ring
+     was open on that side ("левая серая кнопка перекрывает левый сайд глоу"). Overlap + a
+     hover z-index draws the full ring of the hovered segment over both neighbours. */
+  #bar .bgrp button + button { margin-left: -1px; }
+  #bar .bgrp button:hover, #bar .bgrp button:focus-visible { z-index: 2; }
   /* narrow viewport (S13): keys row drops, status shrinks — bar never wraps */
   @media (max-width: 1240px) {
     #keys { display: none; }
@@ -341,7 +371,7 @@
   #panel .desc { font-size: 13.5px; line-height: 1.55; }
   #panel .lnk { font-size: 12.5px; }
   #panel .meta { font-size: 11px; }
-  #panel .taglinks { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 8px; }
+  :is(#panel, .hpcard) .taglinks { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 8px; }
 
   /* ---- view tabs (graph / browse) ---- */
   #viewtabs {
@@ -522,22 +552,22 @@
     letter-spacing: .07em; text-transform: uppercase; margin-bottom: 3px;
   }
   /* panel action buttons + link suppress */
-  #panel .acts { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 10px; }
+  :is(#panel, .hpcard) .acts { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 10px; }
   #panel .abtn, .hpcard .abtn {
     cursor: pointer; border: 1px solid var(--grid); background: none; color: var(--ink-2);
     border-radius: 6px; font: 10px var(--mono); padding: 3px 8px;
   }
   #panel .abtn:hover, .hpcard .abtn:hover { border-color: var(--accent); color: var(--ink); }
   #panel .abtn.on { border-color: var(--accent); color: var(--ink); background: rgba(57,135,229,0.12); }
-  #panel .lnkrow { display: flex; align-items: center; flex-wrap: wrap; }
-  #panel .lnkrow .lnk { flex: 1; }
+  :is(#panel, .hpcard) .lnkrow { display: flex; align-items: center; flex-wrap: wrap; }
+  :is(#panel, .hpcard) .lnkrow .lnk { flex: 1; }
   #panel .lnkrow .neg { visibility: hidden; cursor: pointer; color: var(--muted); font-size: 11px; padding: 0 5px; }
   #panel .lnkrow:hover .neg { visibility: visible; }
   /* link preview: 1-line target desc — "what's in neighbors" reads from the list, not just the name */
-  #panel .lnkrow .lnkdesc { flex-basis: 100%; color: var(--muted); font-size: 10.5px; line-height: 1.35;
+  :is(#panel, .hpcard) .lnkrow .lnkdesc { flex-basis: 100%; color: var(--muted); font-size: 10.5px; line-height: 1.35;
     padding: 0 5px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-  #panel .lnkrow .kdot { width: 12px; height: 0; border-top: 2px solid; margin-right: 5px; flex: none; }
-  #panel .lnkrow .ksc { color: var(--muted); font: 10px var(--mono); margin-left: 4px; }
+  :is(#panel, .hpcard) .lnkrow .kdot { width: 12px; height: 0; border-top: 2px solid; margin-right: 5px; flex: none; }
+  :is(#panel, .hpcard) .lnkrow .ksc { color: var(--muted); font: 10px var(--mono); margin-left: 4px; }
   #panel .lnkrow .neg:hover { color: #e66767; }
   #panel .zsel { background: rgba(0,0,0,0.35); color: var(--ink-2); border: 1px solid var(--grid); border-radius: 6px; font: 10px var(--mono); padding: 1px 3px; }
   /* V = hide panels, context stays (principle #4) */
@@ -2130,6 +2160,31 @@ window.hpZoomSync = hpZoomSync;
 // floating preview card in a top-right stack (node-pin marker stays on the graph / pinsCard
 // top-left; the two artifacts never collide). Polish (zoom-transparency, magnet-hover) = later slices.
 const hoverPins = [];
+// Raising a card used to mean re-appending it to the stack. Moving a DOM node between
+// pointerup and click cancels the click, so every raise ate the next click on that card —
+// including the one on ✕. A z-index counter raises without touching the tree.
+let hpZTop = 12;
+function hpRaise(card) { card.style.zIndex = ++hpZTop; }
+// Close the topmost pin, then the next: Esc walks the stack down instead of hunting for a
+// 13px ✕ under a card that happens to overlap it.
+function hpCloseTop() {
+  if (!hoverPins.length) return false;
+  let top = hoverPins[0];
+  for (const h of hoverPins) if ((+h.card.style.zIndex || 0) >= (+top.card.style.zIndex || 0)) top = h;
+  hpClose(top);
+  return true;
+}
+function hpClose(h) {
+  if (!h || h.closing) return;
+  h.closing = true;
+  h.card.classList.remove('in');
+  setTimeout(() => {
+    h.card.remove();
+    const i = hoverPins.indexOf(h);
+    if (i >= 0) hoverPins.splice(i, 1);
+    hpSave();
+  }, 380);
+}
 function hpFixedRects(exc){var o=[];for(var i=0;i<hoverPins.length;i++){var h=hoverPins[i];if(h.card===exc)continue;if(h.card.style.position!=='fixed')continue;o.push(h.card.getBoundingClientRect());}return o;}
 const HP_AVOID_PANEL=false;/* #hp-anchor: true = floating pins dodge the open right #panel; false = allow deliberate placement over it */
 function hpPlace(card,x,y,exc,avoid){card.style.position='fixed';card.style.margin='0';var W=card.offsetWidth||322,H=card.offsetHeight||140,vw=window.innerWidth,vh=window.innerHeight,pad=6;var minX=14,maxX=Math.max(minX,vw-14-W),minY=56,maxY=Math.max(minY,vh-52-H);x=x<minX?minX:(x>maxX?maxX:x);y=y<minY?minY:(y>maxY?maxY:y);if(avoid){var others=hpFixedRects(exc);for(var i=0;i<40;i++){var hit=null;for(var j=0;j<others.length;j++){var r=others[j];if(x<r.right+pad&&x+W>r.left-pad&&y<r.bottom+pad&&y+H>r.top-pad){hit=r;break;}}if(!hit)break;y=hit.bottom+pad;if(y>maxY){y=minY;x=x+Math.round(W*0.55);if(x>maxX){x=maxX;break;}}}}card.style.left=Math.round(x)+'px';card.style.top=Math.round(y)+'px';}
@@ -2137,13 +2192,40 @@ const HP_LS='atlas_hoverpins_v1';let hpRestoring=false;
 function hpSave(){if(hpRestoring)return;try{localStorage.setItem(HP_LS,JSON.stringify(hoverPins.map(h=>({id:h.id,l:h.card.style.left,t:h.card.style.top}))));}catch(e){}}
 function hpRestore(){let raw;try{raw=localStorage.getItem(HP_LS);}catch(e){return;}if(!raw)return;let arr;try{arr=JSON.parse(raw);}catch(e){return;}if(!Array.isArray(arr)||!arr.length)return;hpRestoring=true;try{for(var i=0;i<arr.length;i++){var it=arr[i];if(!it||!byId.has(it.id))continue;createHoverPin(byId.get(it.id));var h=hoverPins[hoverPins.length-1];if(h&&h.card&&it.l){h.card.style.position='fixed';h.card.style.margin='0';h.card.style.left=it.l;h.card.style.top=it.t;}}}finally{hpRestoring=false;}hpSave();}
 window.hpRestore=hpRestore;if(document.readyState==='complete'){setTimeout(function(){try{hpRestore();}catch(e){}},250);}else{window.addEventListener('load',function(){setTimeout(function(){try{hpRestore();}catch(e){}},250);});}
-function hpDetectors(n){var by={};for(var i=0;i<edges.length;i++){var e=edges[i];if(e.source.id===n.id||e.target.id===n.id){var k=e.kind||'?';by[k]=(by[k]||0)+1;}}var keys=Object.keys(by);if(!keys.length)return '';keys.sort(function(a,b){return by[b]-by[a];});return '<div class="hpdet" title="'+T('рядом · детекторы')+'">'+keys.map(function(k){var st=(typeof EDGE_STYLES!=='undefined'&&EDGE_STYLES[k])||{};return '<span class="hpd" title="'+k+'"><span class="kdot" style="border-color:'+(st.c||'#8b8983')+';border-top-style:'+(st.dash?'dashed':'solid')+'"></span>'+by[k]+'</span>';}).join('')+'</div>';}
+// (hpDetectors removed: the pin's unlabelled count histogram «54 5 2 1 1» is now the
+// panel's own «рядом · детекторы · N» section, built by pnlCross)
 function hpEsc(t){return (t||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function pushPinTags(n,tags,card){n.tags=tags.slice();if(typeof byId!=='undefined'&&byId.get(n.id))byId.get(n.id).tags=tags.slice();renderPinTags(card,n);if(window.hpTagApi&&n.path){window.hpTagApi(n.path,tags).then(function(r){if(typeof toast==='function')toast(r&&r.ok?T('🏷 сохранено'):T('🏷 локально (нет сервера)'));});}else if(typeof toast==='function'){toast(T('🏷 локально'));}}
-function renderPinTags(card,n){var box=card.querySelector('[data-tagbox]');if(!box)return;var editable=/^https?:$/.test(location.protocol);var tags=(n.tags||[]).slice();box.innerHTML=tags.map(function(t,ix){return '<span class="tt"><span class="sw" style="background:'+(typeof tagColor==='function'?tagColor(t):'#888')+'"></span>'+hpEsc(t)+(editable?'<span class="ttx" data-rm="'+ix+'">×</span>':'')+'</span>';}).join('')+(editable?'<span class="tt ttadd" data-add title="'+T('добавить тег')+'">＋</span>':'');if(!editable)return;box.querySelectorAll('[data-rm]').forEach(function(el){el.onclick=function(ev){ev.stopPropagation();var t2=tags.slice();t2.splice(+el.dataset.rm,1);pushPinTags(n,t2,card);};});var add=box.querySelector('[data-add]');if(add)add.onclick=function(ev){ev.stopPropagation();var v=prompt(T('тег:'));if(v&&v.trim()){var t2=tags.slice();t2.push(v.trim());pushPinTags(n,t2,card);}};}
+// Pin tags render as the panel's chips and carry the panel's contract: a click on the chip
+// toggles the LENS (they used to be inert `.tt` pills — «теги функционал не наследуют»).
+// The ✕ still removes at the source: a frontmatter tag goes back to disk through the editor
+// API, an own tag goes to the local overlay. ＋ writes to disk when the editor is live.
+function renderPinTags(card, n) {
+  const box = card.querySelector('[data-tagbox]'); if (!box) return;
+  const editable = /^https?:$/.test(location.protocol);
+  const fm = (n.tags || []).slice();
+  box.innerHTML = nodeTags(n).map(function (t) {
+    const own = isUserTag(n, t), disk = fm.indexOf(t) >= 0;
+    const x = own ? '<span class="tx" data-deltag="' + hpEsc(t) + '" title="' + T('снять свой тег') + '">✕</span>'
+      : (disk && editable) ? '<span class="tx" data-rmtag="' + hpEsc(t) + '" title="' + T('снять тег') + '">✕</span>' : '';
+    return '<span class="tag' + (tagSel.has(t) ? ' on' : '') + '" data-tag="' + hpEsc(t) + '"><span class="sw" style="background:'
+      + (typeof tagColor === 'function' ? tagColor(t) : '#888') + '"></span>' + hpEsc(t) + x + '</span>';
+  }).join('') + '<span class="tag addtag" data-add title="' + T('добавить тег') + '">＋</span>';
+  box.querySelectorAll('[data-rmtag]').forEach(function (el) {
+    el.onclick = function (ev) { ev.stopPropagation(); pushPinTags(n, fm.filter(function (x) { return x !== el.dataset.rmtag; }), card); };
+  });
+  const add = box.querySelector('[data-add]');
+  if (add) add.onclick = function (ev) {
+    ev.stopPropagation();
+    const v = prompt(T('тег:'));
+    if (!v || !v.trim()) return;
+    if (editable) pushPinTags(n, fm.concat([v.trim()]), card);
+    else { addTagTo([n.id], v.trim()); renderPinTags(card, n); }   // no server → the panel's own overlay tag
+  };
+}
 function createHoverPin(n, ev) {
   const ex = hoverPins.find(h => h.id === n.id);
-  if (ex) { if (ex.card.parentNode) ex.card.parentNode.appendChild(ex.card); return; }   // dup → raise to top
+  if (ex) { hpRaise(ex.card); ex.card.classList.add('nudge'); setTimeout(() => ex.card.classList.remove('nudge'), 420); return; }   // dup → raise + say so
   const esc = t => (t || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   let box = document.getElementById('hoverpins');
   if (!box) {
@@ -2154,39 +2236,51 @@ function createHoverPin(n, ev) {
   }
   const raw = (typeof BODIES !== 'undefined' && BODIES[n.id]) ? String(BODIES[n.id]).replace(/^---[\s\S]*?---\s*/, '') : (n.desc || '');
   const bodyHtml = (typeof window.mdRender === 'function' && raw) ? window.mdRender(raw) : ('<p>' + esc(raw) + '</p>');
-  const lname = id => { const m = byId.get(id); return m ? (m.label || id) : id; };
-  const lrow = (ids, mark) => { const u = [...new Set((ids || []).filter(id => byId.has(id)))]; return u.length
-    ? '<div class="tlinks"><b>' + mark + u.length + '</b> '
-      + u.slice(0, 8).map(id => '<a data-go="' + esc(id) + '">' + esc(lname(id)) + '</a>').join(' · ')
-      + (u.length > 8 ? ' …' : '') + '</div>' : ''; };
-  const hpTags = (typeof nodeTags === 'function') ? nodeTags(n) : [];
   const card = document.createElement('div');
   card.className = 'hpcard';
+  // Same blocks as the right bar, in the right bar's order, through the shared pnl* builders:
+  // chips → actions → tags → meta → desc → body → links out/in → detector neighbours. The
+  // header keeps only window controls; the old unlabelled ⧉ became a named «⧉ id» action,
+  // which is what it always did — the icon alone did not say it («кнопки копи непонятно зачем»).
   card.innerHTML =
-    '<div data-hd class="hphd"><b>📍 ' + esc(n.label || n.id) + '</b><span class="hphctl"><span data-copy class="hpi" title="' + T('копировать') + '">⧉</span><span data-fold class="hpi" title="' + T('свернуть') + '">▾</span><span data-x class="hpx">✕</span></span></div>'
-    + '<div class="tmeta">' + esc(n.zone || '') + ' · ' + esc(n.type || '') + ' · deg ' + (n.degree || 0) + '</div>' + hpDetectors(n)
-    + (n.desc ? '<div class="tdesc">' + esc(n.desc) + '</div>' : '')
-    + '<div class="hpbody">' + bodyHtml + '</div>'
-    + '<div class="ttags hptags" data-tagbox></div>'
-    + lrow(outLinks.get(n.id), '→') + lrow(inLinks.get(n.id), '←')
-    + '<div class="hpact"><button data-bar class="abtn">⇥ ' + T('в бар') + '</button><button data-read class="abtn">▤ ' + T('читать') + '</button></div>';
+    '<div data-hd class="hphd"><b>📍 ' + esc(n.label || n.id) + '</b><span class="hphctl">'
+      + '<span data-fold class="hpi" title="' + T('свернуть') + '">▾</span><span data-x class="hpx" title="' + T('закрыть') + '">✕</span></span></div>'
+    + '<div class="hpscroll">'
+      + pnlChips(n)
+      + '<div class="acts">'
+        + '<button class="abtn" data-bar title="' + T('открыть в правом баре') + '">⇥ ' + T('в бар') + '</button>'
+        + '<button class="abtn" data-read>▤ ' + T('читать') + '</button>'
+        + '<button class="abtn" data-copy="' + esc(n.id) + '" title="' + T('копировать id') + '">⧉ id</button>'
+        + (n.path ? '<button class="abtn" data-copypath="1">⧉ path</button>' : '')
+        + '<button class="abtn" data-frame="1" title="' + T('подтянуть ноду+соседей в кадр (c)') + '">' + T('⌖ в кадр') + '</button>'
+      + '</div>'
+      + '<h3>' + T('теги · клик = линза') + '</h3><div class="taglinks hptags" data-tagbox></div>'
+      + pnlMeta(n, { short: true })
+      + (n.desc ? '<div class="desc">' + esc(n.desc) + '</div>' : '')
+      + '<div class="hpbody">' + bodyHtml + '</div>'
+      + pnlLinks(n, outLinks.get(n.id), 'links out', { cap: 6 })
+      + pnlLinks(n, inLinks.get(n.id), 'links in', { cap: 6 })
+      + pnlCross(n, { cap: 6 })
+    + '</div>';
   box.appendChild(card);
   hpZoomSync();
   card.style.width = '322px';
-  { const _sx = (ev && ev.clientX != null) ? ev.clientX - 24 : (window.innerWidth - 360); const _sy = (ev && ev.clientY != null) ? ev.clientY - 14 : 72; hpPlace(card, _sx, _sy, card, true); hpSave(); }
+  { const _sx = (ev && ev.clientX != null) ? ev.clientX - 24 : (window.innerWidth - 360); const _sy = (ev && ev.clientY != null) ? ev.clientY - 14 : 72; hpPlace(card, _sx, _sy, card, true); }
   requestAnimationFrame(() => card.classList.add('in'));
   const h = { id: n.id, card };
   hoverPins.push(h);
-  card.querySelector('[data-x]').onclick = (e) => {
-    e.stopPropagation();
-    card.classList.remove('in');
-    setTimeout(() => { card.remove(); const i = hoverPins.indexOf(h); if (i >= 0) hoverPins.splice(i, 1); hpSave(); }, 380);
-  };
+  hpSave();   // AFTER the push: saving before it persisted every pin except the one just made,
+              // so a fresh pin never survived a reload unless the user happened to drag it
+  hpRaise(card);   // a new pin opens on top of the stack, never under an older one
+  card.querySelector('[data-x]').onclick = (e) => { e.stopPropagation(); hpClose(h); };
+  // Pointerdown anywhere on a card raises it. Two overlapping pins used to swallow each
+  // other's controls silently — the ✕ you aimed at was simply under the other card.
+  card.addEventListener('pointerdown', () => hpRaise(card), true);
   (function () {   // header = drag to move (detach to fixed) OR click to wake; drag covers "corner" — drop it anywhere
     const hd = card.querySelector('[data-hd]');
     let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, down = false;
     hd.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('[data-x]')) return;   // ✕ is not a drag handle
+      if (e.target.closest('.hphctl')) return;   // ✕ ⧉ ▾ are controls, not a drag handle
       const r = card.getBoundingClientRect();
       sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; moved = false; down = true;
       card.style.width = r.width + 'px';
@@ -2196,14 +2290,20 @@ function createHoverPin(n, ev) {
     hd.addEventListener('pointermove', (e) => {
       if (!down) return;
       if (!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) < 4) return;   // threshold → distinguish click from drag
-      if (!moved) { moved = true; card.style.position = 'fixed'; card.style.zIndex = 6; card.style.margin = '0'; }
+      if (!moved) { moved = true; card.style.position = 'fixed'; card.style.margin = '0'; card.classList.add('dragging'); }
       card.style.left = (ox + e.clientX - sx) + 'px';
       card.style.top = (oy + e.clientY - sy) + 'px';
     });
     hd.addEventListener('pointerup', (e) => {
+      const wasDown = down;
       down = false; card.style.transition = '';
+      card.classList.remove('dragging');
+      // A pointerup over ✕/⧉/▾ must not touch the DOM: raising used to re-append the card,
+      // and moving a node between pointerup and click CANCELS the click — that is why the ✕
+      // never closed a pin (measured: card still in hoverPins after a real click).
+      if (!wasDown || e.target.closest('.hphctl')) return;
       try { hd.releasePointerCapture(e.pointerId); } catch (_) {}
-      if (!moved) { box.appendChild(card); card.style.borderColor = 'var(--accent)'; setTimeout(() => { card.style.borderColor = ''; }, 600); return; }
+      if (!moved) { hpRaise(card); card.classList.add('nudge'); setTimeout(() => card.classList.remove('nudge'), 420); return; }
       // drop where released — no magnet, no auto-collision; user arranges pins freely. clamp so header/✕ stay on-screen
       const r = card.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
       const nx = Math.max(6, Math.min(r.left, vw - 46)), ny = Math.max(46, Math.min(r.top, vh - 42));
@@ -2212,12 +2312,100 @@ function createHoverPin(n, ev) {
     });
   })();
   renderPinTags(card, n);
-  { const cp = card.querySelector('[data-copy]'); if (cp) cp.onclick = (e) => { e.stopPropagation(); const t = (typeof BODIES !== 'undefined' && BODIES[n.id]) ? String(BODIES[n.id]) : (n.desc || ''); if (typeof copyText === 'function') copyText(t, T('нота')); else if (navigator.clipboard) navigator.clipboard.writeText(t); }; }
   { const fo = card.querySelector('[data-fold]'); if (fo) fo.onclick = (e) => { e.stopPropagation(); const f = card.classList.toggle('folded'); fo.textContent = f ? '▸' : '▾'; }; }
-  const bbar = card.querySelector('[data-bar]'); if (bbar) bbar.onclick = () => { const nn = (typeof byId !== 'undefined' && byId.get(n.id)) || n; if (typeof selectNode === 'function') selectNode(nn); };
-  const rb = card.querySelector('[data-read]'); if (rb) rb.onclick = () => { if (window.openInBrowse) openInBrowse(n.id); };
-  card.querySelectorAll('[data-go]').forEach(a => a.onclick = () => { if (window.openInBrowse) openInBrowse(a.dataset.go); });
+  // one delegated listener over the panel's OWN click vocabulary — a link, a tag-lens, «⧉ id»,
+  // «⌖ в кадр» behave here exactly as they behave in the right bar (pnlAction), plus the two
+  // pin-local verbs. Per-element onclick handlers are what let the two surfaces diverge.
+  card.addEventListener('click', (e) => {
+    const bar = e.target.closest('[data-bar]');
+    if (bar) { e.stopPropagation(); selectNode(byId.get(n.id) || n); return; }
+    const rd = e.target.closest('[data-read]');
+    if (rd) { e.stopPropagation(); if (window.openInBrowse) openInBrowse(n.id); return; }
+    if (pnlAction(e, byId.get(n.id) || n)) { e.stopPropagation(); renderPinTags(card, byId.get(n.id) || n); }   // lens/own-tag changed → repaint chips
+  });
   toast('📍 hover-pin: ' + (n.label || n.id));
+}
+
+// ==== shared section builders ================================================================
+// The right bar (#panel) and the hover-pin card render the SAME blocks through the SAME
+// classes. They used to be two hand-written copies, and the copies drifted: the pin lost the
+// <h3> section headers, replaced the named detector neighbours with a bare count histogram
+// («54 5 2 1 1», no names, no total) and its tag chips did not open the lens. One builder,
+// two mounts — a new section now lands on both surfaces or on neither.
+//   opts.neg  = per-row edge controls (panel only: hide/restore an auto edge, drop a user one)
+//   opts.cap  = row cap for the narrow pin card; the <h3> still carries the TRUE count
+const pnlEsc = t => (t || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function pnlSnip(t) {
+  return t && t.desc
+    ? `<div class="lnkdesc" data-id="${pnlEsc(t.id)}" title="${pnlEsc(t.desc)}">${pnlEsc(t.desc.slice(0, 110))}${t.desc.length > 110 ? '…' : ''}</div>` : '';
+}
+function pnlByRel(a, b) {
+  const ta = byId.get(a), tb = byId.get(b);
+  return ((ta && ta.ghost) ? 1 : 0) - ((tb && tb.ghost) ? 1 : 0) || ((tb ? tb.degree : 0) - (ta ? ta.degree : 0));
+}
+function pnlLinks(n, ids, title, opts) {
+  if (!ids || !ids.length) return '';
+  const o = opts || {};
+  const userPairs = o.neg ? new Set(overlay.edges.map(e => negKey(e.source, e.target))) : null;
+  const sorted = ids.slice().sort(pnlByRel);
+  const shown = o.cap ? sorted.slice(0, o.cap) : sorted;
+  return `<h3>${title} · ${ids.length}</h3>` + shown.map(id => {
+    const t = byId.get(id);
+    const isNeg = negSet.has(negKey(n.id, id));
+    const isUser = userPairs ? userPairs.has(negKey(n.id, id)) : false;
+    const ctl = o.neg
+      ? `<span class="neg" data-${isUser ? 'deluser' : isNeg ? 'restore' : 'neg'}="${pnlEsc(id)}" title="${isUser ? T('удалить user-ребро') : isNeg ? T('вернуть ребро') : T('negative: спрятать авто-ребро')}">${isNeg ? '↺' : '✕'}</span>` : '';
+    return `<div class="lnkrow"><a class="lnk" data-id="${pnlEsc(id)}" style="${isNeg ? 'opacity:.35;text-decoration:line-through' : ''}">${pnlEsc(t ? t.label : id)}${t && t.ghost ? ' <span class=gm>ghost</span>' : ''}${isUser ? ' <span class=gm>user</span>' : ''}</a>${ctl}${isNeg ? '' : pnlSnip(t)}</div>`;
+  }).join('') + (shown.length < sorted.length ? `<div class="lnkmore">… +${sorted.length - shown.length}</div>` : '');
+}
+// neighbours by DETECTORS (cross edges): scored by edge score/kind — "close by meaning/time/
+// tags" even where nobody wrote a wikilink.
+function pnlCrossNb(n) {
+  return edges
+    .filter(e => e.cross && !e.user && (e.source.id === n.id || e.target.id === n.id) && !negSet.has(negKey(e.source.id, e.target.id)))
+    .map(e => ({ t: e.source.id === n.id ? e.target : e.source, kind: e.kind, score: +e.score || 0 }))
+    .sort((a, b) => b.score - a.score || b.t.degree - a.t.degree);
+}
+function pnlCross(n, opts) {
+  const o = opts || {};
+  const all = pnlCrossNb(n);
+  if (!all.length) return '';
+  const shown = all.slice(0, o.cap || 10);
+  return `<h3>${T('рядом · детекторы')} · ${all.length}</h3>` + shown.map(({ t, kind, score }) => {
+    const st = EDGE_STYLES[kind] || {};
+    return `<div class="lnkrow"><span class="kdot" style="border-color:${st.c || '#8b8983'};border-top-style:${st.dash ? 'dashed' : 'solid'}" title="${pnlEsc(kind)}"></span>` +
+      `<a class="lnk" data-id="${pnlEsc(t.id)}">${pnlEsc(t.label)}${score ? `<span class="ksc">${score.toFixed(2)}</span>` : ''}</a>${pnlSnip(t)}</div>`;
+  }).join('') + (shown.length < all.length ? `<div class="lnkmore">… +${all.length - shown.length}</div>` : '');
+}
+// tags: chip = lens toggle (that is the panel's contract), ✕ drops an own tag, ＋ adds one.
+// opts.add = render the add-input (needs a unique input id per mount — panel owns #tagAdd)
+function pnlTags(n, opts) {
+  const o = opts || {};
+  return `<h3>${T('теги · клик = линза')}</h3>` +
+    `<div class="taglinks">${nodeTags(n).map(t =>
+      `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-tag="${pnlEsc(t)}"><span class="sw" style="background:${tagColor(t)}"></span>${pnlEsc(t)}${isUserTag(n, t) ? `<span class="tx" data-deltag="${pnlEsc(t)}" title="${T('снять свой тег')}">✕</span>` : ''}</span>`).join('')}${
+      (n.ghost || !o.add) ? '' : `<span class="tag addtag"><input id="${o.addId || 'tagAdd'}" list="tagDatalist" placeholder="${T('+ тег (t)')}" autocomplete="off" title="${T('enter = повесить тег; клавиша t фокусирует сюда')}"></span>`}</div>`;
+}
+function pnlChips(n, opts) {
+  const o = opts || {};
+  const zsel = o.zsel ? `<select class="zsel" id="zoverSel" title="${T('override зоны (порт layers.overrides)')}">${
+    ['auto', ...zoneOrder].map(z => `<option value="${z}"${(zOver[n.id] || 'auto') === z && (z !== 'auto' || !zOver[n.id]) ? ' selected' : ''}>${z}</option>`).join('')}</select>` : '';
+  return `<div class="chips">
+      <span class="chip"><span class="dot" style="background:${zoneColor(n.zone)}"></span>${pnlEsc(n.zone)}${zOver[n.id] ? ' ★' : ''}${zsel}</span>
+      <span class="chip">${pnlEsc(n.type)}</span>
+      ${n.ghost ? (n.prov && n.prov.gone
+        ? `<span class="chip ghostchip">👻 ${T(n.prov.archived ? 'ушла в архив' : 'файл СУЩЕСТВОВАЛ — удалён')} ${pnlEsc(n.prov.gone)}</span>`
+        : n.prov && n.prov.renamed_to
+          ? `<span class="chip ghostchip">👻 ${T('переехала')} → ${pnlEsc(n.prov.renamed_to)}</span>`
+          : T('<span class="chip ghostchip">ghost — нота не написана</span>')) : ''}
+    </div>`;
+}
+function pnlMeta(n, opts) {
+  const o = opts || {};
+  const path = n.path ? `${pnlEsc(n.path)} · ${(n.bytes / 1024).toFixed(1)}k · ${T('изменена')} ${n.age_days}${T('д')}${T(' назад')}<br>` : '';
+  const usage = o.short ? '' : ` · ⌾ ${usageCnt[n.id] || 0}×${n.usage !== undefined
+    ? ` · 🕸 ${n.usage}× ${T('в сессиях')}${n.last_touch_days !== undefined ? `, ${Math.round(n.last_touch_days)}${T('д')} ${T('с тача')}` : ''}${n.forgotten !== undefined ? ` · forgotten ${n.forgotten}` : ''}` : ''}`;
+  return `<div class="meta">${path}degree ${n.degree} (out ${outLinks.get(n.id).length} / in ${inLinks.get(n.id).length}) · cluster ${n.cluster}${usage}</div>`;
 }
 
 let selected = null;
@@ -2243,51 +2431,10 @@ function selectNode(n, opts) {
   const _pAnim = panel.dataset.pid !== n.id; panel.dataset.pid = n.id;
   panel.classList.toggle('anim', _pAnim);
   panel.classList.add('open');
-  const userPairs = new Set(overlay.edges.map(e => negKey(e.source, e.target)));
-  // target preview right in the row + scoring: ghost goes down, live ones — by target connectivity.
-  // "Clicking blind on just the filename" is closed: the row carries 1 line of desc, clicking it = navigate
-  const snip = t => t && t.desc
-    ? `<div class="lnkdesc" data-id="${esc(t.id)}" title="${esc(t.desc)}">${esc(t.desc.slice(0, 110))}${t.desc.length > 110 ? '…' : ''}</div>` : '';
-  const byRel = (a, b) => {
-    const ta = byId.get(a), tb = byId.get(b);
-    return ((ta && ta.ghost) ? 1 : 0) - ((tb && tb.ghost) ? 1 : 0) || ((tb ? tb.degree : 0) - (ta ? ta.degree : 0));
-  };
-  const links = (ids, title) => ids.length
-    ? `<h3>${title} · ${ids.length}</h3>` + ids.slice().sort(byRel).map(id => {
-        const t = byId.get(id);
-        const isUser = userPairs.has(negKey(n.id, id));
-        const isNeg = negSet.has(negKey(n.id, id));
-        return `<div class="lnkrow"><a class="lnk" data-id="${esc(id)}" style="${isNeg?'opacity:.35;text-decoration:line-through':''}">${esc(t?t.label:id)}${t&&t.ghost?' <span class=gm>ghost</span>':''}${isUser?' <span class=gm>user</span>':''}</a>` +
-          `<span class="neg" data-${isUser?'deluser':isNeg?'restore':'neg'}="${esc(id)}" title="${isUser?T('удалить user-ребро'):isNeg?T('вернуть ребро'):T('negative: спрятать авто-ребро')}">${isNeg?'↺':'✕'}</span>${isNeg?'':snip(t)}</div>`;
-      }).join('')
-    : '';
-  // neighbors by DETECTORS (cross edges): real scoring — edge score/kind; top-10.
-  // This is "close by meaning/time/tags" even when no wikilink was written
-  const crossNb = edges
-    .filter(e => e.cross && !e.user && (e.source.id === n.id || e.target.id === n.id) && !negSet.has(negKey(e.source.id, e.target.id)))
-    .map(e => ({ t: e.source.id === n.id ? e.target : e.source, kind: e.kind, score: +e.score || 0 }))
-    .sort((a, b) => b.score - a.score || b.t.degree - a.t.degree).slice(0, 10);
-  const crossSec = crossNb.length
-    ? `<h3>${T('рядом · детекторы')} · ${crossNb.length}</h3>` + crossNb.map(({ t, kind, score }) => {
-        const st = EDGE_STYLES[kind] || {};
-        return `<div class="lnkrow"><span class="kdot" style="border-color:${st.c || '#8b8983'};border-top-style:${st.dash ? 'dashed' : 'solid'}" title="${esc(kind)}"></span>` +
-          `<a class="lnk" data-id="${esc(t.id)}">${esc(t.label)}${score ? `<span class="ksc">${score.toFixed(2)}</span>` : ''}</a>${snip(t)}</div>`;
-      }).join('')
-    : '';
-  const zopts = ['auto', ...zoneOrder].map(z =>
-    `<option value="${z}"${(zOver[n.id] || 'auto') === z && (z !== 'auto' || !zOver[n.id]) ? ' selected' : ''}>${z}</option>`).join('');
+  // sections come from the shared pnl* builders above — the hover-pin mounts the same ones
   document.getElementById('panelBody').innerHTML = `
     <h2>${esc(n.label)}</h2>
-    <div class="chips">
-      <span class="chip"><span class="dot" style="background:${zoneColor(n.zone)}"></span>${esc(n.zone)}${zOver[n.id] ? ' ★' : ''}
-        <select class="zsel" id="zoverSel" title="${T('override зоны (порт layers.overrides)')}">${zopts}</select></span>
-      <span class="chip">${esc(n.type)}</span>
-      ${n.ghost ? (n.prov && n.prov.gone
-        ? `<span class="chip ghostchip">👻 ${T(n.prov.archived ? 'ушла в архив' : 'файл СУЩЕСТВОВАЛ — удалён')} ${esc(n.prov.gone)}</span>`
-        : n.prov && n.prov.renamed_to
-          ? `<span class="chip ghostchip">👻 ${T('переехала')} → ${esc(n.prov.renamed_to)}</span>`
-          : T('<span class="chip ghostchip">ghost — нота не написана</span>')) : ''}
-    </div>
+    ${pnlChips(n, { zsel: true })}
     <div class="acts">
       <button class="abtn" data-copy="${esc(n.id)}" title="${T('копировать id')}">⧉ id</button>
       ${n.path ? `<button class="abtn" data-copypath="1">⧉ path</button><button class="abtn" data-opened="1" title="${T('открыть в редакторе (пресет в ?)')}">↗ open</button>` : ''}
@@ -2298,13 +2445,9 @@ function selectNode(n, opts) {
       <button class="abtn" data-frame="1" title="${T('подтянуть ноду+соседей в кадр (c)')}">${T('⌖ в кадр')}</button>
       ${!n.ghost && n.age_days !== undefined && n.age_days !== null ? `<button class="abtn${timeLens && timeLens.id === n.id ? ' on' : ''}" data-timelens="1" title="${T('temporal-линза: ноты того же окна времени резко, остальное в блюр; повторный клик шире (2→7→30д), потом off')}">⌚ ${T('ровесники')}${timeLens && timeLens.id === n.id ? ` ±${timeLens.win}${T('д')}` : ''}</button>` : ''}
     </div>
-    <h3>${T('теги · клик = линза')}</h3>
-    <div class="taglinks">${nodeTags(n).map(t =>
-      `<span class="tag${tagSel.has(t) ? ' on' : ''}" data-tag="${esc(t)}"><span class="sw" style="background:${tagColor(t)}"></span>${esc(t)}${isUserTag(n, t) ? `<span class="tx" data-deltag="${esc(t)}" title="${T('снять свой тег')}">✕</span>` : ''}</span>`).join('')}${
-      n.ghost ? '' : `<span class="tag addtag"><input id="tagAdd" list="tagDatalist" placeholder="${T('+ тег (t)')}" autocomplete="off" title="${T('enter = повесить тег; клавиша t фокусирует сюда')}"></span>`}</div>
+    ${pnlTags(n, { add: true })}
     ${n.ghost ? '' : tagSuggest(n)}
-    <div class="meta">${n.path ? `${esc(n.path)} · ${(n.bytes/1024).toFixed(1)}k · ${T('изменена')} ${n.age_days}${T('д')}${T(' назад')}<br>` : ''}degree ${n.degree} (out ${outLinks.get(n.id).length} / in ${inLinks.get(n.id).length}) · cluster ${n.cluster} · ⌾ ${usageCnt[n.id] || 0}×${
-      n.usage !== undefined ? ` · 🕸 ${n.usage}× ${T('в сессиях')}${n.last_touch_days !== undefined ? `, ${Math.round(n.last_touch_days)}${T('д')} ${T('с тача')}` : ''}${n.forgotten !== undefined ? ` · forgotten ${n.forgotten}` : ''}` : ''}</div>
+    ${pnlMeta(n)}
     ${(() => {   // provenance block (git history via the feed): where the note came from / where the ghost went
       const p = n.prov;
       if (!p) return '';
@@ -2321,9 +2464,9 @@ function selectNode(n, opts) {
     ${n.ghost ? '' : `<span class="readbrowse" data-read="${esc(n.id)}">${T('▤ читать полностью')}</span>`}
     ${n.desc ? `<div class="desc">${esc(n.desc)}</div>` : ''}
     ${(() => { const b = searchHL.length ? hlSnip(n, searchHL, 460) : esc(bodySnip(n, 420)); return b ? `<div class="bodysnip">${b}</div>` : ''; })()}
-    ${links(outLinks.get(n.id), 'links out')}
-    ${links(inLinks.get(n.id), 'links in')}
-    ${crossSec}`;
+    ${pnlLinks(n, outLinks.get(n.id), 'links out', { neg: true })}
+    ${pnlLinks(n, inLinks.get(n.id), 'links in', { neg: true })}
+    ${pnlCross(n)}`;
   const zs = document.getElementById('zoverSel');
   if (zs) zs.addEventListener('change', () => setZoneOverride(n, zs.value));
   const ta = document.getElementById('tagAdd');
@@ -2342,16 +2485,18 @@ function selectNode(n, opts) {
   requestDraw();
 }
 document.getElementById('panelClose').addEventListener('click', () => selectNode(null));
-document.getElementById('panelBody').addEventListener('click', ev => {
-  const n = selected;
+// Click vocabulary of a node surface. Shared: the right bar delegates from #panelBody with
+// the SELECTED node, a hover-pin delegates from its own card with the node it pins. Same
+// data-* names, same effects — a pin's «⧉ path» and the bar's «⧉ path» cannot drift apart.
+function pnlAction(ev, n) {
   const a = ev.target.closest('.lnk,.lnkdesc');
-  if (a) { focusNode(a.dataset.id); return; }
+  if (a) { focusNode(a.dataset.id); return true; }
   const tg = ev.target.closest('.tag[data-tag]');   // tag from the panel → isolate
-  if (tg) { toggleTag(tg.dataset.tag); return; }
+  if (tg && !ev.target.closest('[data-deltag],[data-rmtag]')) { toggleTag(tg.dataset.tag); return true; }
   const rb = ev.target.closest('.readbrowse');   // fuse: graph → browse (full body)
-  if (rb && window.openInBrowse) { window.openInBrowse(rb.dataset.read); return; }
+  if (rb && window.openInBrowse) { window.openInBrowse(rb.dataset.read); return true; }
   const el = ev.target.closest('[data-copy],[data-copypath],[data-copydesc],[data-opened],[data-pinbtn],[data-hpin],[data-hide],[data-frame],[data-timelens],[data-neg],[data-deluser],[data-restore],[data-deltag],[data-addtag]');
-  if (!el || !n) return;
+  if (!el || !n) return false;
   if (el.dataset.copy) copyText(el.dataset.copy, 'id');
   else if (el.dataset.copypath) copyText(absPath(n), 'path');
   else if (el.dataset.copydesc) copyText(n.desc, 'desc');
@@ -2366,7 +2511,10 @@ document.getElementById('panelBody').addEventListener('click', ev => {
   else if (el.dataset.neg) addNegative(n.id, el.dataset.neg);
   else if (el.dataset.restore) removeNegative(n.id, el.dataset.restore);
   else if (el.dataset.deluser) removeUserEdge(n.id, el.dataset.deluser);
-});
+  else return false;
+  return true;
+}
+document.getElementById('panelBody').addEventListener('click', ev => { pnlAction(ev, selected); });
 function focusNode(id) {
   const n = byId.get(id);
   if (!n) return;
@@ -2636,6 +2784,7 @@ window.addEventListener('keydown', ev => {
     else if (settingsEl.classList.contains('on')) settingsEl.classList.remove('on');
     else if (dashEl.classList.contains('on')) window.showTab('graph');
     else if (document.activeElement === searchEl) { searchEl.value = ''; query = []; rebuildMatch(); renderLens(); hideDrop(); searchEl.blur(); }
+    else if (hpCloseTop()) { /* topmost floating card first — it is the thing on top of everything else */ }
     else if (selected) selectNode(null);
     else if (pinIds.length) setPins([]);                      // camera does NOT roll back (spatial memory)
     else if (tagSel.size) { tagSel.clear(); renderTags(); }
@@ -2908,6 +3057,33 @@ function setPins(ids) {
   renderPins();
   requestDraw();
 }
+// ---- what the user can actually SEE --------------------------------------------------
+// The canvas is full-window, but the left HUD, the pins card, the right bar and the bottom
+// bar sit on top of it. Centring on W/2,H/2 therefore parks a node under the open panel and
+// calls it "centred". These two helpers answer "where is the free middle" and "is this node
+// already in it", which is what every camera move should be asking before it fires.
+function freeRect() {
+  const pad = 24;
+  let l = 0, r = W, t = 0, b = H;
+  for (const id of ['hud', 'pinsCard']) {
+    const el = document.getElementById(id);
+    if (el && el.offsetParent !== null) { const q = el.getBoundingClientRect(); if (q.right < W * 0.5) l = Math.max(l, q.right); }
+  }
+  const p = document.getElementById('panel');
+  if (p && p.classList.contains('open')) { const q = p.getBoundingClientRect(); if (q.left > W * 0.5) r = Math.min(r, q.left); }
+  const bar = document.getElementById('bar');
+  if (bar && bar.offsetParent !== null) b = Math.min(b, bar.getBoundingClientRect().top);
+  const vt = document.getElementById('viewtabs');
+  if (vt && vt.offsetParent !== null) t = Math.max(t, vt.getBoundingClientRect().bottom);
+  return [l + pad, t + pad, Math.max(l + pad + 2, r - pad), Math.max(t + pad + 2, b - pad)];
+}
+function freeCenter() { const [x0, y0, x1, y1] = freeRect(); return [(x0 + x1) / 2, (y0 + y1) / 2]; }
+function nodeComfortablyInView(n, margin) {
+  const [x0, y0, x1, y1] = freeRect();
+  const p = transform.apply([n.x, n.y]);
+  const m = margin === undefined ? 48 : margin;   // hugging the panel edge does not count as visible
+  return p[0] > x0 + m && p[0] < x1 - m && p[1] > y0 + m && p[1] < y1 - m;
+}
 function togglePin(n, multi) {
   if (n.ghost) return;
   const has = pinSet.has(n.id);
@@ -2915,9 +3091,12 @@ function togglePin(n, multi) {
   if (multi) setPins(has ? pinIds.filter(i => i !== n.id) : [...pinIds, n.id]);
   else setPins(has && pinIds.length === 1 ? [] : [n.id]);
   toast(pinSet.has(n.id) ? ('📌 ' + (n.label || n.id)) : ('📌✕ ' + (n.label || n.id)));   // rmb-pin feedback: видно, сработал ли правый клик
-  // context delivery: camera sticky-tweens to the node; unpin does NOT bring the camera back; stay = don't touch
-  if (!has) d3.select(canvas).transition().duration(450).call(zoom.transform,   // rmb-pin ALWAYS pans to the node (context delivery) — decoupled from cam policy so cam=stay kills LMB-resize but keeps this move
-    d3.zoomIdentity.translate(W/2, H/2).scale(transform.k).translate(-n.x, -n.y));  // keep current zoom → pan, NOT resize ("двигает без смены камеры")
+  // Context delivery: pan the node into view — but ONLY if it is not already comfortably in
+  // view. It used to pan on every pin, so a note you had just framed by hand was yanked to
+  // centre for no gain: two camera moves for one intent. Panning to a node you can already
+  // see is motion without information. Unpin never rolls the camera back (spatial memory).
+  if (!has && !nodeComfortablyInView(n)) d3.select(canvas).transition().duration(450).call(zoom.transform,
+    d3.zoomIdentity.translate(freeCenter()[0], freeCenter()[1]).scale(transform.k).translate(-n.x, -n.y));   // keep the zoom → pan, NOT resize
 }
 function renderPins() {
   const card = $('pinsCard');
@@ -5463,6 +5642,7 @@ window.showTab = function (v) {
   document.getElementById('bar').style.display = (b || d) ? 'none' : '';
   canvas.style.display = (b || d) ? 'none' : '';
   mm.style.display = (b || d) ? 'none' : '';   // the minimap (z5) used to float OVER browse (z4)
+  { const hp = document.getElementById('hoverpins'); if (hp) hp.classList.toggle('away', b || d); }   // same class of bug as the minimap: hover-pins floated over the browse reader
   if (b || d) { selectNode(null); tooltip.style.display = 'none'; hideDrop(); sim.stop(); }
   else { sim.alpha(0.03).restart(); requestDraw(); }
   if (b && window.buildBrowse) window.buildBrowse();

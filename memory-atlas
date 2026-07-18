@@ -1602,6 +1602,30 @@ def run_self_test():
             self.assertIn(f'name="atlas-tpl" content="{VERSION}"', head,
                           "bump the atlas-tpl meta together with VERSION")
 
+        def test_panel_and_pin_share_one_builder(self):
+            # The right bar and the hover-pin card drifted because each hand-wrote its own
+            # markup: the pin ended up with no section headers, an unlabelled detector
+            # histogram and inert tag chips. They now mount the same pnl* builders, and the
+            # section markup must exist ONCE — a second literal is the drift coming back.
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            for builder in ("function pnlLinks(", "function pnlCross(", "function pnlTags(",
+                            "function pnlChips(", "function pnlMeta(", "function pnlAction("):
+                self.assertEqual(tpl.count(builder), 1, f"{builder} must exist exactly once")
+            self.assertEqual(tpl.count('<div class="lnkrow"><a class="lnk"'), 1,
+                             "link-row markup belongs to pnlLinks() only")
+            # ✕ on a pin used to be swallowed: the header's pointerup re-appended the card,
+            # and moving a node between pointerup and click cancels the click.
+            self.assertIn("e.target.closest('.hphctl')", tpl)
+            # segmented bar buttons overlap by a border instead of dropping the left one,
+            # otherwise the grey neighbour paints over the hovered button's accent ring
+            self.assertNotIn("#bar .bgrp button + button { border-left-width: 0; }", tpl)
+            self.assertIn("#bar .bgrp button + button { margin-left: -1px; }", tpl)
+            # pins are graph artifacts — they must leave the browse/dash reader alone
+            self.assertIn("#hoverpins.away", tpl)
+
         def test_validate_data_contract(self):
             # G4: broken --data used to render a dead page with exit 0
             ok = {"nodes": [{"id": "a"}, {"id": "b"}],
