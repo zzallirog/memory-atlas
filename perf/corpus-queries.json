@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Query sets for corpus-bench.py, keyed by corpus name then by query CLASS.",
+    "Only the synthetic corpora are checked in: a query string is vault vocabulary, and the",
+    "two real vaults this tool was developed against are private. To bench your own vault,",
+    "add an entry with the same five classes and point --corpus at your built page.",
+    "",
+    "one-term   — a word that hits a good fraction of ids",
+    "two-term   — two words that hit DIFFERENT notes; this is the class v2.18.0 returned an",
+    "             empty dropdown for while lighting the graph up",
+    "three-term — coverage ranking has something to sort by",
+    "punct-only — no letter or digit in the query. queryTerms() falls back to the raw parts,",
+    "             so a token like '.' that appears in every body drags the whole corpus into",
+    "             the pool. That is the worst case, and it is measured on purpose",
+    "no-hit     — empty pool, so the miss path and the semantic fallback are the ones timed"
+  ],
+  "synth-250": {
+    "one-term": "lattice",
+    "two-term": "north lattice",
+    "three-term": "deep harbor cinder",
+    "punct-only": ". .",
+    "no-hit": "zzzqqq wombat"
+  },
+  "synth-1000": {
+    "one-term": "lattice",
+    "two-term": "north lattice",
+    "three-term": "deep harbor cinder",
+    "punct-only": ". .",
+    "no-hit": "zzzqqq wombat"
+  },
+  "synth-4000": {
+    "one-term": "lattice",
+    "two-term": "north lattice",
+    "three-term": "deep harbor cinder",
+    "punct-only": ". .",
+    "no-hit": "zzzqqq wombat"
+  }
+}
