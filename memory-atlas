@@ -64,7 +64,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.17.0"  # search-miss log, pool dice, hover-peek HUD над пинами
+VERSION = "2.18.0"  # click-tested pass: HUD foot out of the scrollport, search softened, dice honest
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -627,8 +627,8 @@ def detect_structural(nodes, edges, max_motifs=5000):
 
 # semantic: embeddings via any OpenAI-style /api/embed endpoint, sha-cache.
 #
-# Default measured, not assumed. On a 2369-note non-English vault, scored against the
-# owner's own wikilinks (1899 pairs, hubs excluded), recall@10 was:
+# Default measured, not assumed. On a personal non-English vault of ~2.4k notes, scored
+# against hand-authored wikilinks as gold (hub links excluded), recall@10 was:
 #   embeddinggemma   0.171     bge-m3   0.161     nomic-embed-text  0.112
 #   char-3gram tf-idf 0.169  <- the null; nomic loses to it, the others only tie
 # So: multilingual default, and no model is worth a heavy download here — the ranking
@@ -800,7 +800,7 @@ def detect_semantic(nodes, vecs, threshold=None, top_k=3, within_zone=False):
     (глоссарий в одну папку), где без этого semantic даёт ноль рёбер.
 
     With LEXICAL_FUSE the char-3gram channel is fused in by reciprocal rank: measured
-    on a 2369-note vault the two channels shared only 58% of their top-10, and fusing
+    on a personal vault of ~2.4k notes the two channels shared only 58% of their top-10, and fusing
     them beat either alone (recall@10 0.179 vs 0.171/0.169, median rank 76 → 62)."""
     def l2(v):
         s = sum(x * x for x in v) ** 0.5 or 1.0

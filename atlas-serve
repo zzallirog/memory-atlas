@@ -405,8 +405,25 @@ def make_handler(store, atlas_path, regen_cmd, md_bin=None):
                 if u.path == "/api/regen":
                     if not regen_cmd:
                         return self._send(400, {"ok": False, "error": "no --regen-cmd"})
-                    r = subprocess.run(regen_cmd, shell=True, capture_output=True, text=True)
+                    cmd = regen_cmd
+                    # {"vecs": true} = rebuild WITH the embedding table, so semantic search /
+                    # the dice have something to rerank against. The page cannot rebuild itself
+                    # and has no business knowing the generator's argv, so it asks for the
+                    # CAPABILITY and the server owns how that maps onto the command. The flag is
+                    # appended only when absent — asking twice must not produce a duplicate arg.
+                    if d.get("vecs") and "--search-vecs" not in cmd:
+                        cmd = cmd + " --search-vecs"
+                    # Embedding 2000+ notes through Ollama is minutes, not seconds. Without an
+                    # explicit timeout this call inherits "wait forever", and the page's spinner
+                    # becomes indistinguishable from a hang.
+                    try:
+                        r = subprocess.run(cmd, shell=True, capture_output=True,
+                                           text=True, timeout=1800)
+                    except subprocess.TimeoutExpired:
+                        return self._send(200, {"ok": False, "rc": -1,
+                                                "err": "regen timed out after 1800s"})
                     return self._send(200, {"ok": r.returncode == 0, "rc": r.returncode,
+                                            "vecs": bool(d.get("vecs")), "cmd": cmd,
                                             "err": r.stderr[-400:]})
                 return self._send(404, {"ok": False, "error": "no route"})
             except ApiErr as e:
