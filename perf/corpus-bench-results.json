@@ -1,0 +1,312 @@
+{
+  "generated": "2026-07-18T21:06:31",
+  "reps": 7,
+  "chrome": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "results": [
+    {
+      "corpus": "synth-250",
+      "bytes": 2226205,
+      "nodes": 250,
+      "edges": 1000,
+      "has_vecs": true,
+      "queries": [
+        {
+          "class": "one-term",
+          "q": "lattice",
+          "ms_med": 2,
+          "ms_min": 0.9,
+          "ms_max": 2.5,
+          "pool": 10,
+          "matched": 62
+        },
+        {
+          "class": "two-term",
+          "q": "north lattice",
+          "ms_med": 1.5,
+          "ms_min": 1.2,
+          "ms_max": 2.5,
+          "pool": 10,
+          "matched": 161
+        },
+        {
+          "class": "three-term",
+          "q": "deep harbor cinder",
+          "ms_med": 1.7,
+          "ms_min": 1.3,
+          "ms_max": 2.1,
+          "pool": 10,
+          "matched": 155
+        },
+        {
+          "class": "punct-only",
+          "q": ". .",
+          "ms_med": 1,
+          "ms_min": 0.5,
+          "ms_max": 1.4,
+          "pool": 10,
+          "matched": 250
+        },
+        {
+          "class": "no-hit",
+          "q": "zzzqqq wombat",
+          "ms_med": 0.4,
+          "ms_min": 0.3,
+          "ms_max": 1.1,
+          "pool": 0,
+          "matched": 0
+        }
+      ],
+      "rerank": {
+        "ms": 2.099999964237213,
+        "vecs": 250,
+        "dim": 768,
+        "model": "embeddinggemma",
+        "sink": true
+      }
+    },
+    {
+      "corpus": "synth-1000",
+      "bytes": 6500704,
+      "nodes": 1000,
+      "edges": 3995,
+      "has_vecs": true,
+      "queries": [
+        {
+          "class": "one-term",
+          "q": "lattice",
+          "ms_med": 2.4,
+          "ms_min": 2.2,
+          "ms_max": 4.6,
+          "pool": 10,
+          "matched": 220
+        },
+        {
+          "class": "two-term",
+          "q": "north lattice",
+          "ms_med": 4.1,
+          "ms_min": 3.6,
+          "ms_max": 6.3,
+          "pool": 10,
+          "matched": 528
+        },
+        {
+          "class": "three-term",
+          "q": "deep harbor cinder",
+          "ms_med": 5.5,
+          "ms_min": 4.4,
+          "ms_max": 6.2,
+          "pool": 10,
+          "matched": 653
+        },
+        {
+          "class": "punct-only",
+          "q": ". .",
+          "ms_med": 1.3,
+          "ms_min": 1.1,
+          "ms_max": 2.7,
+          "pool": 10,
+          "matched": 1000
+        },
+        {
+          "class": "no-hit",
+          "q": "zzzqqq wombat",
+          "ms_med": 1.1,
+          "ms_min": 1,
+          "ms_max": 2,
+          "pool": 0,
+          "matched": 0
+        }
+      ],
+      "rerank": {
+        "ms": 2.600000023841858,
+        "vecs": 1000,
+        "dim": 768,
+        "model": "embeddinggemma",
+        "sink": true
+      }
+    },
+    {
+      "corpus": "synth-4000",
+      "bytes": 23638523,
+      "nodes": 4000,
+      "edges": 15996,
+      "has_vecs": true,
+      "queries": [
+        {
+          "class": "one-term",
+          "q": "lattice",
+          "ms_med": 7.7,
+          "ms_min": 6.7,
+          "ms_max": 11.4,
+          "pool": 10,
+          "matched": 947
+        },
+        {
+          "class": "two-term",
+          "q": "north lattice",
+          "ms_med": 14.8,
+          "ms_min": 13.8,
+          "ms_max": 17.6,
+          "pool": 10,
+          "matched": 2059
+        },
+        {
+          "class": "three-term",
+          "q": "deep harbor cinder",
+          "ms_med": 17.5,
+          "ms_min": 16.4,
+          "ms_max": 19.7,
+          "pool": 10,
+          "matched": 2478
+        },
+        {
+          "class": "punct-only",
+          "q": ". .",
+          "ms_med": 4.7,
+          "ms_min": 4.3,
+          "ms_max": 7.8,
+          "pool": 10,
+          "matched": 4000
+        },
+        {
+          "class": "no-hit",
+          "q": "zzzqqq wombat",
+          "ms_med": 5,
+          "ms_min": 4.8,
+          "ms_max": 7.7,
+          "pool": 0,
+          "matched": 0
+        }
+      ],
+      "rerank": {
+        "ms": 5.199999988079071,
+        "vecs": 4000,
+        "dim": 768,
+        "model": "embeddinggemma",
+        "sink": true
+      }
+    },
+    {
+      "corpus": "vault-A",
+      "bytes": 5874537,
+      "nodes": 497,
+      "edges": 2998,
+      "has_vecs": true,
+      "queries": [
+        {
+          "class": "one-term",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 8.4,
+          "ms_min": 7.9,
+          "ms_max": 9.6,
+          "pool": 10,
+          "matched": 245
+        },
+        {
+          "class": "two-term",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 8.8,
+          "ms_min": 8.4,
+          "ms_max": 12.4,
+          "pool": 10,
+          "matched": 316
+        },
+        {
+          "class": "three-term",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 13.1,
+          "ms_min": 12.1,
+          "ms_max": 14.4,
+          "pool": 10,
+          "matched": 103
+        },
+        {
+          "class": "punct-only",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 5.2,
+          "ms_min": 4.1,
+          "ms_max": 6.6,
+          "pool": 10,
+          "matched": 425
+        },
+        {
+          "class": "no-hit",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 9.7,
+          "ms_min": 8.7,
+          "ms_max": 12.3,
+          "pool": 0,
+          "matched": 0
+        }
+      ],
+      "rerank": {
+        "ms": 2.899999976158142,
+        "vecs": 425,
+        "dim": 768,
+        "model": "embeddinggemma",
+        "sink": true
+      }
+    },
+    {
+      "corpus": "vault-B",
+      "bytes": 16082207,
+      "nodes": 2404,
+      "edges": 4202,
+      "has_vecs": true,
+      "queries": [
+        {
+          "class": "one-term",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 21.2,
+          "ms_min": 20.1,
+          "ms_max": 26.4,
+          "pool": 10,
+          "matched": 120
+        },
+        {
+          "class": "two-term",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 21.3,
+          "ms_min": 19.2,
+          "ms_max": 32.5,
+          "pool": 10,
+          "matched": 266
+        },
+        {
+          "class": "three-term",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 20.3,
+          "ms_min": 19.1,
+          "ms_max": 25.3,
+          "pool": 10,
+          "matched": 353
+        },
+        {
+          "class": "punct-only",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 14.5,
+          "ms_min": 14,
+          "ms_max": 17.7,
+          "pool": 10,
+          "matched": 2369
+        },
+        {
+          "class": "no-hit",
+          "q": "(private vault vocabulary — not published)",
+          "ms_med": 16.8,
+          "ms_min": 16.7,
+          "ms_max": 18.8,
+          "pool": 0,
+          "matched": 0
+        }
+      ],
+      "rerank": {
+        "ms": 3.200000047683716,
+        "vecs": 2369,
+        "dim": 768,
+        "model": "embeddinggemma",
+        "sink": true
+      }
+    }
+  ]
+}
