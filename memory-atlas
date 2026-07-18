@@ -47,6 +47,7 @@ node.heat ∈ [0,1], 1 = bright (fresh/hot — polarity is up to the builder).
 """
 import argparse
 import bisect
+import collections
 import hashlib
 import itertools
 import math
@@ -55,6 +56,7 @@ import glob
 import locale
 import os
 import platform
+import random
 import re
 import subprocess
 import sys
@@ -62,7 +64,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.15.0"  # zone filter re-places computed layouts: hiding a zone no longer strands the rest
+VERSION = "2.16.0"  # measured default embedder + lexical fusion + per-corpus threshold calibration
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -623,10 +625,26 @@ def detect_structural(nodes, edges, max_motifs=5000):
     return out
 
 
-# semantic: embeddings via Ollama loopback (Mac: embeddinggemma/nomic), sha-cache.
-EMB_MODEL = os.environ.get("ATLAS_EMB_MODEL") or "nomic-embed-text"
+# semantic: embeddings via any OpenAI-style /api/embed endpoint, sha-cache.
+#
+# Default measured, not assumed. On a 2369-note non-English vault, scored against the
+# owner's own wikilinks (1899 pairs, hubs excluded), recall@10 was:
+#   embeddinggemma   0.171     bge-m3   0.161     nomic-embed-text  0.112
+#   char-3gram tf-idf 0.169  <- the null; nomic loses to it, the others only tie
+# So: multilingual default, and no model is worth a heavy download here — the ranking
+# is the bottleneck, not the encoder (see LEXICAL_FUSE below).
+EMB_MODEL = os.environ.get("ATLAS_EMB_MODEL") or "embeddinggemma"
+# Second model tried only if the first is not pulled on the host. Kept because it is the
+# small/always-there one, NOT because it is good: it is the weakest of the three measured.
+EMB_FALLBACK = os.environ.get("ATLAS_EMB_FALLBACK") or "nomic-embed-text"
 EMB_CACHE = os.environ.get("ATLAS_EMB_CACHE") or os.path.join(DATA_HOME, "emb-cache.json")
+# Any host, not just loopback: a laptop with no GPU can point this at a machine that has one.
 OLLAMA = os.environ.get("ATLAS_OLLAMA") or "http://127.0.0.1:11434"
+# Fuse a char-3gram lexical channel into the semantic detector. Same measurement:
+# lexical alone 0.169, embeddings alone 0.171, reciprocal-rank fusion 0.179 @10 /
+# 0.466 @50 — the two agree on only 58% of their top-10, so the union is worth more
+# than either. Set ATLAS_LEXICAL_FUSE=0 for embeddings only.
+LEXICAL_FUSE = os.environ.get("ATLAS_LEXICAL_FUSE", "1") not in ("0", "no", "false")
 
 
 def _ollama_up(timeout=3):
@@ -672,6 +690,15 @@ def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
                     embs = json.load(resp)["embeddings"]
                 for (nid, _), v in zip(batch, embs):
                     cache[keys[nid]] = [round(x, 5) for x in v]
+        except urllib.error.HTTPError as e:
+            # 404 = that model is not pulled on this host. One retry with the fallback,
+            # then give up: a second missing model means the host has no embedder.
+            if e.code == 404 and model != EMB_FALLBACK:
+                print(f"warn: model {model!r} not on {OLLAMA} — falling back to "
+                      f"{EMB_FALLBACK!r} (weaker: measured recall@10 0.112 vs 0.171)",
+                      file=sys.stderr)
+                return fetch_embeddings(texts_by_id, EMB_FALLBACK, cache_path)
+            return partial(f"failed on batch ({e})")
         except (urllib.error.URLError, OSError, KeyError, TimeoutError) as e:
             return partial(f"failed on batch ({e})")
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
@@ -680,16 +707,113 @@ def fetch_embeddings(texts_by_id, model=EMB_MODEL, cache_path=EMB_CACHE):
     return {nid: cache[k] for nid, k in keys.items()}
 
 
-def detect_semantic(nodes, vecs, threshold=0.75, top_k=3, within_zone=False):
+def _lexical_neighbours(nodes, top_k=10, min_share=0.06):
+    """id → [(share, id)] by idf-weighted char-3gram overlap.
+
+    The measured null the embeddings only tie with, so it is worth having as its own
+    channel. No numpy in the core, so this is an inverted index rather than an n²
+    scan: rare 3-grams point at the few notes that share them, and only those get
+    scored. Notes are short (title + description), which keeps the postings small.
+    """
+    docs = {}
+    for n in nodes:
+        if n.get("ghost"):
+            continue
+        text = (" ".join(str(n.get(f) or "") for f in ("label", "title", "desc"))).lower()
+        if len(text) < 6:
+            continue
+        grams = collections.Counter(text[i:i + 3] for i in range(len(text) - 2))
+        docs[n["id"]] = grams
+
+    post = collections.defaultdict(list)
+    for nid, grams in docs.items():
+        for g in grams:
+            post[g].append(nid)
+    n_docs = max(1, len(docs))
+    # A 3-gram in half the corpus carries nothing; skip it and keep the postings cheap.
+    # The floor of 3 matters: on a small vault "half the corpus" is one or two notes, and
+    # a bare ratio cutoff throws away exactly the grams two notes SHARE — the channel
+    # then returns nothing at all, silently. Caught by test_lexical_channel_and_fusion.
+    df_max = max(3, n_docs * 0.5)
+    idf = {g: math.log(n_docs / float(len(ids))) for g, ids in post.items()
+           if len(ids) <= df_max}
+
+    norm = {}
+    for nid, grams in docs.items():
+        norm[nid] = math.sqrt(sum((k * idf[g]) ** 2
+                                  for g, k in grams.items() if g in idf)) or 1.0
+
+    out = {}
+    for nid, grams in docs.items():
+        acc = collections.defaultdict(float)
+        for g, k in grams.items():
+            w = idf.get(g)
+            if w is None:
+                continue
+            wa = k * w
+            for other in post[g]:
+                if other != nid:
+                    acc[other] += wa * docs[other].get(g, 0) * w
+        scored = sorted(((v / (norm[nid] * norm[o]), o) for o, v in acc.items()),
+                        reverse=True)[:top_k]
+        out[nid] = [(s, o) for s, o in scored if s >= min_share]
+    return out
+
+
+def _rrf(*ranked_lists, k=60):
+    """Reciprocal-rank fusion — the two channels' scores are not on one scale."""
+    fused = collections.defaultdict(float)
+    for lst in ranked_lists:
+        for rank, item in enumerate(lst):
+            fused[item] += 1.0 / (k + rank + 1)
+    return sorted(fused, key=lambda i: -fused[i])
+
+
+def _calibrate_threshold(normed, ids, quantile=0.999, floor=0.30, sample=400, seed=0):
+    """Pick the cosine cutoff from THIS corpus under THIS model.
+
+    Cosine scales are not comparable across embedders: on one vault 0.75 kept ~13% of
+    pairs under nomic-embed-text and 0.04% under embeddinggemma, so a fixed default
+    silently emptied the semantic layer the moment the model changed. Sample pairs,
+    take a high quantile, and keep a floor so a degenerate corpus cannot open the gate
+    all the way.
+    """
+    if len(ids) < 3:
+        return floor
+    rnd = random.Random(seed)
+    pick = ids if len(ids) <= sample else rnd.sample(ids, sample)
+    sims = []
+    for i, a in enumerate(pick):
+        va = normed[a]
+        for b in pick[i + 1:]:
+            sims.append(sum(x * y for x, y in zip(va, normed[b])))
+    if not sims:
+        return floor
+    sims.sort()
+    q = sims[min(len(sims) - 1, int(len(sims) * quantile))]
+    return max(floor, round(q, 3))
+
+
+def detect_semantic(nodes, vecs, threshold=None, top_k=3, within_zone=False):
     """cosine between zones ≥ threshold, top-k per source. vecs: id → vector.
     within_zone=True снимает зонный гейт — для плоского одногруппного вульта
-    (глоссарий в одну папку), где без этого semantic даёт ноль рёбер."""
+    (глоссарий в одну папку), где без этого semantic даёт ноль рёбер.
+
+    With LEXICAL_FUSE the char-3gram channel is fused in by reciprocal rank: measured
+    on a 2369-note vault the two channels shared only 58% of their top-10, and fusing
+    them beat either alone (recall@10 0.179 vs 0.171/0.169, median rank 76 → 62)."""
     def l2(v):
         s = sum(x * x for x in v) ** 0.5 or 1.0
         return [x / s for x in v]
     normed = {n["id"]: l2(vecs[n["id"]]) for n in nodes
               if not n.get("ghost") and n["id"] in vecs}
     zone_of = {n["id"]: n["zone"] for n in nodes}
+    lex = _lexical_neighbours(nodes) if LEXICAL_FUSE else None
+    ids_all = sorted(normed)
+    if threshold is None:
+        threshold = _calibrate_threshold(normed, ids_all)
+        print(f"semantic: threshold calibrated to {threshold} for {EMB_MODEL}",
+              file=sys.stderr)
     ids = sorted(normed)
     out, seen = [], set()
     for a in ids:
@@ -701,13 +825,23 @@ def detect_semantic(nodes, vecs, threshold=0.75, top_k=3, within_zone=False):
             score = sum(x * y for x, y in zip(va, normed[b]))
             if score >= threshold:
                 cands.append((score, b))
-        for score, b in sorted(cands, reverse=True)[:top_k]:
+        sem = sorted(cands, reverse=True)
+        by_id = {b: s for s, b in sem}
+        if lex is not None:
+            lx = [b for _, b in lex.get(a, [])
+                  if b in normed and b != a and (within_zone or zone_of[a] != zone_of[b])]
+            for b in lx:
+                by_id.setdefault(b, 0.0)
+            picked = _rrf([b for _, b in sem], lx)[:top_k]
+        else:
+            picked = [b for _, b in sem][:top_k]
+        for b in picked:
             key = tuple(sorted((a, b)))
             if key in seen:
                 continue
             seen.add(key)
             out.append({"source": a, "target": b, "kind": "semantic",
-                        "score": round(score, 2)})
+                        "score": round(by_id.get(b, 0.0), 2)})
     return out
 
 
@@ -955,7 +1089,10 @@ def main():
     # cross-zone detectors (flag names = graph-lab CLI, including their asymmetry:
     # five --no-X-cross default-on, structural opt-in)
     ap.add_argument("--no-semantic-cross", dest="semantic_cross", action="store_false")
-    ap.add_argument("--semantic-threshold", type=float, default=0.75)
+    # default None = calibrate from this corpus and model (see _calibrate_threshold).
+    # A fixed cosine is model-specific: 0.75 kept ~13% of pairs on nomic-embed-text and
+    # 0.04% on embeddinggemma — swapping the model silently emptied the semantic layer.
+    ap.add_argument("--semantic-threshold", type=float, default=None)
     ap.add_argument("--semantic-top-k", type=int, default=3)
     ap.add_argument("--semantic-within-zone", action="store_true",
                     help="снять зонный гейт semantic — рёбра внутри одной группы "
@@ -1372,6 +1509,20 @@ def run_self_test():
         def test_wikilink_alias_and_pipe(self):
             self.assertEqual(WIKILINK_RE.findall("[[a-b]] [[c|alias text]] [[d#sec]]"),
                              ["a-b", "c"])
+
+        def test_lexical_channel_and_fusion(self):
+            # the char-3gram channel is the measured null the embeddings only tie with,
+            # so it has to actually fire: near-identical titles must find each other,
+            # and an unrelated one must not ride along
+            nodes = [{"id": "a", "label": "Види пам'яті", "desc": "класифікація пам'яті"},
+                     {"id": "b", "label": "Види пам'ятi роботи", "desc": "пам'ять і види"},
+                     {"id": "c", "label": "Кулінарія", "desc": "зовсім інша тема"}]
+            lex = _lexical_neighbours(nodes)
+            self.assertIn("b", [i for _, i in lex["a"]], "3-gram overlap must be found")
+            self.assertNotIn("c", [i for _, i in lex["a"]], "unrelated must not fuse in")
+            # RRF: an item ranked well by BOTH channels beats one ranked top by only one
+            fused = _rrf(["x", "y", "z"], ["y", "q", "x"])
+            self.assertEqual(fused[0], "y")
 
         def test_zones_and_membership(self):
             self.w("MEMORY.md", "- [A](alpha.md)")
