@@ -252,6 +252,7 @@ def build_graph(src, exclude_tags=(), exclude_types=()):
     ex_tags = {t.strip().lstrip("#").lower() for t in exclude_tags if t.strip()}
     ex_types = {t.strip().lower() for t in exclude_types if t.strip()}
     excluded_stems = set()          # hidden-but-known: suppresses ghosts, see docstring
+    shelved = []                    # off-graph but still indexed (browse + search)
     for rname, rsrc in roots:
         for path in scan(rsrc):
             base = os.path.basename(path)
@@ -280,6 +281,23 @@ def build_graph(src, exclude_tags=(), exclude_types=()):
             if ex_tags or ex_types:
                 ntags = {str(t).lstrip("#").lower() for t in fm["tags"]}
                 if (ntags & ex_tags) or (fm["type"] or "").lower() in ex_types:
+                    # SHELVED, not deleted: off the canvas, still in browse + search index.
+                    # A reference appendix is looked up, not navigated — dropping it from the
+                    # index too would cost the one thing its author uses it for.
+                    st = os.stat(path)
+                    shelved.append({
+                        "id": stem, "label": fm["name"] or stem, "desc": fm["description"][:400],
+                        "type": fm["type"] or "?", "path": rel, "root": rname,
+                        "bytes": st.st_size, "mtime": int(st.st_mtime),
+                        "age_days": round((now - st.st_mtime) / 86400, 1),
+                        "tags": fm["tags"], "shelf": True,
+                        # same shape as a graph node so to_browse_data needs no special case
+                        "ghost": False, "light": False, "heavy": False,
+                        "orphan": False, "conflict": "sync-conflict" in base,
+                        "part_of": fm["part_of"], "tier": fm["tier"],
+                        "session": fm["session"], "state": fm["state"], "zone": "",
+                    })
+                    bodies[stem] = body
                     excluded_stems.add(norm(base))
                     if fm["name"]:
                         excluded_stems.add(norm(fm["name"]))
@@ -406,7 +424,10 @@ def build_graph(src, exclude_tags=(), exclude_types=()):
     max_age = max((n["age_days"] for n in nodes if not n["ghost"]), default=1) or 1
     for n in nodes:
         n["heat"] = 0.0 if n["ghost"] else round(1 - n["age_days"] / max_age, 3)
-    return nodes, edges, bodies
+    # shelved stay OUT of nodes on purpose: detectors, layout and clustering must not see
+    # them (that is the whole point of shelving, and the cost — 58s -> 7s on a 2370-note
+    # vault). They rejoin at browse/emit time, where being findable is all they need.
+    return nodes, edges, bodies, shelved
 
 
 # ------------------------------------------------- cross-zone detectors
@@ -1006,13 +1027,14 @@ def main():
         data.setdefault("generated", time.strftime("%Y-%m-%d %H:%M"))
         data.setdefault("version", VERSION)
     else:
-        nodes, edges, bodies = build_graph(roots, args.exclude_tag, args.exclude_type)
+        nodes, edges, bodies, shelved = build_graph(roots, args.exclude_tag, args.exclude_type)
         if not nodes:
             print(f"warn: 0 nodes in {roots[0][1]} — pass --src /path/to/your/vault "
                   f"(a folder of .md notes)", file=sys.stderr)
         # browse only sees the wikilink graph (the terminal module predates detectors);
         # cross-edges go into the atlas graph only
-        browse = to_browse_data(nodes, edges, bodies, time.time())
+        # shelved rejoin HERE and only here: browse is the lookup surface, the canvas is not
+        browse = to_browse_data(nodes + shelved, edges, bodies, time.time())
         detectors, cross = ([], []) if args.no_detectors else \
             run_detectors(nodes, edges, bodies, roots, args)
         zones_payload = zone_anchors(nodes)
@@ -1035,6 +1057,10 @@ def main():
             # pre-rebrand terminal browse module: its own data shape
             # (deg/out/stats/types/bodies), derived from the graph → ids match for fuse
             "browse": browse,
+            # off-canvas lookup layer: search must reach these, the graph must not draw them.
+            # Metadata only — bodies already travel once, inside browse.
+            "shelf": [{"id": n["id"], "label": n["label"], "type": n["type"],
+                       "path": n["path"], "tags": n["tags"]} for n in shelved],
         }
         if getattr(args, "_vecs_payload", None):
             data["vecs"] = args._vecs_payload
@@ -1093,7 +1119,7 @@ def run_self_test():
                 f.write(text)
 
         def graph(self):
-            nodes, edges, _ = build_graph(self.src)
+            nodes, edges, _, _ = build_graph(self.src)
             return {n["id"]: n for n in nodes}, edges
 
         def test_frontmatter(self):
@@ -1144,17 +1170,23 @@ def run_self_test():
             self.w("wiki/Концепт.md", "---\ntitle: Концепт\ntags: [тема]\n---\nx")
             for t in ("А", "Б", "В"):
                 self.w(f"wiki/Термін {t}.md", f"---\ntitle: Термін {t}\ntags: [термін]\n---\n[[Хаб]]")
-            nodes, edges, _ = build_graph(self.src, exclude_tags=["термін"])
+            nodes, edges, bodies, shelved = build_graph(self.src, exclude_tags=["термін"])
             by = {n["id"]: n for n in nodes}
             self.assertNotIn(norm("Термін А.md"), by)          # appendix gone from the graph
             self.assertEqual([n for n in nodes if n["ghost"]], [])   # and left no ghost debt
             self.assertIn(norm("Концепт.md"), by)              # real notes untouched
             self.assertEqual(by[norm("Хаб.md")]["label"], "Хаб")     # title: honoured as label
+            # …but shelved, not deleted: still reachable by lookup
+            self.assertEqual(len(shelved), 3)
+            self.assertIn(norm("Термін А.md"), bodies)         # body travels for search
+            br = to_browse_data(nodes + shelved, edges, bodies, time.time())
+            self.assertIn(norm("Термін А.md"), {n["id"] for n in br["nodes"]})
+            self.assertEqual([n for n in br["nodes"] if n["type"] == "missing"], [])
 
         def test_exclude_by_type(self):
             self.w("wiki/a.md", "---\ntitle: a\ntype: concept\n---\n[[d]]")
             self.w("wiki/d.md", "---\ntitle: d\ntype: source\n---\nx")
-            nodes, _, _ = build_graph(self.src, exclude_types=["source"])
+            nodes, _, _, _ = build_graph(self.src, exclude_types=["source"])
             ids = {n["id"] for n in nodes}
             self.assertIn("a", ids)
             self.assertNotIn("d", ids)
@@ -1194,7 +1226,7 @@ def run_self_test():
             with tempfile.TemporaryDirectory() as d2:
                 with open(os.path.join(d2, "wiki-note.md"), "w", encoding="utf-8") as f:
                     f.write("---\nname: wiki-note\n---\nsee [[alpha]]")
-                nodes, edges, _ = build_graph([("memory", self.src), ("wiki", d2)])
+                nodes, edges, _, _ = build_graph([("memory", self.src), ("wiki", d2)])
             by = {n["id"]: n for n in nodes}
             self.assertIn("wiki_note", by)
             self.assertFalse(by["wiki_note"]["ghost"])       # resolved, not a ghost
@@ -1215,7 +1247,7 @@ def run_self_test():
                     f.write("wiki body")
                 with open(os.path.join(d2, "wuses.md"), "w", encoding="utf-8") as f:
                     f.write("[[note]]")
-                nodes, edges, _ = build_graph([("memory", self.src), ("wiki", d2)])
+                nodes, edges, _, _ = build_graph([("memory", self.src), ("wiki", d2)])
             by = {n["id"]: n for n in nodes}
             self.assertIn("note", by)
             self.assertIn("note~2", by)
@@ -1309,7 +1341,7 @@ def run_self_test():
         def test_browse_mtime_real(self):
             # G10: browse nodes carry a real mtime (used to be hardcoded to 0)
             self.w("a.md", "x")
-            nodes, edges, bodies = build_graph(self.src)
+            nodes, edges, bodies, _ = build_graph(self.src)
             br = to_browse_data(nodes, edges, bodies, time.time())
             m = {n["id"]: n for n in br["nodes"]}
             self.assertGreater(m["a"]["mtime"], 0)
@@ -1389,7 +1421,7 @@ def run_self_test():
         def test_bodies_returned(self):
             self.w("a.md", "---\nname: a\n---\nbody text [[b]]")
             self.w("b.md", "x")
-            nodes, _, bodies = build_graph(self.src)
+            nodes, _, bodies, _ = build_graph(self.src)
             self.assertIn("body text", bodies["a"])
             self.assertNotIn("missing", bodies)   # ghosts have no body
 
@@ -1606,7 +1638,7 @@ def run_self_test():
         def test_full_render_from_template(self):
             self.w("a.md", "---\nname: a\n---\n[[b]]")
             self.w("b.md", "x")
-            nodes, edges, _ = build_graph(self.src)
+            nodes, edges, _, _ = build_graph(self.src)
             out = os.path.join(self.src, "atlas.html")
             tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                     "memory-atlas.template.html")
