@@ -11,3 +11,4 @@ PERF-AUDIT-*.md
 SESSION-HANDOFF.md
 HANDOFF-*.md
 INSTALLER-HANDOFF.md
+node_modules/

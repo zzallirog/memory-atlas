@@ -6,13 +6,17 @@ Every case below is a tiny **runnable vault** checked into `docs/gallery-vaults/
 rebuild any screenshot yourself:
 
 ```bash
-./memory-atlas --src docs/gallery-vaults/<case> --lang en \
+./memory-atlas --src docs/gallery-vaults/<case> --lang en --anon \
   --no-semantic-cross --no-temporal-cross --no-session-cross
 ```
 
 (The three `--no-*` flags keep the builds deterministic and offline — the bridges you
-see are wikilinks, shared ghosts and tag overlap only. Then open the printed file with
-the query string from the case.)
+see are wikilinks, shared ghosts and tag overlap only. `--anon` keeps the author's
+hostname and home directory out of the published frames. Then open the printed file
+with the query string from the case, and press `9` to draw the edges — the page starts
+with them hidden, but half of what these captions point at lives on an edge.)
+
+All of it at once: `node tools/shoot-gallery.mjs`.
 
 ---
 

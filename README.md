@@ -8,7 +8,7 @@ The point isn't "a graph of my wikilinks". It's **overlap**: the generator runs 
 
 ![overview — four topic zones on a synergy ring, cross-zone bridges through the middle](docs/shots/overview.png)
 
-*Four folders — chemistry, cooking, gardening, music — laid out on a zone-synergy ring. The dashed lines cutting across the center are bridges the detectors drew: notes in different folders that share a missing reference, a tag, or a co-edit. Nobody wrote those links by hand.*
+*The built-in demo vault — chemistry, cooking, gardening, music — on the zone-synergy ring. Solid lines are `[[wikilinks]]` somebody typed. The dashed one crossing from the cooking arc to the chemistry arc is not: nobody wrote a note called `maillard-reaction`, but `searing-steak` in `cooking/` and `amino-acids` in `chemistry/` both cite it, and that shared gap is a bridge the `shared_ref` detector drew. (Edges start hidden in the real page — press `9` or the EDGES chip. Lines are noise until you ask for them.)*
 
 ## Quick start
 
@@ -24,9 +24,10 @@ one zone of its own, and `[[links]]` resolve same-root first, then across roots 
 used to dangle as a ghost snaps to the real note in the other root. `--dump-data -` emits the
 graph JSON instead of rendering (the source end for external pipeline builders).
 
-Or the zero-clone route — one file, nothing else:
+Or pack it into a single file you can carry around — one `.pyz`, no repo:
 
 ```bash
+python3 installer/build_pyz.py     # → dist/memory-atlas.pyz (stdlib, ~200K)
 python3 dist/memory-atlas.pyz --demo
 python3 dist/memory-atlas.pyz --src ~/my-vault
 ```
@@ -60,6 +61,8 @@ Full walkthrough: [docs/QUICKSTART.md](docs/QUICKSTART.md). More lives of the sa
 ## Privacy
 
 Everything runs on your machine and the output is a static local page. The generated HTML **embeds note titles, descriptions and body text** — treat the built file like the vault itself: regenerate for others, don't reshare yours. The demo vault is synthetic.
+
+The page also stamps **who built it**: the machine's hostname and the absolute path of the vault, shown in the footer, the browse header and the dash. That is useful for yourself — two hosts, two atlases, and you can tell which is which — and it is exactly what you do not want in a file you hand to someone else or drop into a bug report. Build those with **`--anon`**: no hostname, and the source reads as the vault's folder name instead of `/home/yourname/…`. (Anonymising drops editor-open for that file, which resolves note paths against the real root.) Every screenshot in this repo is built that way.
 
 ## Zones — your names, not ours
 
@@ -120,12 +123,15 @@ drives a headless browser and asserts the search behaviour that actually ships. 
 
 ## Development
 
-- `dist/` is a build artifact (`python3 installer/build_pyz.py`), gitignored in dev; the published repo ships a prebuilt copy for the zero-clone route.
+- `dist/` is a build artifact (`python3 installer/build_pyz.py`) and is gitignored — build it when you want the single-file bundle.
+- `tools/shoot-gallery.mjs` re-shoots every frame in the README and the gallery from the example vaults (`node tools/shoot-gallery.mjs [case…]`, needs Playwright and a local Chrome). The frames carry the version stamp and the whole HUD, so they go stale on their own — re-shoot them when the interface moves, not by hand.
 - Deployed locally as `~/bin` symlinks (generator + template travel as a PAIR — the generator warns on version skew).
 - Durable off-machine backup channel: `git push origin main` (bare repo); Gitea intentionally skipped per backup topology.
 - CI (`.github/workflows/ci.yml`): ubuntu/macos/windows × py3.8/3.12 — self-test + demo build + `.pyz` build.
 
 ## Changelog
+
+- **2.20.0** (2026-07-18) — **the page stopped naming the machine that built it.** Every generated atlas stamped `platform.node()` and the absolute path of the vault into the footer, the browse header and the dash — in a file whose entire purpose is being self-contained and handed to someone. The Privacy section told you to "regenerate for others", which does not remove either. New **`--anon`**: no hostname, and the source shows as the vault's folder name rather than `/home/yourname/notes` (it trades away editor-open for that build, which resolves note paths against the real root). Found the way these things are found — re-shooting the gallery and reading `/Users/…` off my own screenshots. **The frames were describing a page that no longer exists.** The published set was shot at 2.4.1/2.6.0, before the 2.14 panel rebuild and the 2.18 HUD move, and it was shot with edges drawn — but edges have since become opt-in (they are noise until you ask), so captions like "everything routes through the matriarch" pointed at a fan of spokes that a reader following along would not see. Every frame is re-shot from the current build by **`tools/shoot-gallery.mjs`** — one taste for all thirteen (1400×900, rendered at 2× and published at 1×, English UI, edges on, pointer parked so no stray hover card, and long enough after the fit that its toast has faded), so the next release re-shoots with one command instead of by hand. The README hero now names the bridge it is pointing at: nobody wrote `maillard-reaction`, but `searing-steak` and `amino-acids` both cite it. Also: the `.pyz` "zero-clone route" told you to run `dist/memory-atlas.pyz` from a fresh clone, and `dist/` is gitignored and not in the published tree — the file was never there. It now says to build it. And the four pins strings the 2.19.0 merge left untranslated (the i18n drift-guard caught two; the other two live in `T()` calls, which that guard does not scan).
 
 - **2.19.0** (2026-07-18) — an audit pass over the 2.18.0 fixes, and the first tests that actually run the page. **The search fix had switched the reranker off.** Restoring the two-word dropdown filled the candidate pool — and the semantic pass was gated on `sHits.length < 3`, a threshold calibrated back when that pool was empty on every two-word query. With the pool full the gate never opened again: measured in a browser, `semanticPass` was called **0 times** on a query whose pool held 6 rows. The commit that fixed recall would have quietly removed the one channel that finds a note whose words you did not type. It now runs whenever the page carries vectors, and reserves 3 of the 10 visible slots for hits only it can produce — a channel that appears solely when the other one fails is not a channel. **`--barH` was derived from a hidden element.** `v` hides the bar but not the HUD foot, and a `display: none` element reports an all-zero rect, so the variable resolved to `801px` on an `813px` viewport and put the foot's bottom edge above the top of the window — the fold pills left the screen. The value is now held when the bar is not laid out, and the observer watches the bar's children too: the measurement deliberately distrusts the container's own box, so watching only that box meant the exact case that staled the value was the case that fired no callback. **Title parking leaked both ways**: a control that rewrites its own `title` while hovered (the dice's page counter, the collisions row) un-parked itself behind the parking code's back — the OS tooltip returned on top of the hint card, and the stale string then overwrote the fresh one on exit; and leaving the document hid the card without restoring anything, so that control had no tooltip until an unrelated hover. Live rewrites now route through the stash, and every hide path tears down. Ranking: the exact-phrase boost was built from the raw query while the terms were normalised, so a double space — fast typing, or a paste — silently disabled it; coverage counted repeated terms instead of distinct ones, ranking by repetition while calling itself coverage; wrapper punctuation (quotes, brackets, sentence tails) is trimmed off token edges, so pasting a note's own title in quotes finds that note, while interior punctuation survives — the first version of that trim ate `c++` and the dashes off `--search-vecs`, which is why it is a test. The shelf's 200-cap ran over file order *before* ranking and started discarding both-term matches once OR'ed terms made most of a glossary qualify; it now cuts the ranked list. The `file://` semantic message named one cause as certain when the page cannot distinguish them — a blocked origin and a stopped daemon arrive as the same opaque error, and `OLLAMA_ORIGINS` allowing `file://` is a documented, working setup that the previous wording denied — so it names both. New: **`tests-search.py`** drives a real browser and asserts the shipped `runSearch`/`queryTerms`, because the 54-test suite that shipped 2.18.0 green executes no page JavaScript at all and could not have failed on any of this; **`perf/corpus-bench.py`** measures search cost per corpus through the page's own functions over CDP, with `perf/synth-corpus.py` for reproducible corpora and `perf/histofmt.py` rendering the result — see [`docs/EVAL.md`](docs/EVAL.md).
 

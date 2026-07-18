@@ -64,7 +64,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.19.0"  # audited pass: the reranker the search fix had switched off, and tests that run the page
+VERSION = "2.20.0"  # the page stopped naming the machine that built it; the frames stopped lying
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -460,6 +460,21 @@ def build_graph(src, exclude_tags=(), exclude_types=()):
 # connect zones. All pure functions (semantic takes ready-made vectors),
 # session_co_occurrence is the only one with I/O (git log). Dedup against existing
 # edges happens on the caller's side (_merge_cross).
+
+def build_identity(roots, anon=False):
+    """Who built this page — the part of DATA that names a machine and a person.
+
+    The output is one self-contained file meant to be handed to people, and it
+    stamps the hostname and the absolute source path into the footer, the browse
+    header and the dash. `--anon` keeps those out: no host, and the source shows
+    as the vault's folder name. Editor-open resolves node paths against
+    DATA.roots, so an anonymised build trades that feature away.
+    """
+    shown = (lambda p: os.path.basename(p.rstrip(os.sep)) or p) if anon else (lambda p: p)
+    return {"host": None if anon else platform.node(),
+            "src": shown(roots[0][1]),
+            "roots": {n: shown(p) for n, p in roots}}
+
 
 def _by_zone(nodes):
     zs = {}
@@ -1082,6 +1097,10 @@ def main():
     ap.add_argument("--demo", action="store_true",
                     help="built-in demo vault: 2 clusters + hidden ghost bridge (shared_ref)")
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--anon", action="store_true",
+                    help="strip the build identity from the page: no hostname, and the source "
+                         "shows as the vault's folder name instead of its full path — for a "
+                         "file you hand to someone else (screenshots, demos, bug reports)")
     ap.add_argument("--lang", choices=["ru", "en", "uk"], default=None,
                     help="starting UI language; without the flag — by system locale "
                          "(ru → ru, uk → uk, otherwise en); the toggle in the bar persists across rebuilds")
@@ -1202,13 +1221,14 @@ def main():
         # so config/views of the demo and the real vault don't leak into each other
         title = "memory-atlas" if zones_payload is ZONES else \
             (os.path.basename(roots[0][1]) or "atlas")
+        ident = build_identity(roots, getattr(args, "anon", False))
         data = {
             "title": title,
             "version": VERSION,
             "generated": time.strftime("%Y-%m-%d %H:%M"),
-            "host": platform.node(),
-            "src": roots[0][1],
-            "roots": dict(roots),
+            "host": ident["host"],
+            "src": ident["src"],
+            "roots": ident["roots"],
             "zones": zones_payload,
             "heat": {"label": "freshness", "high": "fresh", "low": "stale"},
             "nodes": nodes,
@@ -1823,6 +1843,18 @@ def run_self_test():
             self.w("a.md", "x")
             by, _ = self.graph()
             self.assertGreater(by["a"]["mtime"], 0)
+
+        def test_anon_strips_build_identity(self):
+            roots = [("vault", "/home/someone/notes"), ("wiki", "/home/someone/wiki")]
+            plain = build_identity(roots, anon=False)
+            self.assertEqual(plain["src"], "/home/someone/notes")
+            self.assertTrue(plain["host"])
+            anon = build_identity(roots, anon=True)
+            self.assertIsNone(anon["host"])
+            self.assertEqual(anon["src"], "notes")
+            self.assertEqual(anon["roots"], {"vault": "notes", "wiki": "wiki"})
+            # the point of the flag: nothing anywhere in the payload names the author
+            self.assertNotIn("someone", json.dumps(anon))
 
         def test_render_script_safe(self):
             out = os.path.join(self.src, "o.html")
