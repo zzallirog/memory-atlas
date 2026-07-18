@@ -1,0 +1,13 @@
+dist/
+
+# Внутренняя кухня: трекеры стройки, хендофы, аудиты. Живут на диске рядом с кодом,
+# но публиковать их нельзя — они несут пути машин, топологию хостов, имена соседних
+# проектов и характеристики живых людей. Публичная поверхность = README + docs/.
+AUDIT.md
+ROADMAP-STATE.md
+EDITOR-ROADMAP.md
+REFINE.md
+PERF-AUDIT-*.md
+SESSION-HANDOFF.md
+HANDOFF-*.md
+INSTALLER-HANDOFF.md

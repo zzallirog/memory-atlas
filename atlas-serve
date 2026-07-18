@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""atlas-serve — локальный сайдкар правки для memory-atlas.
+
+Атлас сам по себе — статичный HTML («No LLM, no server»). ПРОСМОТР так и остаётся
+без сервера. Но ПРАВКА/переименование/перенос-зоны/теги требуют записи в .md —
+чего статичная страница из file:// не может. Этот сайдкар — тот самый native-бэкенд
+(сознательная жертва клайма «no server», только на время правки):
+
+  atlas-serve --vault DIR --atlas atlas.html [--port 8137] [--regen-cmd "..."]
+
+Открой напечатанный http://127.0.0.1:PORT/ — атлас приедет С ТОГО ЖЕ origin, правка
+включится сама (страница видит http:// и живой /api). Открыть тот же файл как file://
+= правка молча выключена (view-only, без мёртвых кнопок).
+
+Контракт body ТОЧНО как у генератора: FM_RE режет frontmatter, body = хвост после
+блока (включая `# title`). Save сохраняет frontmatter, меняя только заданные поля.
+Все пути валидируются ВНУТРИ vault (обход `..` отбивается), сервер слушает 127.0.0.1.
+"""
+import argparse, json, os, re, sys, unicodedata, subprocess, base64, tempfile, shutil
+from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)   # идентично memory-atlas:132
+MAX_BODY = 64 * 1024 * 1024   # import ships base64 documents; notes are tiny next to that
+
+def slug(s, maxlen=80):
+    """Юникод-безопасный slug — тот же, что в atlas-import (кириллица цела)."""
+    s = str(s).strip().lower()
+    s = re.sub(r"\s+", "-", s)
+    s = "".join(ch for ch in s if ch.isalnum() or ch in "-_.")
+    s = re.sub(r"-{2,}", "-", s).strip("-._")
+    return (s or "note")[:maxlen]
+
+def split_fm(text):
+    """(fm_block|None, body). body = хвост после frontmatter, как у генератора."""
+    t = text.lstrip("﻿")
+    m = FM_RE.match(t)
+    if not m:
+        return None, t
+    return m.group(1), t[m.end():]
+
+def parse_tags(block):
+    if not block:
+        return []
+    tm = re.search(r"^\s*tags:[^\S\n]*(.*)$", block, re.M)
+    if not tm:
+        return []
+    inline = tm.group(1).strip()
+    if inline and inline not in ("[]", "|", ">"):
+        return [x.strip().strip("\"'[]") for x in inline.split(",") if x.strip().strip("[] ")]
+    out = []
+    for ln in block[tm.end():].splitlines():
+        lm = re.match(r"^\s*-\s*(.+)$", ln)
+        if lm:
+            out.append(lm.group(1).strip().strip("\"'"))
+        elif ln.strip() and re.match(r"^\S", ln):
+            break
+    return out
+
+def get_kv(block, key):
+    if not block:
+        return ""
+    m = re.search(r"^\s*" + key + r":\s*(.+)$", block, re.M)
+    return m.group(1).strip().strip("\"'") if m else ""
+
+def set_kv(block, key, value_line):
+    """Заменить строку `key: ...` в блоке ИЛИ дописать. Прочие поля целы."""
+    block = block or ""
+    pat = re.compile(r"^(\s*)" + key + r":.*$", re.M)
+    if pat.search(block):
+        return pat.sub(lambda mm: mm.group(1) + key + ": " + value_line, block, count=1)
+    sep = "" if (not block or block.endswith("\n")) else "\n"
+    return block + sep + key + ": " + value_line
+
+def build_fm(block, title=None, tags=None):
+    """Собрать frontmatter-блок, обновив только заданные поля."""
+    b = block
+    if b is None:
+        # ноты без frontmatter: синтезируем минимальный, если есть что писать
+        b = ""
+    if title is not None:
+        b = set_kv(b, "title", title)
+    if tags is not None:
+        b = set_kv(b, "tags", "[" + ", ".join(tags) + "]")
+    return b
+
+def compose(block, body):
+    if block is None or block.strip() == "":
+        return body
+    return "---\n" + block + "\n---\n" + body
+
+
+# Typed API error so a handler can answer with the RIGHT status. Everything used to
+# collapse into 400, which left no way to express "409 — changed on disk".
+class ApiErr(Exception):
+    def __init__(self, code, msg):
+        super().__init__(msg)
+        self.code, self.msg = code, msg
+
+
+def write_atomic(path, text):
+    """Write via temp file + os.replace. A direct write_text() that dies mid-flight
+    leaves the note TRUNCATED — the editor would eat the very thing it is editing."""
+    path = Path(path)
+    tmp = path.with_name(path.name + ".atlas-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return int(path.stat().st_mtime)
+
+
+class Store:
+    def __init__(self, vault):
+        self.vault = Path(vault).resolve()
+
+    def resolve(self, rel):
+        """rel → abs .md ВНУТРИ vault; иначе ValueError (защита от обхода)."""
+        rel = (rel or "").lstrip("/")
+        p = (self.vault / rel).resolve()
+        if p != self.vault and self.vault not in p.parents:
+            raise ApiErr(400, "path escapes vault")
+        if p.suffix.lower() != ".md":
+            raise ApiErr(400, "not a .md")
+        parts = Path(rel).parts
+        # Vault rules, not politeness: dotfiles are config (.obsidian/ holds the live graph
+        # settings — an editor writing there rewrites the user's tool), and raw/ is the
+        # immutable source layer every note cites for provenance.
+        if any(seg.startswith(".") for seg in parts):
+            raise ApiErr(400, "hidden paths refused")
+        if "raw" in parts:
+            raise ApiErr(403, "raw/ is immutable (vault rule)")
+        return p
+
+    def relof(self, p):
+        return str(Path(p).resolve().relative_to(self.vault))
+
+    def read(self, rel):
+        p = self.resolve(rel)
+        text = p.read_text(encoding="utf-8", errors="replace")
+        block, body = split_fm(text)
+        return {"ok": True, "path": self.relof(p),
+                "title": get_kv(block, "title") or get_kv(block, "name"),
+                "tags": parse_tags(block), "source": get_kv(block, "source"),
+                "body": body, "mtime": int(p.stat().st_mtime)}
+
+    def save(self, rel, body, title=None, tags=None, mtime=None, force=False):
+        """Optimistic concurrency: the client echoes back the mtime it loaded. If the file
+        moved on since (second tab, Obsidian, a git pull), refuse with 409 instead of
+        silently overwriting — a lost edit is invisible, and the note is the user's work."""
+        p = self.resolve(rel)
+        disk = int(p.stat().st_mtime)
+        if not force and mtime and int(mtime) != disk:
+            raise ApiErr(409, "changed on disk — reload or pass force")
+        block, _ = split_fm(p.read_text(encoding="utf-8", errors="replace"))
+        block = build_fm(block, title=title, tags=tags)
+        write_atomic(p, compose(block, body))
+        return self.read(rel)
+
+    def rename(self, rel, title):
+        p = self.resolve(rel)
+        block, body = split_fm(p.read_text(encoding="utf-8", errors="replace"))
+        block = build_fm(block, title=title)
+        # первый H1 → новый заголовок
+        body = re.sub(r"^#\s+.*$", "# " + title, body, count=1, flags=re.M)
+        newname = slug(title)
+        dest = p.with_name(newname + ".md")
+        k = 2
+        while dest.exists() and dest != p:
+            dest = p.with_name(f"{newname}-{k}.md"); k += 1
+        write_atomic(p, compose(block, body))
+        if dest != p:
+            os.replace(p, dest)
+        return {"ok": True, "path": self.relof(dest), "id": dest.stem}
+
+    def set_tags(self, rel, tags):
+        p = self.resolve(rel)
+        block, body = split_fm(p.read_text(encoding="utf-8", errors="replace"))
+        block = build_fm(block, tags=tags)
+        write_atomic(p, compose(block, body))
+        return self.read(rel)
+
+    def move(self, rel, group):
+        p = self.resolve(rel)
+        group = (group or "").strip().strip("/")
+        dest_dir = (self.vault / group).resolve() if group else self.vault
+        if dest_dir != self.vault and self.vault not in dest_dir.parents:
+            raise ValueError("group escapes vault")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / p.name
+        k = 2
+        while dest.exists() and dest != p:
+            dest = dest_dir / f"{p.stem}-{k}.md"; k += 1
+        if dest != p:
+            os.replace(p, dest)
+        return {"ok": True, "path": self.relof(dest), "id": dest.stem}
+
+    def create(self, group, title, tags=None, body=""):
+        """Новая нота с нуля. Frontmatter ТОЧНО как у atlas-import.write_note
+        (title/tags/source), зона = подпапка (создаётся, если новая), имя = slug(title)
+        с дедуп-суффиксом. Путь валидируется ВНУТРИ vault (как move)."""
+        title = (title or "").strip()
+        if not title:
+            raise ValueError("title required")
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+        tags = [t for t in (tags or []) if t]
+        group = (group or "").strip().strip("/")
+        dest_dir = (self.vault / group).resolve() if group else self.vault
+        if dest_dir != self.vault and self.vault not in dest_dir.parents:
+            raise ValueError("group escapes vault")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        base = slug(title)
+        name, k = base, 2
+        while (dest_dir / f"{name}.md").exists():
+            name = f"{base}-{k}"; k += 1
+        lines = ["---", f"title: {title}"]
+        if tags:
+            lines.append("tags: [" + ", ".join(tags) + "]")
+        lines += ["source: atlas", "---", "", f"# {title}", ""]
+        if body:
+            lines.append(body)
+        dest = dest_dir / f"{name}.md"
+        write_atomic(dest, "\n".join(lines).rstrip("\n") + "\n")
+        res = self.read(self.relof(dest))
+        res["id"] = dest.stem
+        res["created"] = True
+        return res
+
+    # ---- arbitrary-document import: convert (markitdown / built-in) or keep-as-is ----
+    _TEXTY = {".md", ".markdown", ".txt", ".text", ".rst", ".org", ".log", ".tex",
+              ".csv", ".tsv", ".json", ".html", ".htm", ".xml", ".yaml", ".yml", ".ini", ".toml"}
+
+    def import_doc(self, filename, data_b64, mode="convert", group="", md_bin=None):
+        """Импорт произвольного документа. mode=convert → markdown-тело (markitdown, иначе
+        встроенный текст-путь); mode=keep → файл кладётся в вульт как есть + нота-обёртка со
+        ссылкой. Возвращает созданную ноту + warnings (что сломалось/деградировало)."""
+        raw = base64.b64decode(data_b64)
+        stem, ext = os.path.splitext(os.path.basename(filename or "document"))
+        ext = ext.lower()
+        stem = stem or "document"
+        group = (group or "imports").strip().strip("/")
+        warnings, body, kept_name, converter = [], None, None, None
+
+        if mode == "convert":
+            md = None
+            if md_bin:
+                tfp = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=(ext or ".bin"), delete=False) as tf:
+                        tf.write(raw); tfp = tf.name
+                    r = subprocess.run([md_bin, tfp], capture_output=True, text=True, timeout=180)
+                    if r.returncode == 0 and (r.stdout or "").strip():
+                        md, converter = r.stdout, "markitdown"
+                    else:
+                        warnings.append("markitdown rc=%d: %s" % (r.returncode, (r.stderr or "").strip()[-200:]))
+                except Exception as e:
+                    warnings.append("markitdown failed: %s" % e)
+                finally:
+                    if tfp:
+                        try: os.unlink(tfp)
+                        except OSError: pass
+            if md is None:
+                try:
+                    txt = raw.decode("utf-8")
+                    if ext == ".json":
+                        md = "```json\n" + txt.strip() + "\n```"
+                    elif ext in (".html", ".htm"):
+                        t = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", "", txt)
+                        t = re.sub(r"(?s)<[^>]+>", " ", t)
+                        md = re.sub(r"\n{3,}", "\n\n", t).strip()
+                    elif ext in (".yaml", ".yml", ".ini", ".toml", ".xml", ".log", ".tsv", ".csv"):
+                        md = "```\n" + txt.rstrip() + "\n```"
+                    else:
+                        md = txt
+                    converter = converter or "builtin-text"
+                    if md_bin:
+                        warnings.append("markitdown не дал результат — встроенный текст-путь")
+                    else:
+                        warnings.append("markitdown недоступен — встроенный текст-путь (только текстовые форматы)")
+                except UnicodeDecodeError:
+                    mode = "keep"
+                    warnings.append("бинарный формат без конвертера → сохранён как есть (mode=keep)")
+            else:
+                body = md
+            if body is None and mode == "convert":
+                body = md
+
+        if mode == "keep":
+            dest_dir = (self.vault / group).resolve()
+            if dest_dir != self.vault and self.vault not in dest_dir.parents:
+                raise ValueError("group escapes vault")
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            base = slug(stem) + (ext or ".bin")
+            kept = dest_dir / base; k = 2
+            while kept.exists():
+                kept = dest_dir / (slug(stem) + "-" + str(k) + (ext or ".bin")); k += 1
+            kept.write_bytes(raw)
+            kept_name = kept.name
+            body = "> импортирован как есть (не конвертирован)\n\n[%s](%s)\n" % (filename, kept.name)
+            converter = converter or "keep"
+
+        # write the note (frontmatter mirrors create(); source = original filename)
+        dest_dir = (self.vault / group).resolve()
+        if dest_dir != self.vault and self.vault not in dest_dir.parents:
+            raise ValueError("group escapes vault")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        base = slug(stem); name, k = base, 2
+        while (dest_dir / (name + ".md")).exists():
+            name = base + "-" + str(k); k += 1
+        lines = ["---", "title: " + stem, "tags: [imported]",
+                 "source: " + (filename or "import"), "---", "", "# " + stem, ""]
+        if body:
+            lines.append(body)
+        note = dest_dir / (name + ".md")
+        write_atomic(note, "\n".join(lines).rstrip("\n") + "\n")
+        res = self.read(self.relof(note))
+        res.update({"id": note.stem, "created": True, "converter": converter,
+                    "mode": mode, "kept": kept_name, "warnings": warnings})
+        return res
+
+
+def make_handler(store, atlas_path, regen_cmd, md_bin=None):
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, payload, ctype="application/json"):
+            body = payload if isinstance(payload, bytes) else json.dumps(payload, ensure_ascii=False).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype + ("; charset=utf-8" if "json" in ctype or "html" in ctype else ""))
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json_body(self):
+            n = int(self.headers.get("Content-Length", 0))
+            # /api/import legitimately carries a whole base64 document, so the cap is
+            # generous — but unbounded means one request can pin the process's memory.
+            if n > MAX_BODY:
+                raise ApiErr(413, f"body too large ({n} > {MAX_BODY})")
+            return json.loads(self.rfile.read(n) or b"{}")
+
+        def do_GET(self):
+            u = urlparse(self.path)
+            if u.path in ("/", "/index.html"):
+                if not atlas_path or not os.path.exists(atlas_path):
+                    return self._send(404, b"atlas file not found (--atlas)", "text/plain")
+                return self._send(200, Path(atlas_path).read_bytes(), "text/html")
+            if u.path == "/api/health":
+                return self._send(200, {"ok": True, "vault": str(store.vault)})
+            if u.path == "/api/import-caps":
+                return self._send(200, {"ok": True, "markitdown": bool(md_bin), "bin": md_bin or ""})
+            if u.path == "/api/note":
+                rel = parse_qs(u.query).get("path", [""])[0]
+                try:
+                    return self._send(200, store.read(rel))
+                except ApiErr as e:
+                    return self._send(e.code, {"ok": False, "error": e.msg})
+                except Exception as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+            return self._send(404, {"ok": False, "error": "no route"})
+
+        def do_POST(self):
+            u = urlparse(self.path)
+            try:
+                d = self._json_body()
+                if u.path == "/api/save":
+                    return self._send(200, store.save(d["path"], d.get("body", ""),
+                                                       title=d.get("title"), tags=d.get("tags"),
+                                                       mtime=d.get("mtime"), force=d.get("force")))
+                if u.path == "/api/rename":
+                    return self._send(200, store.rename(d["path"], d["title"]))
+                if u.path == "/api/tags":
+                    return self._send(200, store.set_tags(d["path"], d.get("tags", [])))
+                if u.path == "/api/move":
+                    return self._send(200, store.move(d["path"], d.get("group", "")))
+                if u.path == "/api/create":
+                    return self._send(200, store.create(d.get("group", ""), d.get("title", ""),
+                                                        tags=d.get("tags"), body=d.get("body", "")))
+                if u.path == "/api/import":
+                    return self._send(200, store.import_doc(d.get("filename", "document"),
+                                                            d["data"], mode=d.get("mode", "convert"),
+                                                            group=d.get("group", ""), md_bin=md_bin))
+                if u.path == "/api/regen":
+                    if not regen_cmd:
+                        return self._send(400, {"ok": False, "error": "no --regen-cmd"})
+                    r = subprocess.run(regen_cmd, shell=True, capture_output=True, text=True)
+                    return self._send(200, {"ok": r.returncode == 0, "rc": r.returncode,
+                                            "err": r.stderr[-400:]})
+                return self._send(404, {"ok": False, "error": "no route"})
+            except ApiErr as e:
+                return self._send(e.code, {"ok": False, "error": e.msg})
+            except KeyError as e:
+                return self._send(400, {"ok": False, "error": f"missing field {e}"})
+            except Exception as e:
+                return self._send(400, {"ok": False, "error": str(e)})
+    return H
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Локальный сайдкар правки для memory-atlas")
+    ap.add_argument("--vault", required=True, help="корень вульта (что правим)")
+    ap.add_argument("--atlas", default="", help="HTML атласа для отдачи на / (обычно из --out генератора)")
+    ap.add_argument("--port", type=int, default=8137)
+    ap.add_argument("--regen-cmd", default="", help="shell-команда регенерации (POST /api/regen)")
+    ap.add_argument("--markitdown", default="", help="путь к markitdown CLI (импорт бинарных форматов); авто-детект если пусто")
+    args = ap.parse_args()
+
+    vault = os.path.expanduser(args.vault)
+    if not os.path.isdir(vault):
+        print(f"нет папки вульта: {vault}", file=sys.stderr); sys.exit(2)
+    atlas = os.path.expanduser(args.atlas) if args.atlas else ""
+    store = Store(vault)
+
+    # markitdown detection: explicit flag → venv next to us → PATH
+    md_bin = os.path.expanduser(args.markitdown) if args.markitdown else ""
+    if not md_bin:
+        for cand in (os.path.join(vault, ".import-venv", "bin", "markitdown"),
+                     os.path.join(os.path.dirname(os.path.abspath(__file__)), ".import-venv", "bin", "markitdown"),
+                     shutil.which("markitdown") or ""):
+            if cand and os.path.exists(cand):
+                md_bin = cand; break
+    print("markitdown: " + (md_bin if md_bin else "нет (импорт только текстовых форматов)"))
+    handler = make_handler(store, atlas, args.regen_cmd, md_bin=md_bin or None)
+    srv = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    print(f"atlas-serve: http://127.0.0.1:{args.port}/  vault={store.vault}"
+          + (f"  atlas={atlas}" if atlas else "  (нет --atlas: только /api)"))
+    print("правка включится в браузере сама (страница видит http:// + /api). Ctrl-C — стоп.")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nстоп.")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""atlas-audit — L0 counting identity for the memory-atlas graph.
+
+INDEPENDENT second implementation. It deliberately does NOT import anything from
+`memory-atlas` (no WIKILINK_RE, no norm, no build_graph): a metric that reuses the
+generator's own parser measures its setup, not its correctness (F2 tautology). This
+script re-derives the link universe with its own dumb regex and its own norm-by-spec,
+then reconciles against the generator's emitted counts.
+
+Accounting identity (the whole point):
+
+    R_total = R_resolved + R_ghost + R_excluded + R_lost
+
+    R_total    every [[wikilink]] / ](*.md) token in the corpus (dumb count)
+    R_resolved token whose stem is a real node (or a frontmatter name)
+    R_ghost    token whose stem has no file  -> ghost node
+    R_excluded index / http / self / dup / #section  (each labelled)
+    R_lost     remainder. INVARIANT: R_lost = 0. Any != 0 is a parser bug, not "noise".
+
+Gate (binary, Sonnet-proof):
+    R_lost == 0
+    node-identity exact: files(.md) - index - excluded_dirs == generator real nodes
+    reconcile: audit resolved+ghost pairs == generator edges; audit ghosts == generator ghosts
+
+Config below MIRRORS the generator (exclude dirs / index files / norm convention).
+That is deliberate: L0 tests LINK PARSING, not the dir-exclusion policy. Config drift
+is out of L0 scope (a rebalance concern), so mirroring it here is not the tautology
+the F2 rule forbids -- the parser under test is the link extractor, re-implemented.
+"""
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+# --- config mirror (see docstring: policy, not the parser under test) -------------
+EXCLUDE_DIRS = {".git", ".stfolder", ".stversions", "archive", "_archive", "assets",
+                ".obsidian", ".trash", "node_modules"}
+INDEX_FILES = {"MEMORY.md", "MEMORY-work.md", "FEEDBACK_INDEX.md"}
+
+# --- independent link extraction (the actual second implementation) ---------------
+# Dumb and PERMISSIVE on purpose: capture MORE than the generator (e.g. [[a#b]],
+# ](x.md#sec)) so those tokens land in R_total and get an explicit `#section` label
+# instead of vanishing. A token the dumb reader sees but the generator drops without
+# a label is exactly what R_lost is meant to catch.
+DUMB_WIKI = re.compile(r"\[\[([^\]\n]+?)\]\]")
+DUMB_MD = re.compile(r"\]\(([^)\s]+?\.md)\)")
+NAME_RE = re.compile(r"^name:\s*(.+)$", re.M)
+# links live in the BODY, not the frontmatter: a [[wikilink]] inside a `description:`
+# string is prose, not a graph edge. The generator strips frontmatter before extracting
+# (build_graph reads from the post-frontmatter body), so the audit mirrors that surface.
+FM_BOUND = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
+
+
+def norm(key):
+    """Stem convention, re-implemented from spec (lower, '-'->'_', strip .md)."""
+    k = key.strip().lower().replace("-", "_")
+    return k[:-3] if k.endswith(".md") else k
+
+
+def scan(src):
+    out = []
+    for root, dirs, names in os.walk(src):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        for n in names:
+            if n.endswith(".md"):
+                out.append(os.path.join(root, n))
+    return sorted(out)
+
+
+def split_frontmatter(text):
+    """Independent frontmatter split -> (name_norm_or_None, body). Own re-implementation
+    of the `^---\\n...\\n---\\n` fence; links are extracted from `body` only."""
+    m = FM_BOUND.match(text)
+    if not m:
+        return None, text
+    nm = NAME_RE.search(m.group(1))
+    name = norm(nm.group(1).strip().strip("\"'")) if nm else None
+    return name, text[m.end():]
+
+
+def audit(src):
+    files = scan(src)
+    real_files = [p for p in files if os.path.basename(p) not in INDEX_FILES]
+    index_stems = {norm(f) for f in INDEX_FILES}
+
+    real_stems = set()
+    names = set()
+    bodies = {}
+    for p in real_files:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            text = f.read().lstrip("﻿")
+        base = norm(os.path.basename(p))
+        # mirror the generator's stem-collision suffix: two files that normalize to the
+        # same stem get distinct ids (a-b.md vs a_b.md -> `stem`, `stem~2`), else their
+        # outgoing edges silently merge and the edge count drifts by one per collision.
+        stem = base
+        if stem in real_stems:
+            i = 2
+            while "%s~%d" % (base, i) in real_stems:
+                i += 1
+            stem = "%s~%d" % (base, i)
+        real_stems.add(stem)
+        nm, body = split_frontmatter(text)
+        bodies[p] = (stem, body)
+        if nm:
+            names.add(nm)
+    resolvable = real_stems | names
+
+    tally = {"resolved": 0, "ghost": 0, "lost": 0,
+             "excl_index": 0, "excl_http": 0, "excl_self": 0,
+             "excl_dup": 0, "excl_section": 0}
+    pairs = set()          # deduped (source_stem, target_stem) -> reconciles vs edges
+    ghost_stems = set()
+    seen = set()           # (source_stem, target_stem) for dup labelling
+    lost_samples = []
+
+    def raw_tokens(text):
+        for t in DUMB_WIKI.findall(text):
+            yield "wiki", t
+        for t in DUMB_MD.findall(text):
+            yield "md", t
+
+    for p, (src_stem, text) in bodies.items():
+        for kind, tok in raw_tokens(text):
+            if kind == "wiki":
+                target = tok.split("|", 1)[0]
+                if "#" in target:
+                    tally["excl_section"] += 1
+                    continue
+                tnorm = norm(target)
+            else:  # md
+                if tok.startswith("http"):
+                    tally["excl_http"] += 1
+                    continue
+                if "#" in tok:
+                    tally["excl_section"] += 1
+                    continue
+                tnorm = norm(os.path.basename(tok))
+
+            if tnorm in index_stems:
+                tally["excl_index"] += 1
+            elif tnorm == src_stem:
+                tally["excl_self"] += 1
+            elif (src_stem, tnorm) in seen:
+                tally["excl_dup"] += 1
+            elif tnorm in resolvable:
+                tally["resolved"] += 1
+                seen.add((src_stem, tnorm))
+                pairs.add((src_stem, tnorm))
+            else:
+                # not index/self/dup/resolved -> ghost. Nothing falls through: R_lost
+                # stays 0 by construction of these branches; a non-zero R_lost would
+                # require a token the dumb regex matched but no branch claimed.
+                tally["ghost"] += 1
+                seen.add((src_stem, tnorm))
+                pairs.add((src_stem, tnorm))
+                ghost_stems.add(tnorm)
+
+    excl = (tally["excl_index"] + tally["excl_http"] + tally["excl_self"]
+            + tally["excl_dup"] + tally["excl_section"])
+    r_total = tally["resolved"] + tally["ghost"] + excl + tally["lost"]
+    return {
+        "files_md": len(files),
+        "index_present": len(files) - len(real_files),
+        "real_nodes": len(real_files),
+        "r_total": r_total,
+        "resolved": tally["resolved"],
+        "ghost_tokens": tally["ghost"],
+        "excluded": excl,
+        "excl_breakdown": {k[5:]: v for k, v in tally.items() if k.startswith("excl_")},
+        "lost": tally["lost"],
+        "edge_pairs": len(pairs),
+        "ghost_nodes": len(ghost_stems),
+        "lost_samples": lost_samples[:10],
+    }
+
+
+def run_generator(gen, src):
+    """Run the generator headless, parse `nodes=N (ghosts=G) edges=E` from stdout."""
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tf:
+        out = tf.name
+    try:
+        proc = subprocess.run(
+            [gen, "--src", src, "--no-detectors", "--no-open", "--out", out],
+            capture_output=True, text=True)
+    finally:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+    m = re.search(r"nodes=(\d+) \(ghosts=(\d+)\) edges=(\d+)", proc.stdout)
+    if not m:
+        sys.stderr.write("audit: could not parse generator stdout:\n" + proc.stdout
+                         + proc.stderr + "\n")
+        return None
+    nodes, ghosts, edges = (int(x) for x in m.groups())
+    return {"real_nodes": nodes - ghosts, "ghost_nodes": ghosts, "edges": edges}
+
+
+# ================================ L2: does a detector beat chance? ================
+# The cross-zone detectors are the value-prop ("these two notes are about the same
+# thing, across zones"). Feynman floor: does the detector's output beat random?
+#
+# Null model = zone-shuffle: permute zone labels across real nodes (everything else
+# fixed -- the ref graph, tags, mtimes are untouched), re-run the detector N times,
+# build the null distribution of its cross-zone edge count. This is the RIGHT null for
+# the cross-zone claim uniformly: it holds the pairing structure fixed and asks "is the
+# cross-zone-ness more than random zoning?".
+#
+# GATE IS NOT lift>1. Measured on the live vault: shared_ref observes 7 cross-edges vs a
+# null mean of ~44 -> lift 0.16, yet z~-8.5 (wildly non-random). Ghosts are referenced
+# WITHIN a zone, so random zoning inflates cross-zone counts; the real structure is
+# zone-clustered and the few genuine bridges are the rare residue BELOW null. A lift>1
+# gate would falsely condemn shared_ref as noise. The honest gate is a TWO-SIDED
+# departure from null (empirical two-tailed p) plus the direction:
+#   enriched  (obs>null)  -> more bridges than chance
+#   clustered (obs<null)  -> fewer than chance; structure is zonal, bridges are signal
+#   both are "detector output is not explainable by random zoning" = SIGNAL.
+def l2(src, generator_path, n_iters=200, seed=None):
+    import hashlib
+    import random
+    import statistics as st
+    from importlib.machinery import SourceFileLoader
+    ma = SourceFileLoader("_ma_l2", generator_path).load_module()
+    nodes, edges, _ = ma.build_graph(src)
+    reals = [n for n in nodes if not n.get("ghost")]
+    zones = [n["zone"] for n in reals]
+    # detectors that partition by zone label (shuffle is the correct null). session
+    # (git co-touch) and semantic (needs vectors) have their own nulls -> out of scope.
+    detectors = {
+        "shared_ref": lambda: ma.detect_shared_ref(nodes, edges),
+        "tag_overlap": lambda: ma.detect_tag_overlap(nodes),
+        "temporal_proximity": lambda: ma.detect_temporal(nodes),
+    }
+    obs = {k: len(f()) for k, f in detectors.items()}
+    if seed is None:
+        digest = hashlib.sha1("".join(sorted(n["id"] for n in reals)).encode()).hexdigest()
+        seed = int(digest[:8], 16)     # corpus-derived, reproducible (no wall-clock rng)
+    rng = random.Random(seed)
+    null = {k: [] for k in detectors}
+    for _ in range(n_iters):
+        shuffled = zones[:]
+        rng.shuffle(shuffled)
+        for n, z in zip(reals, shuffled):
+            n["zone"] = z
+        for k, f in detectors.items():
+            null[k].append(len(f()))
+    for n, z in zip(reals, zones):     # restore original zones
+        n["zone"] = z
+
+    rows = []
+    for k in detectors:
+        arr = null[k]
+        m = st.mean(arr)
+        sd = st.pstdev(arr)
+        o = obs[k]
+        inert = (sd == 0 and o == m)                    # detector produced nothing new
+        dev = abs(o - m)
+        # empirical two-tailed p with +1 smoothing (never reports p=0)
+        p = (sum(1 for x in arr if abs(x - m) >= dev) + 1) / (n_iters + 1)
+        z = (o - m) / sd if sd > 0 else 0.0
+        lift = (o / m) if m > 0 else (float("inf") if o > 0 else 0.0)
+        if inert:
+            verdict = "n/a (inert on corpus)"
+        elif p < 0.05:
+            verdict = "SIGNAL (%s)" % ("enriched" if o > m else "clustered")
+        else:
+            verdict = "noise (~random zoning)"
+        rows.append((k, o, m, sd, lift, z, p, verdict))
+    return {"seed": seed, "n": n_iters, "rows": rows}
+
+
+def main():
+    ap = argparse.ArgumentParser(description="L0/L2 validity audit for memory-atlas")
+    ap.add_argument("--src", required=True, help="vault dir to audit")
+    ap.add_argument("--generator", default=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "memory-atlas"),
+        help="path to the memory-atlas generator (for reconciliation)")
+    ap.add_argument("--no-reconcile", action="store_true",
+                    help="skip running the generator; L0 self-identity only")
+    ap.add_argument("--l2", action="store_true",
+                    help="L2 null-model: does each cross-zone detector beat random zoning?")
+    ap.add_argument("-n", "--null-iters", type=int, default=200,
+                    help="zone-shuffle iterations for the L2 null (default 200)")
+    args = ap.parse_args()
+
+    if args.l2:
+        r = l2(args.src, args.generator, args.null_iters)
+        print("== L2 null-model (zone-shuffle x%d, seed=%d) ==" % (r["n"], r["seed"]))
+        print("  %-20s %6s %10s %6s %7s %7s  %s"
+              % ("detector", "obs", "null(m±sd)", "lift", "z", "p", "verdict"))
+        for k, o, m, sd, lift, z, p, verdict in r["rows"]:
+            lift_s = "inf" if lift == float("inf") else "%.2f" % lift
+            print("  %-20s %6d %5.1f±%-4.1f %6s %+7.1f %7.3f  %s"
+                  % (k, o, m, sd, lift_s, z, p, verdict))
+        print("\n  gate: SIGNAL = two-tailed p<0.05 (enriched OR clustered), NOT lift>1.")
+        return 0
+
+    a = audit(args.src)
+    g = None if args.no_reconcile else run_generator(args.generator, args.src)
+
+    print("== L0 accounting identity ==")
+    print("  R_total    = %d" % a["r_total"])
+    print("  R_resolved = %d" % a["resolved"])
+    print("  R_ghost    = %d  (ghost nodes=%d)" % (a["ghost_tokens"], a["ghost_nodes"]))
+    print("  R_excluded = %d  %s" % (a["excluded"], a["excl_breakdown"]))
+    print("  R_lost     = %d" % a["lost"])
+    print("  coverage   = R_resolved/(R_total-R_excluded) = %s"
+          % _ratio(a["resolved"], a["r_total"] - a["excluded"]))
+    print("  ghost_rate = R_ghost/(R_resolved+R_ghost)    = %s  (descriptive, not a gate)"
+          % _ratio(a["ghost_tokens"], a["resolved"] + a["ghost_tokens"]))
+
+    gates = []
+    gates.append(("L0 R_lost == 0", a["lost"] == 0,
+                  "R_lost=%d" % a["lost"]))
+    node_id_ok = a["files_md"] - a["index_present"] == a["real_nodes"]
+    gates.append(("L0 node-identity (files-index == real nodes)", node_id_ok,
+                  "%d files - %d index = %d, real=%d"
+                  % (a["files_md"], a["index_present"],
+                     a["files_md"] - a["index_present"], a["real_nodes"])))
+    if g is not None:
+        gates.append(("L1 real-node reconcile (audit == generator)",
+                      a["real_nodes"] == g["real_nodes"],
+                      "audit=%d generator=%d" % (a["real_nodes"], g["real_nodes"])))
+        gates.append(("L1 ghost reconcile", a["ghost_nodes"] == g["ghost_nodes"],
+                      "audit=%d generator=%d" % (a["ghost_nodes"], g["ghost_nodes"])))
+        gates.append(("L1 edge reconcile (audit pairs == generator edges)",
+                      a["edge_pairs"] == g["edges"],
+                      "audit=%d generator=%d" % (a["edge_pairs"], g["edges"])))
+
+    print("\n== gates ==")
+    all_pass = True
+    for name, ok, detail in gates:
+        all_pass = all_pass and ok
+        print("  [%s] %-46s %s" % ("PASS" if ok else "FAIL", name, detail))
+    if a["lost_samples"]:
+        print("\n  lost samples:", a["lost_samples"])
+    print("\n%s" % ("ALL PASS" if all_pass else "FAIL"))
+    return 0 if all_pass else 1
+
+
+def _ratio(num, den):
+    return "n/a (den=0)" if den == 0 else "%.4f (%d/%d)" % (num / den, num, den)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

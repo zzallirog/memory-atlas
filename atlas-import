@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""atlas-import — портирует произвольный источник в memory-atlas вульт как markdown-ноты.
+
+Источник → markitdown → markdown → умный чанк → .md ноты в vault/<group>/ (frontmatter tags).
+Группа = подпапка (= зона атласа). Теги = frontmatter (= tag_overlap-детектор + фильтры).
+Ноты, а не одна простыня: PDF/docx теряют структуру → чанкер разбивает по стратегии.
+
+Форматы (через markitdown CLI): pdf docx pptx xlsx html epub csv json xml + картинки/аудио.
+Плюс нативно: .md/.txt (без конверсии), папки (рекурсивно), .zip (распаковка).
+
+Usage:
+  atlas-import SRC... --vault DIR [--group NAME] [--tags a,b,c] [--chunk auto|whole|headings|glossary|blank] [--regen]
+
+  atlas-import ~/glossary.pdf --vault ~/psy-vault --group терміни --tags психологія --chunk glossary
+  atlas-import ~/docs/ ~/refs.zip --vault ~/psy-vault --group джерела --regen
+  atlas-import https://example.com/article --vault ~/v --group статті
+
+--regen перегенерит атлас (зовёт ./memory-atlas --src VAULT). Без него — только пишет ноты.
+"""
+import argparse, os, re, sys, subprocess, tempfile, zipfile, shutil, unicodedata, hashlib
+from pathlib import Path
+
+# markitdown берёт эти; .md/.txt читаем сами, папки/zip разворачиваем
+MARKITDOWN_EXT = {".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls",
+                  ".html", ".htm", ".epub", ".csv", ".json", ".xml", ".rtf",
+                  ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff",
+                  ".mp3", ".wav", ".m4a", ".flac"}
+TEXT_EXT = {".md", ".markdown", ".txt", ".text"}
+
+def eprint(*a): print(*a, file=sys.stderr)
+
+def slug(s, maxlen=80):
+    """Юникод-безопасный slug: кириллица/латиница/цифры сохраняются, мусор → -."""
+    s = str(s).strip().lower()
+    s = re.sub(r"\s+", "-", s)
+    # оставляем буквы (любой алфавит) + цифры + - _ .
+    s = "".join(ch for ch in s if ch.isalnum() or ch in "-_.")
+    s = re.sub(r"-{2,}", "-", s).strip("-._")
+    return (s or "note")[:maxlen]
+
+def markitdown_convert(path):
+    """file → markdown через markitdown CLI. Пусто/ошибка → None."""
+    exe = shutil.which("markitdown") or os.path.expanduser("~/.local/bin/markitdown")
+    if not os.path.exists(exe) and not shutil.which("markitdown"):
+        eprint("ошибка: markitdown не найден (pip install markitdown / pipx install markitdown)")
+        return None
+    try:
+        r = subprocess.run([exe, str(path)], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        eprint(f"  таймаут конверсии: {path}")
+        return None
+    if r.returncode != 0:
+        eprint(f"  markitdown rc={r.returncode}: {path} — {r.stderr.strip()[:120]}")
+        return None
+    return r.stdout
+
+# ---------- чанкеры: markdown-текст → [(title, body), ...] ----------
+
+def chunk_headings(text):
+    """По markdown-заголовкам (# / ## / ###). Преамбула до первого — своя нота."""
+    out, cur_title, cur_body = [], None, []
+    for line in text.splitlines():
+        m = re.match(r"^(#{1,3})\s+(.+?)\s*#*$", line)
+        if m:
+            if cur_body and any(x.strip() for x in cur_body):
+                out.append((cur_title, "\n".join(cur_body).strip()))
+            cur_title, cur_body = m.group(2).strip(), []
+        else:
+            cur_body.append(line)
+    if cur_body and any(x.strip() for x in cur_body):
+        out.append((cur_title, "\n".join(cur_body).strip()))
+    return [(t, b) for t, b in out if b]
+
+def chunk_glossary(text):
+    """Глоссарий: короткая строка-термин + следующий блок-определение.
+    Также ловит 'Термін — визначення' / 'Термін: визначення' в одной строке.
+    КОНСЕРВАЦИЯ: любая непустая строка становится заголовком ноты. Длинные термины
+    (>6 слів) и термины без определения НЕ теряются — иначе плоская пдфка роняла бы
+    их молча. term_like используется ТОЛЬКО как граница тела, не как условие записи."""
+    lines = [l.rstrip() for l in text.splitlines()]
+    out, i, n = [], 0, len(lines)
+    inline_re = re.compile(r"^\s*([^\n]{2,60}?)\s*[—:–-]\s+(.{15,})$")
+    def term_like(s):
+        return len(s) <= 60 and len(s.split()) <= 6 and not s.endswith((".", "!", "?", ",", ";"))
+    def entry_start(s):
+        # начало новой статьи: короткий термин ИЛИ inline «Термін — визначення» (≤6 слів
+        # у термина). Без inline-ветки статьи без пустой строки-разделителя слипались.
+        if term_like(s):
+            return True
+        mi2 = inline_re.match(s)
+        return bool(mi2 and len(mi2.group(1).split()) <= 6)
+    while i < n:
+        raw = lines[i]
+        s = raw.strip()
+        if not s:
+            i += 1; continue
+        mi = inline_re.match(raw)
+        if mi and len(mi.group(1).split()) <= 6:
+            out.append((mi.group(1).strip(), mi.group(2).strip())); i += 1; continue
+        # любая непустая строка = заголовок ноты; тело — до начала следующей статьи
+        body, j = [], i + 1
+        while j < n and lines[j].strip():
+            if entry_start(lines[j].strip()) and body:
+                break
+            body.append(lines[j]); j += 1
+        out.append((s, "\n".join(body).strip()))   # defless => тело "", но нота есть
+        i = j
+    return out
+
+def chunk_blank(text, min_chars=120):
+    """По пустым строкам, склеивая мелкие блоки до min_chars. Title = первая строка блока."""
+    blocks, cur = [], []
+    for line in text.splitlines():
+        if line.strip():
+            cur.append(line)
+        elif cur:
+            blocks.append("\n".join(cur)); cur = []
+    if cur: blocks.append("\n".join(cur))
+    # склейка мелких
+    out, buf = [], ""
+    for b in blocks:
+        buf = (buf + "\n\n" + b).strip() if buf else b
+        if len(buf) >= min_chars:
+            title = buf.splitlines()[0].strip()[:80]
+            out.append((title, buf)); buf = ""
+    if buf.strip():
+        out.append((buf.splitlines()[0].strip()[:80], buf))
+    return out
+
+def chunk_whole(text, title=None):
+    return [(title, text.strip())] if text.strip() else []
+
+def looks_like_glossary(text):
+    """Автодетект глоссария по ДОЛЕ БЛОКОВ вида «короткий термін → визначення».
+    Считаем не короткие строки вообще (определения длинные и топят долю),
+    а блоки-параграфы, чья ПЕРВАЯ строка — кандидат-термин, ИЛИ inline «Термін — …»."""
+    blocks, cur = [], []
+    for line in text.splitlines():
+        if line.strip():
+            cur.append(line.strip())
+        elif cur:
+            blocks.append(cur); cur = []
+    if cur: blocks.append(cur)
+    if len(blocks) < 4: return False
+    inline_re = re.compile(r"^.{2,60}?\s+[—:–]\s+.{15,}$")
+    def is_term(l):
+        return len(l) <= 60 and 1 <= len(l.split()) <= 6 and not l.endswith((".", "!", "?", ",", ";"))
+    hits = 0
+    for b in blocks:
+        head = b[0]
+        if inline_re.match(head) or (is_term(head) and (len(b) > 1 or len(head) <= 40)):
+            hits += 1
+    return hits / len(blocks) >= 0.5
+
+def smart_chunk(text, mode, doc_title):
+    if mode == "whole":     return chunk_whole(text, doc_title)
+    if mode == "headings":  return chunk_headings(text) or chunk_whole(text, doc_title)
+    if mode == "glossary":  return chunk_glossary(text) or chunk_whole(text, doc_title)
+    if mode == "blank":     return chunk_blank(text)
+    # auto
+    if re.search(r"^#{1,3}\s+\S", text, re.M):
+        h = chunk_headings(text)
+        if len(h) >= 2: return h
+    if looks_like_glossary(text):
+        g = chunk_glossary(text)
+        if len(g) >= 3: return g
+    return chunk_whole(text, doc_title)
+
+# ---------- writer ----------
+
+def write_note(vault, group, title, body, tags, source, seen):
+    zone_dir = Path(vault) / group if group else Path(vault)
+    zone_dir.mkdir(parents=True, exist_ok=True)
+    base = slug(title) if title else "note"
+    name = base
+    k = 2
+    while name in seen or (zone_dir / f"{name}.md").exists():
+        name = f"{base}-{k}"; k += 1
+    seen.add(name)
+    fm = ["---"]
+    fm.append(f"title: {title or base}")
+    if tags:
+        fm.append("tags: [" + ", ".join(tags) + "]")
+    fm.append(f"source: {source}")
+    fm.append("---")
+    fm.append("")
+    if title:
+        fm.append(f"# {title}")
+        fm.append("")
+    fm.append(body)
+    (zone_dir / f"{name}.md").write_text("\n".join(fm) + "\n", encoding="utf-8")
+    return zone_dir / f"{name}.md"
+
+# ---------- источник → список (path_для_markitdown, doc_title) ----------
+
+def gather_sources(src, tmpdir):
+    """Разворачивает папку/zip; возвращает список файлов для обработки."""
+    p = Path(src)
+    if src.startswith(("http://", "https://", "data:")):
+        return [(src, None)]  # markitdown берёт URL напрямую
+    if not p.exists():
+        eprint(f"  пропуск (нет пути): {src}"); return []
+    if p.is_dir():
+        files = []
+        for f in sorted(p.rglob("*")):
+            if f.is_file() and f.suffix.lower() in (MARKITDOWN_EXT | TEXT_EXT):
+                files.append((str(f), f.stem))
+        return files
+    if p.suffix.lower() == ".zip":
+        dest = Path(tmpdir) / slug(p.stem)
+        dest.mkdir(parents=True, exist_ok=True)
+        try:
+            with zipfile.ZipFile(p) as z: z.extractall(dest)
+        except Exception as e:
+            eprint(f"  битый zip {src}: {e}"); return []
+        out = []
+        for f in sorted(dest.rglob("*")):
+            if f.is_file() and f.suffix.lower() in (MARKITDOWN_EXT | TEXT_EXT):
+                out.append((str(f), f.stem))
+        return out
+    return [(str(p), p.stem)]
+
+def get_text(path):
+    """markitdown для бинарных, прямое чтение для .md/.txt."""
+    ext = Path(path).suffix.lower()
+    if ext in TEXT_EXT and not path.startswith(("http", "data:")):
+        try: return Path(path).read_text(encoding="utf-8", errors="replace")
+        except Exception as e: eprint(f"  чтение {path}: {e}"); return None
+    return markitdown_convert(path)
+
+def main():
+    ap = argparse.ArgumentParser(description="Импорт произвольных источников в memory-atlas вульт")
+    ap.add_argument("src", nargs="+", help="файлы / папки / .zip / URL")
+    ap.add_argument("--vault", required=True, help="корень вульта (куда писать ноты)")
+    ap.add_argument("--group", default="", help="группа = подпапка = зона атласа")
+    ap.add_argument("--tags", default="", help="теги через запятую (frontmatter)")
+    ap.add_argument("--chunk", default="auto",
+                    choices=["auto", "whole", "headings", "glossary", "blank"],
+                    help="стратегия разбиения на ноты (default: auto)")
+    ap.add_argument("--regen", action="store_true", help="перегенерить атлас после импорта")
+    ap.add_argument("--within-zone", action="store_true",
+                    help="при --regen: рёбра semantic внутри группы (плоский глоссарий в одну папку)")
+    ap.add_argument("--dry-run", action="store_true", help="показать что будет, не писать")
+    args = ap.parse_args()
+
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+    vault = os.path.expanduser(args.vault)
+    seen = set()
+    total_notes, total_docs = 0, 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for src in args.src:
+            for path, doc_title in gather_sources(os.path.expanduser(src), tmp):
+                text = get_text(path)
+                if not text or not text.strip():
+                    eprint(f"  пусто: {path}"); continue
+                total_docs += 1
+                chunks = smart_chunk(text, args.chunk, doc_title)
+                src_name = os.path.basename(str(path))
+                if args.dry_run:
+                    eprint(f"  {src_name}: {len(chunks)} нот (chunk={args.chunk})")
+                    for t, _ in chunks[:3]:
+                        eprint(f"      · {t or '(без title)'}")
+                    total_notes += len(chunks); continue
+                for title, body in chunks:
+                    write_note(vault, args.group, title, body, tags, src_name, seen)
+                    total_notes += 1
+
+    print(f"импортировано: {total_notes} нот из {total_docs} документов → {vault}"
+          + (f"/{args.group}" if args.group else ""))
+
+    if args.regen and not args.dry_run:
+        gen = Path(__file__).resolve().parent / "memory-atlas"
+        cmd = [str(gen), "--src", vault, "--no-open"]
+        if args.within_zone:
+            cmd.append("--semantic-within-zone")
+        eprint(f"регенерю атлас: {' '.join(cmd)}")
+        r = subprocess.run(cmd, text=True)
+        sys.exit(r.returncode)
+
+if __name__ == "__main__":
+    main()
