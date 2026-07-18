@@ -156,13 +156,17 @@ def norm(key):
 def parse_frontmatter(text):
     text = text.lstrip("﻿")
     m = FM_RE.match(text)
-    fm = {"name": None, "description": "", "type": "",
+    fm = {"name": None, "title": "", "description": "", "type": "",
           "part_of": "", "tier": "", "session": "", "state": "", "tags": []}
     if not m:
         return fm, text
     block = m.group(1)
     # G2: keys at BOTH levels (^\s*) — our nested format AND top-level Obsidian/reference-vault
-    for pat, key in ((r"^name:\s*(.+)$", "name"),
+    # `title:` is the Obsidian/foreign-vault spelling of `name:` — without this a foreign
+    # note falls back to its stem and the graph shows slugs ("реакція") instead of the
+    # author's own label ("Реакція"). name wins when both are present.
+    for pat, key in ((r"^\s*name:\s*(.+)$", "name"),
+                     (r"^\s*title:\s*(.+)$", "title"),
                      (r"^description:\s*(.+)$", "description"),
                      (r"^\s*type:\s*(.+)$", "type"),
                      (r"^\s*part_of:\s*(.+)$", "part_of"),
@@ -188,6 +192,8 @@ def parse_frontmatter(text):
                 elif ln.strip() and re.match(r"^\S", ln):
                     break
             fm["tags"] = lst
+    if not fm["name"] and fm["title"]:
+        fm["name"] = fm["title"]
     return fm, text[m.end():]
 
 
@@ -214,10 +220,18 @@ def index_members(src, index_file):
     return stems
 
 
-def build_graph(src):
+def build_graph(src, exclude_tags=(), exclude_types=()):
     """src: a single dir, or a list of (name, dir) roots. Root #1 = primary (index-based
     zones as before); every extra root (wiki, skills, …) becomes ONE zone named after it.
-    [[links]] resolve same-root first, then globally — a cross-root hit kills a ghost."""
+    [[links]] resolve same-root first, then globally — a cross-root hit kills a ghost.
+
+    exclude_tags/exclude_types drop notes from the GRAPH while keeping them on disk —
+    the foreign-vault equivalent of an Obsidian graph filter. A vault can carry a large
+    reference appendix (a glossary import: one tag, thousands of atomic pages) that is
+    inventory, not knowledge; rendered as nodes it outnumbers the real notes and drowns
+    every grouping axis. Excluded stems are REMEMBERED: links pointing at them resolve to
+    nothing instead of minting ghosts, otherwise hiding an appendix just converts N nodes
+    into N ghost nodes and the screen is no cleaner."""
     roots = [(os.path.basename(os.path.abspath(src).rstrip(os.sep)) or "root", src)] \
         if isinstance(src, str) else list(src)
     now = time.time()
@@ -235,6 +249,9 @@ def build_graph(src):
     nodes, lookup = [], {}
     root_lookup = {name: {} for name, _ in roots}   # same-root resolve wins over global
     bodies = {}
+    ex_tags = {t.strip().lstrip("#").lower() for t in exclude_tags if t.strip()}
+    ex_types = {t.strip().lower() for t in exclude_types if t.strip()}
+    excluded_stems = set()          # hidden-but-known: suppresses ghosts, see docstring
     for rname, rsrc in roots:
         for path in scan(rsrc):
             base = os.path.basename(path)
@@ -260,6 +277,13 @@ def build_graph(src):
             with open(path, encoding="utf-8", errors="replace") as f:
                 text = f.read()
             fm, body = parse_frontmatter(text)
+            if ex_tags or ex_types:
+                ntags = {str(t).lstrip("#").lower() for t in fm["tags"]}
+                if (ntags & ex_tags) or (fm["type"] or "").lower() in ex_types:
+                    excluded_stems.add(norm(base))
+                    if fm["name"]:
+                        excluded_stems.add(norm(fm["name"]))
+                    continue
             st = os.stat(path)
 
             top = rel.split(os.sep)[0] if os.sep in rel else ""
@@ -350,7 +374,7 @@ def build_graph(src):
             if hit:
                 add_edge(stem, hit, kind)
             else:
-                if tkey in index_stems:
+                if tkey in index_stems or tkey in excluded_stems:
                     continue
                 if tkey not in ghosts:
                     ghosts[tkey] = {
@@ -902,6 +926,11 @@ def main():
     ap.add_argument("--session-max-commits", type=int, default=1000)
     ap.add_argument("--structural-cross", action="store_true")
     ap.add_argument("--structural-max-motifs", type=int, default=5000)
+    ap.add_argument("--exclude-tag", action="append", default=[], metavar="TAG",
+                    help="не рисовать ноты с этим тегом (повторяемо); ссылки на них не станут ghost. "
+                         "Для вульта со справочным приложением: --exclude-tag термін")
+    ap.add_argument("--exclude-type", action="append", default=[], metavar="TYPE",
+                    help="не рисовать ноты с этим frontmatter type (повторяемо), напр. --exclude-type source")
     ap.add_argument("--no-detectors", action="store_true", help="wikilink graph only")
     ap.add_argument("--fast-regen", action="store_true",
                     help="semantic+wiki only: skip O(n^2) tag/temporal and git-session detectors "
@@ -977,7 +1006,7 @@ def main():
         data.setdefault("generated", time.strftime("%Y-%m-%d %H:%M"))
         data.setdefault("version", VERSION)
     else:
-        nodes, edges, bodies = build_graph(roots)
+        nodes, edges, bodies = build_graph(roots, args.exclude_tag, args.exclude_type)
         if not nodes:
             print(f"warn: 0 nodes in {roots[0][1]} — pass --src /path/to/your/vault "
                   f"(a folder of .md notes)", file=sys.stderr)
@@ -1106,6 +1135,30 @@ def run_self_test():
             self.assertEqual(by["b"]["zone"], "chemistry")
             self.assertEqual(by["top"]["zone"], "notes")   # root-level fallback
             self.assertFalse(by["a"]["orphan"])            # foreign → orphan off
+
+        def test_exclude_appendix_by_tag_without_minting_ghosts(self):
+            # foreign vault with a reference appendix: a glossary import, one tag, many atomic
+            # pages, all linking back to one index note. Rendered as nodes they outnumber the
+            # real notes. Hiding them must not convert N nodes into N ghosts.
+            self.w("wiki/Хаб.md", "---\ntitle: Хаб\n---\n[[Термін А]] [[Концепт]]")
+            self.w("wiki/Концепт.md", "---\ntitle: Концепт\ntags: [тема]\n---\nx")
+            for t in ("А", "Б", "В"):
+                self.w(f"wiki/Термін {t}.md", f"---\ntitle: Термін {t}\ntags: [термін]\n---\n[[Хаб]]")
+            nodes, edges, _ = build_graph(self.src, exclude_tags=["термін"])
+            by = {n["id"]: n for n in nodes}
+            self.assertNotIn(norm("Термін А.md"), by)          # appendix gone from the graph
+            self.assertEqual([n for n in nodes if n["ghost"]], [])   # and left no ghost debt
+            self.assertIn(norm("Концепт.md"), by)              # real notes untouched
+            self.assertEqual(by[norm("Хаб.md")]["label"], "Хаб")     # title: honoured as label
+
+        def test_exclude_by_type(self):
+            self.w("wiki/a.md", "---\ntitle: a\ntype: concept\n---\n[[d]]")
+            self.w("wiki/d.md", "---\ntitle: d\ntype: source\n---\nx")
+            nodes, _, _ = build_graph(self.src, exclude_types=["source"])
+            ids = {n["id"] for n in nodes}
+            self.assertIn("a", ids)
+            self.assertNotIn("d", ids)
+            self.assertEqual([n for n in nodes if n["ghost"]], [])
 
         def test_code_span_wikilinks_not_ghosts(self):
             # convention notes document the [[wikilink]] syntax inside code — those must
