@@ -91,6 +91,7 @@ docs/QUICKSTART.md            # the friendly walkthrough
 
 ## Changelog
 
+- **2.13.1** (2026-07-18) — release: first tag to ship the prebuilt `dist/memory-atlas.pyz` as a downloadable asset (the zero-clone route the README promises); rolls up the 07-18 editor polish (reader-mode, hover-pin cards, "категория · авто" unified axis, `--fast-regen`, uk locale fix) and the `atlas-serve` exec bit. No generator behaviour change vs 2.13.0.
 - **2.13.0** (2026-07-18) — editor pass: hover-pin overhaul (aero-glass background so text never flickers, free placement + reload persistence via localStorage, distinct-link dedupe, open-in-right-bar button, in-card tag editing + per-detector edge counts, fold/copy controls); document import — `atlas-serve` `/api/import` converts arbitrary files to markdown via markitdown (or keeps them as-is), with an import panel in the new-note UI (see `docs/IMPORT-FORMATS.md` for the tested format matrix and what degrades).
 - **2.12.0** (2026-07-11) — trilingual UI: Ukrainian (i18nUK) added; the bar language button cycles RU → EN → UK, RU stays canonical markup.
 - **2.11.0** (2026-07-10) — release aggregate of the 07-10 wave: frametime pass v2.10.1-v2.10.5 (perf) + scale pass v2.10.6 (features) + perf/ bench harness; published to GitHub with rebuilt dist.
