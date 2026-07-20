@@ -7,16 +7,18 @@ ink it by a third one. Nothing here needs a rebuild; it is all live.
 ## The grouping axis (v2.10)
 
 `GROUP` slices every grouping layout — `pack · ring · petals · radial · grid ·
-zones · spine · facets · dendro` — and the force layout's link distances follow it too
+zones · spine · facets · dendro · matrix` — and the force layout's link distances follow it too
 (same-group notes cluster, cross-group edges stretch). Hull outlines and hull titles
 follow the chosen axis as well.
 
 | group | what it slices by |
 |---|---|
-| `zone` | memory zones (index membership / top dir) — the default |
+| `cat` | category · auto — zone or cluster, whichever the corpus actually has. **The default** |
+| `zone` | memory zones (index membership / top dir) |
 | `root` | vault root (`--src name=dir`) — origin in a multi-root vault |
 | `cluster` | louvain topology topics |
 | `type` | note type from frontmatter |
+| `tier` | the note's own `tier:` frontmatter field — what the `taxonomy` preset picks |
 | `age` | recency buckets (week / month / quarter / year / older) |
 
 The chosen axis persists (config), travels in saved views and in `?state=` /
@@ -57,6 +59,30 @@ The classic shelves, sliced by any axis — e.g. `group=cluster` turns the shelf
 blocks into topic shelves:
 
 ![grid by cluster](shots/view-grid-cluster.png)
+
+## Counting views (v2.21)
+
+### matrix · what exists, and where it is thin
+
+Rows are the grouping axis, columns a second one (note type, or age buckets when
+the rows are already types). A cell's blob is its notes packed by phyllotaxis and
+its radius is `pitch·√n`, so the mass you see **is** the count. A graph answers
+*what links to what*; this answers *what do I have*. An empty cell is the finding.
+
+## Dev views · the ⚗ pill (v2.21)
+
+The third pill in the HUD foot opens layouts that are **built but not yet through
+a release**. It is off by default and persisted. Turning it off while you are
+standing in one of those layouts falls back to `force`.
+
+### treemap · area = mass ⚗
+
+A squarified treemap over the grouping axis: every group's rectangle is
+proportional in **area** to how many notes it holds, and the notes fill their own
+cell on a grid whose aspect follows the cell's. `matrix` answers *where is
+nothing*; `treemap` answers *what is most of this vault*. Area rather than radius
+on purpose — `pack`'s circles already say "big" by radius, which under-reads mass
+by its square.
 
 ## Reading at a distance (v2.10)
 
