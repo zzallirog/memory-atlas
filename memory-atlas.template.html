@@ -2138,8 +2138,84 @@ const sizeScale = {
 };
 let magNode = null;   // nearest node to cursor in magnet mode (LOD bump)
 function radius(n) {
-  const r = (n.ghost ? 3 : sizeScale[sizeMode()](n[sizeMode()])) * nsMul();
+  const r = (n.ghost ? 3 : sizeScale[sizeMode()](n[sizeMode()])) * nsMul() * (n._ps || 1);
   return n === magNode ? r * 1.6 : r;   // magnet LOD bump (principle #3)
+}
+
+// ==== real 3D camera ========================================================================
+// Not a skew. Nodes carry (x3, y3, z3); the camera carries yaw/pitch/dist and every frame
+// projects them through a PERSPECTIVE division into the same world plane every other part of
+// this file already understands. Consequences that matter:
+//   · a node's on-screen size is r·f/w — the same 1/w law as its position, so near really is
+//     bigger and the eye reads depth without a legend;
+//   · hit-testing, labels, hulls, the minimap and d3.zoom keep working untouched, because what
+//     they see is still (n.x, n.y) — projection happens BEFORE they look.
+// The camera is eased by a critically damped spring (ζ = 1): the unique damping with no
+// overshoot and the fastest settle for a given stiffness ω. Per axis, with h = dt:
+//     v ← (v + ω²·h·(target − p)) / (1 + h·(2ω + ω²·h))
+//     p ← p + h·v
+// This is the semi-implicit (symplectic) Euler form solved for v — unconditionally stable at
+// any frame time, unlike explicit integration, which blows up exactly when the tab stutters
+// and the animation most needs to hold together.
+const cam3 = { on: false, yaw: 0.62, pitch: 0.40, dist: 2450,
+               tyaw: 0.62, tpitch: 0.40, tdist: 2450,
+               vyaw: 0, vpitch: 0, vdist: 0, f: 1500, last: 0, spin: 0 };
+const CAM_W = 9.0;                       // spring stiffness ω, rad/s: settles in ≈ 4/ω ≈ 0.45 s
+const PITCH_MAX = 1.35;                  // just short of ±π/2, where the plates degenerate to lines
+function spring1(p, v, target, w, h) {   // critically damped, semi-implicit
+  const nv = (v + w * w * h * (target - p)) / (1 + h * (2 * w + w * w * h));
+  return [p + h * nv, nv];
+}
+function cam3Settled() {
+  return Math.abs(cam3.yaw - cam3.tyaw) < 1e-4 && Math.abs(cam3.pitch - cam3.tpitch) < 1e-4 &&
+         Math.abs(cam3.dist - cam3.tdist) < 0.5 && !cam3.spin;
+}
+// one point through an arbitrary camera — used by the contact strip, which must not disturb
+// the live one
+function projectOne(q, yaw, pitch, dist) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const xr = q[0] * cy + q[2] * sy, zr = -q[0] * sy + q[2] * cy;
+  const yr = q[1] * cp - zr * sp, zz = q[1] * sp + zr * cp;
+  const s = cam3.f / Math.max(120, dist - zz);
+  return [xr * s, yr * s];
+}
+// project every node through the current camera into (n.x, n.y) + per-node scale/depth
+function project3() {
+  const cy = Math.cos(cam3.yaw), sy = Math.sin(cam3.yaw);
+  const cp = Math.cos(cam3.pitch), sp = Math.sin(cam3.pitch);
+  const f = cam3.f, d = cam3.dist;
+  let near = Infinity;
+  for (const n of nodes) {
+    if (n.x3 === undefined) { n._ps = 1; continue; }
+    const xr = n.x3 * cy + n.z3 * sy;              // yaw about the vertical axis
+    const zr = -n.x3 * sy + n.z3 * cy;
+    const yr = n.y3 * cp - zr * sp;                // pitch about the horizontal axis
+    const zz = n.y3 * sp + zr * cp;
+    const w = Math.max(120, d - zz);               // clamp: a node behind the eye must not fold
+    const s = f / w;
+    n.x = xr * s; n.y = yr * s;
+    n._ps = s; n._z = zz;
+    if (w < near) near = w;
+  }
+  return near;
+}
+// the cage, projected the same way — 8 corners, 12 edges, rebuilt per frame (cheap, and it has
+// to breathe with the camera or the box stops being the same object as the plates)
+function cage3(E, hi, lo) {
+  const cy = Math.cos(cam3.yaw), sy = Math.sin(cam3.yaw);
+  const cp = Math.cos(cam3.pitch), sp = Math.sin(cam3.pitch);
+  const P = (x, y, z) => {
+    const xr = x * cy + z * sy, zr = -x * sy + z * cy;
+    const yr = y * cp - zr * sp, zz = y * sp + zr * cp;
+    const s = cam3.f / Math.max(120, cam3.dist - zz);
+    return [xr * s, yr * s];
+  };
+  const c = [];
+  for (const y of [hi, lo]) for (const [x, z] of [[-E,-E],[E,-E],[E,E],[-E,E]]) c.push(P(x, y, z));
+  const path = new Path2D();
+  const seg = (a, b) => { path.moveTo(c[a][0], c[a][1]); path.lineTo(c[b][0], c[b][1]); };
+  for (let i = 0; i < 4; i++) { seg(i, (i+1)%4); seg(4+i, 4+(i+1)%4); seg(i, 4+i); }
+  return path;
 }
 
 // ---- simulation ----
@@ -2501,6 +2577,35 @@ canvas.addEventListener('mousemove', ev => {
   if (n) tipPlace(ev); else tipHide();
 });
 canvas.addEventListener('mouseleave', () => { cursorW = null; hovered = null; tipHide(); requestDraw(); });
+
+// ---- orbit: shift+drag turns the camera in a 3D layout ---------------------------------
+// shift, not plain drag: pan and zoom are muscle memory on every other layout, and a mode
+// that silently redefines the primary gesture is a trap. d3.zoom keeps the plain drag.
+// The drag writes the camera's TARGET, never its position — the spring stays the only thing
+// that moves it, so a flung gesture decelerates instead of stopping dead.
+let orbit = null;
+canvas.addEventListener('pointerdown', ev => {
+  if (!cam3.on || !ev.shiftKey || ev.button !== 0) return;
+  orbit = { x: ev.clientX, y: ev.clientY };
+  cam3.spin = 0;
+  canvas.setPointerCapture(ev.pointerId);
+  ev.stopPropagation(); ev.preventDefault();
+}, true);
+canvas.addEventListener('pointermove', ev => {
+  if (!orbit) return;
+  const dx = ev.clientX - orbit.x, dy = ev.clientY - orbit.y;
+  orbit.x = ev.clientX; orbit.y = ev.clientY;
+  cam3.tyaw += dx * 0.006;
+  cam3.tpitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, cam3.tpitch + dy * 0.005));
+  requestDraw();
+  ev.stopPropagation(); ev.preventDefault();
+}, true);
+for (const t of ['pointerup', 'pointercancel'])
+  canvas.addEventListener(t, ev => {
+    if (!orbit) return;
+    orbit = null;
+    try { canvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+  }, true);
 
 // Ctrl+click ×2 = user edge (overlay, thought-cloud contract: the user draws links)
 let pendingLink = null;
@@ -4444,7 +4549,7 @@ function renderStrip() {
     if (!cv) { cv = document.createElement('canvas'); cv.width = 170; cv.height = 108;
                stripCvs.set(name, cv); }
     let t;
-    try { t = layoutTargets(name); } catch (e) { continue; }
+    try { t = layoutTargets(name, true); } catch (e) { continue; }
     const pts = [];
     for (const n of nodes) {
       if (n.ghost || !visible(n)) continue;
@@ -4594,7 +4699,10 @@ if (!hasAge) {
   const o = [...$('layoutMode').options].find(o => o.value === 'timeline');
   if (o) o.remove();
 }
-function layoutTargets(name) {
+function layoutTargets(name, preview) {
+  // preview = the contact strip asking «what would this look like»: compute, touch nothing.
+  // 3D layouts write per-node space coordinates and take over the camera; doing that for a
+  // thumbnail would reproject the graph the user is looking at.
   const t = new Map();
   layoutTitles = [];                                   // only list-shaped layouts repopulate
   for (const n of nodes) delete n._lbAnchor;           // side-anchored labels are layout-owned
@@ -4610,6 +4718,7 @@ function layoutTargets(name) {
   const LG = layoutGroups(LG_MAX[name] || 12);
   const gv = LG.g, zsCap = LG.zs;
   layoutDecor = null;
+  if (!preview) cam3.on = false;   // any 2D layout hands the plane coordinates back
   if (name === 'semantic') {
     for (const n of real) if (n.sx !== undefined) t.set(n.id, [n.sx * R, n.sy * R]);
   } else if (name === 'radial') {
@@ -4828,44 +4937,48 @@ function layoutTargets(name) {
     });
   } else if (name === 'strata') {
     // ref: FILTER SOLLICITATION — the corpus as sedimentary layers caged in ONE wire box.
-    // Every group is a stratum at its own depth; the shared cage is what makes the depths
-    // comparable, and the centre of the cage is the centre of the world.
-    // The projection is oblique, not a 3D engine: a note's plate coordinates (u, v) land at
-    // (u + v*DX, v*DY + layer), so hit-testing, zoom and every other layout keep working on
-    // plain world coordinates.
+    // Every group is a stratum at its own depth; the shared cage makes the depths comparable,
+    // and the centre of the cage is the centre of the world.
+    // This layout does NOT place nodes on the plane: it places them in SPACE (x3, y3, z3) and
+    // hands them to the camera (see project3). The plane coordinates every other subsystem
+    // reads are the perspective projection of those, recomputed per frame.
     const zs = zsCap;
-    const GA = Math.PI * (3 - Math.sqrt(5));
-    const pitch = 30;
+    const GA = Math.PI * (3 - Math.sqrt(5));   // golden angle: the phyllotaxis packing constant
+    const pitch = 34;
     const maxCnt = d3.max(zs, z => real.filter(n => gv(n) === z).length) || 1;
-    const P = pitch * Math.sqrt(maxCnt + 0.6);          // widest stratum sizes the cage
-    const DX = 0.52, DY = 0.30;                          // depth axis of the oblique projection
-    const gap = Math.max(150, P * 0.78);                 // strata must not interpenetrate
-    const top = (zs.length - 1) / 2 * gap;               // stack centred on the origin
-    const proj = (u, v, h) => [u + v * DX, v * DY + h];
+    const P = pitch * Math.sqrt(maxCnt + 0.6);   // widest stratum sizes the cage
+    const gap = Math.max(150, P * 0.62);
+    const top = (zs.length - 1) / 2 * gap;
+    const p3 = new Map();
     zs.forEach((z, zi) => {
       const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
-      const h = top - zi * gap;                          // first group on top, like a legend
+      const h = top - zi * gap;                  // first group on top, like a legend
       ns.forEach((n, i) => {   // phyllotaxis inside the plate: hubs at the core, tail outward
         const rr2 = pitch * Math.sqrt(i + 0.6), aa = i * GA;
-        t.set(n.id, proj(Math.cos(aa) * rr2, Math.sin(aa) * rr2, h));
+        p3.set(n.id, [Math.cos(aa) * rr2, h, Math.sin(aa) * rr2]);
       });
     });
-    // the cage: two plates (top/bottom) + four verticals, one static Path2D, one stroke a frame
-    // the cage hugs the plates: at 1.16 the box read as a room the strata were lost inside,
-    // and the reference's box is a frame around the sediment, not a hall
-    const E = P * 0.94, hi = top + gap * 0.5, lo = top - (zs.length - 1) * gap - gap * 0.5;
-    const corners = [[-E, -E], [E, -E], [E, E], [-E, E]];
-    layoutDecor = new Path2D();
-    for (const h of [hi, lo]) {
-      corners.forEach((c, i) => {
-        const p = proj(c[0], c[1], h);
-        i ? layoutDecor.lineTo(p[0], p[1]) : layoutDecor.moveTo(p[0], p[1]);
-      });
-      layoutDecor.closePath();
+    for (const n of nodes) {   // ghosts sit at the centroid of their real neighbours, in space
+      if (!n.ghost) continue;
+      const nb = (adj.get(n.id) || []).map(id => p3.get(id)).filter(Boolean);
+      if (nb.length) p3.set(n.id, [d3.mean(nb, q => q[0]), d3.mean(nb, q => q[1]) + 14,
+                                   d3.mean(nb, q => q[2])]);
     }
-    for (const c of corners) {
-      const a = proj(c[0], c[1], hi), b = proj(c[0], c[1], lo);
-      layoutDecor.moveTo(a[0], a[1]); layoutDecor.lineTo(b[0], b[1]);
+    const box = { E: P * 0.94, hi: top + gap * 0.5, lo: top - (zs.length - 1) * gap - gap * 0.5 };
+    const dist = Math.max(1400, (P * 2 + zs.length * gap) * 1.35);
+    if (preview) {   // project with the camera's current angles, commit nothing
+      for (const [id, q] of p3) t.set(id, projectOne(q, cam3.yaw, cam3.pitch, dist));
+    } else {
+      for (const n of nodes) { delete n.x3; delete n.y3; delete n.z3; }
+      for (const [id, q] of p3) {
+        const n = byId.get(id);
+        if (n) { n.x3 = q[0]; n.y3 = q[1]; n.z3 = q[2]; }
+      }
+      cam3.on = true;
+      cam3.box = box;
+      cam3.dist = cam3.tdist = dist;
+      project3();                                // seed the plane coords for fitView
+      for (const n of nodes) if (n.x3 !== undefined) t.set(n.id, [n.x, n.y]);
     }
   } else if (name === 'dendro') {
     // ref: snag-tree (v2.10) — radial dendrogram group ⊃ cluster ⊃ note, every leaf on the
@@ -4905,8 +5018,13 @@ function layoutTargets(name) {
   }
   return t;
 }
+const LAYOUTS_3D = new Set(['strata']);
 function applyLayout(name, instant) {
   layoutName = name;
+  // the force branch below never calls layoutTargets, so the camera has to be released HERE or
+  // it keeps reprojecting nodes that the simulation is trying to move (measured: cam3.on stayed
+  // true after strata → force, and every frame overwrote the sim's positions)
+  if (!LAYOUTS_3D.has(name)) { cam3.on = false; for (const n of nodes) n._ps = 1; }
   $('layoutMode').value = name;
   saveCfg();
   // force/semantic skip layoutTargets — drop list-layout leftovers here as well
@@ -4933,7 +5051,14 @@ function applyLayout(name, instant) {
   }
   gateCollisions();
   if (typeof renderStrip === 'function') renderStrip();   // the strip always offers OTHER forms
-  if (instant) { sim.stop().alpha(1).tick(180); requestDraw(); }
+  if (cam3.on) {
+    // in 3D the camera owns the plane coordinates: a live force sim would fight the projection
+    // every tick and lose — jitter, not motion. The frame loop drives instead.
+    sim.stop();
+    cam3.last = 0;
+    requestDraw();
+    setTimeout(() => { if (layoutName === name) fitView(); }, instant ? 0 : 340);
+  } else if (instant) { sim.stop().alpha(1).tick(180); requestDraw(); }
   else {
     sim.alpha(0.65).restart();
     setTimeout(() => { if (layoutName === name) fitView(); }, 780);
@@ -5013,8 +5138,25 @@ let pT = 0, lastPT = 0;
 var drawQueued = false;
 var liveParts = 0;   // particle carriers in the last live frame (rAF keepalive gate)
 function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(draw); } }
+// one camera step per frame: ease → project → rebuild the cage. Returns true while it moves,
+// which is what keeps the rAF loop alive (and lets it go quiet the moment the camera settles).
+function stepCam3() {
+  const now = performance.now();
+  // dt from the real clock, clamped: a backgrounded tab hands back a 3-second frame, and an
+  // unclamped step would teleport the camera on return instead of continuing the motion
+  const h = cam3.last ? Math.min(0.05, (now - cam3.last) / 1000) : 1 / 60;
+  cam3.last = now;
+  if (cam3.spin) cam3.tyaw += cam3.spin * h;
+  [cam3.yaw, cam3.vyaw] = spring1(cam3.yaw, cam3.vyaw, cam3.tyaw, CAM_W, h);
+  [cam3.pitch, cam3.vpitch] = spring1(cam3.pitch, cam3.vpitch, cam3.tpitch, CAM_W, h);
+  [cam3.dist, cam3.vdist] = spring1(cam3.dist, cam3.vdist, cam3.tdist, CAM_W * 0.8, h);
+  project3();
+  if (cam3.box) layoutDecor = cage3(cam3.box.E, cam3.box.hi, cam3.box.lo);
+  return !cam3Settled();
+}
 function draw() {
   drawQueued = false;
+  const camMoving = cam3.on && stepCam3();
   const now = performance.now();
   if (toggles.particles) pT += Math.min(60, now - lastPT) / 1000;
   lastPT = now;
@@ -5031,7 +5173,7 @@ function draw() {
   // hover-rendered edges the idle graph draws ZERO frames despite particles being ON
   // magnet holds the loop via magActive alone (real offsets), NOT via bare cursor presence:
   // a still cursor over empty space costs zero frames; any mousemove re-arms the step
-  if ((toggles.particles && liveParts) || magActive || labelAnim ||
+  if (camMoving || (toggles.particles && liveParts) || magActive || labelAnim ||
       ((selected || tagSel.size || timeLens || metricLens) && fm !== 'dim' && now - Math.max(selT, lensT) < 220)) requestDraw();
 }
 // A/B focus: the background is actually blurred (offscreen), the ego subgraph sharp on top.
