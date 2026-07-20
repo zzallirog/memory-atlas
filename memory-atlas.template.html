@@ -142,6 +142,16 @@
   .lg .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   .lg .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lg .n { color: var(--muted); margin-left: auto; font: 10px var(--mono); }
+  /* ramp: a CONTINUOUS axis (heat / usage / metric) is one scale with two ends, not three
+     swatch rows pretending to be categories. ref: the ramp strips under the FILTER
+     SOLLICITATION panels. */
+  .ramp { margin: 2px 0 4px; }
+  .ramp .bar { height: 8px; border-radius: 4px; border: 1px solid var(--border); }
+  .ramp .ends { display: flex; justify-content: space-between; margin-top: 4px;
+                font: 10px var(--mono); color: var(--muted); }
+  .ramp .cap { margin-top: 3px; font: 10px var(--mono); color: var(--muted); }
+  .ramp.click { cursor: pointer; }
+  .ramp.click.active .bar { border-color: var(--border-hi); }
 
   #panel {
     position: absolute; top: 14px; right: 14px; bottom: 46px; width: var(--panelw); z-index: 5;
@@ -3553,18 +3563,30 @@ function renderLegend() {
     items = typeRank.slice(0, 8).map(([t, cnt], i) => [CAT[i], t || '?', cnt, t]);
     const rest = typeRank.slice(8).reduce((s,e) => s+e[1], 0);
     if (rest) items.push([OTHER, 'other types', rest, 'other']);
-  } else if (m === 'usage') {
-    const touched = nodes.filter(n => !n.ghost && usageCnt[n.id]).length;
-    items = [[heatScale(1), '10+', '', null], [heatScale(0.5), '', '', null], [heatScale(0), '0', touched + ' touched', null]];
-  } else if (m.startsWith('metric:')) {
-    // click on the top row = the "forgotten" lens (≥0.6 sharp, the rest recedes)
-    const key = m.slice(7);
-    const hi = nodes.filter(n => !n.ghost && (n[key] ?? 0) >= 0.6).length;
-    items = [[metricScale(1), T('забытые') + ' ≥0.6', hi, 'metric-hi'],
-             [metricScale(0.5), '', '', null],
-             [metricScale(0), T('живые'), '', null]];
-  } else {
-    items = [[heatScale(1), HEAT.high, '', null], [heatScale(0.5), '', '', null], [heatScale(0), HEAT.low, '', null]];
+  } else if (m === 'usage' || m === 'heat' || m.startsWith('metric:')) {
+    // CONTINUOUS axis: one ramp with two labelled ends. Three swatch rows read as three
+    // categories — «10+ / (blank) / 0» invited a click that isolates a group that does not
+    // exist. The metric ramp keeps its one real action (the forgotten lens) on the whole bar.
+    const metric = m.startsWith('metric:'), scale = metric ? metricScale : heatScale;
+    const stops = [0, .25, .5, .75, 1].map(t => `${scale(t)} ${t*100}%`).join(', ');
+    const lo = metric ? T('живые') : m === 'usage' ? '0' : HEAT.low;
+    const hi = metric ? T('забытые') + ' ≥0.6' : m === 'usage' ? '10+' : HEAT.high;
+    const cap = metric
+      ? nodes.filter(n => !n.ghost && (n[m.slice(7)] ?? 0) >= 0.6).length + ' ≥0.6'
+      : m === 'usage' ? nodes.filter(n => !n.ghost && usageCnt[n.id]).length + ' touched' : '';
+    el.innerHTML =
+      `<div class="ramp${metric ? ' click' : ''}${metricLens ? ' active' : ''}">
+         <div class="bar" style="background:linear-gradient(90deg, ${stops})"></div>
+         <div class="ends"><span>${esc(lo)}</span><span>${esc(hi)}</span></div>
+         ${cap ? `<div class="cap">${esc(cap)}</div>` : ''}
+       </div>`;
+    if (metric) el.querySelector('.ramp').addEventListener('click', () => {
+      metricLens = metricLens ? null : { metric: m.slice(7), thr: 0.6 };
+      lensT = performance.now();   // the lens fades in, doesn't snap
+      renderLegend(); requestDraw();
+    });
+    renderLens();
+    return;
   }
   el.innerHTML = items.map(([c, name, cnt, key], i) =>
     `<div class="lg${key!==null&&isolate.has(key)?' active':''}${isolate.size&&key!==null&&!isolate.has(key)?' faded':''}" data-i="${i}">
