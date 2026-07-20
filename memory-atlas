@@ -64,7 +64,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.22.0"  # the shelf outline learned to turn with its shelf; reading starts earlier
+VERSION = "2.23.0"  # zones that seat and colour themselves; the group cap stopped being silent
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -144,12 +144,53 @@ def load_zone_config(src):
         if isinstance(xy, list) and len(xy) == 2:
             ZONES[str(name)] = [float(xy[0]), float(xy[1])]
 
-def zone_anchors(nodes):
-    """Zone anchors [-1..1]. Our own corpus = fixed ZONES; foreign = alphabetical circle.
-    >8 zones — legend colors the first 8, the rest OTHER-grey (contract B22)."""
+def zone_chain(zs, edges, zof):
+    """Order zones around a circle so that the ones BRIDGED to each other end up adjacent.
+
+    Folder-declared zones arrived on the circle in alphabetical order, which is to say in an
+    order uncorrelated with anything: two heavily cross-linked folders could land on opposite
+    rims, their bridge edges then crossed the whole disc, and every other zone's cloud sat under
+    that traffic — "everything mixes". Adjacency is computable: greedy chain on the cross-zone
+    edge mass (the same synergy walk the `ring` layout already uses on the client), so the
+    heaviest pair starts the chain and each remaining zone joins whichever END it is most bound
+    to. Alphabetical order is the tiebreak, so a corpus with no cross-links is unchanged.
+    """
+    if len(zs) < 3:
+        return list(zs)
+    syn = {}
+    for e in edges:
+        a, b = zof.get(e.get("source")), zof.get(e.get("target"))
+        if a is None or b is None or a == b:
+            continue
+        key = (a, b) if a < b else (b, a)
+        syn[key] = syn.get(key, 0) + 1
+    def S(a, b):
+        return syn.get((a, b) if a < b else (b, a), 0)
+    pairs = sorted(((S(a, b), a, b) for i, a in enumerate(zs) for b in zs[i + 1:]),
+                   key=lambda t: (-t[0], t[1], t[2]))
+    chain = [pairs[0][1], pairs[0][2]]
+    left = [z for z in zs if z not in chain]
+    while left:
+        best = max(left, key=lambda z: (max(S(z, chain[0]), S(z, chain[-1])), z))
+        if S(best, chain[0]) >= S(best, chain[-1]):
+            chain.insert(0, best)
+        else:
+            chain.append(best)
+        left.remove(best)
+    return chain
+
+
+def zone_anchors(nodes, edges=None):
+    """Zone anchors [-1..1]. Our own corpus = fixed ZONES; foreign = a bridge-ordered circle.
+
+    Colours follow this key order on the client (zoneSlot), and the client's palette now carries
+    a tinted ladder past the eighth slot, so a folder-zoned vault keeps its zones distinguishable
+    instead of collapsing the tail into one grey.
+    """
     zs = sorted({n["zone"] for n in nodes})
     if set(zs) <= set(ZONES):
         return ZONES
+    zs = zone_chain(zs, edges or [], {n["id"]: n["zone"] for n in nodes if "id" in n})
     step = 2 * math.pi / max(1, len(zs))
     return {z: [round(0.72 * math.cos(i * step - math.pi / 2), 3),
                 round(0.72 * math.sin(i * step - math.pi / 2), 3)]
@@ -1216,7 +1257,7 @@ def main():
         browse = to_browse_data(nodes + shelved, edges, bodies, time.time())
         detectors, cross = ([], []) if args.no_detectors else \
             run_detectors(nodes, edges, bodies, roots, args)
-        zones_payload = zone_anchors(nodes)
+        zones_payload = zone_anchors(nodes, edges)
         # a foreign vault gets its own title = its own localStorage namespace (KEYP),
         # so config/views of the demo and the real vault don't leak into each other
         title = "memory-atlas" if zones_payload is ZONES else \
@@ -1397,6 +1438,21 @@ def run_self_test():
             self.assertEqual(set(an), {"chemistry", "cooking"})
             for xy in an.values():
                 self.assertTrue(all(-1 <= v <= 1 for v in xy))
+
+        def test_zone_chain_puts_bridged_zones_side_by_side(self):
+            # a, c are heavily bridged; alphabetical order would park b between them and send
+            # every bridge edge straight across the disc. The chain has to seat them adjacent.
+            zof = {"a1": "a", "b1": "b", "c1": "c"}
+            edges = [{"source": "a1", "target": "c1"}] * 5 + [{"source": "a1", "target": "b1"}]
+            chain = zone_chain(["a", "b", "c"], edges, zof)
+            self.assertEqual(abs(chain.index("a") - chain.index("c")), 1)
+            # deterministic, and every zone survives the walk
+            self.assertEqual(sorted(chain), ["a", "b", "c"])
+            self.assertEqual(chain, zone_chain(["a", "b", "c"], edges, zof))
+
+        def test_zone_chain_without_edges_is_alphabetical(self):
+            # no cross-links = nothing to optimise; the old order must survive untouched
+            self.assertEqual(zone_chain(["c", "a", "b"], [], {}), ["c", "a", "b"])
 
         def test_multi_root_cross_resolve(self):
             # [[link]] into another root resolves to a real node — the ghost dies;

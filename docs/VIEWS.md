@@ -24,6 +24,38 @@ follow the chosen axis as well.
 The chosen axis persists (config), travels in saved views and in `?state=` /
 `?group=` deep links.
 
+### How many groups you actually see (v2.23)
+
+The axis decides how many groups exist; the **layout** decides how many of them it can show.
+Past that ceiling the tail is folded into a single `…` pile that gets no outline and no title —
+so the number next to `GROUP` prints `shown/total` and turns amber when it truncates (hover it
+for how many went into the fold). `cluster` on a few-hundred-note vault is the usual case: 53
+topics, 15 shown, 38 folded.
+
+| layout | sections it holds |
+|---|---|
+| `grid` | 32 |
+| `zones` · `dendro` | 24 |
+| `treemap` ⚗ | 20 |
+| everything else | 16 |
+
+### Zones that adapt to the corpus (v2.23)
+
+A vault that declares its zones from **folders** (`.atlas-zones.json`, or any foreign vault —
+see [IMPORT-FORMATS](IMPORT-FORMATS.md)) gets two automatic passes so the zones stay apart
+visually as their number grows:
+
+- **Seating.** Zone anchors are ordered around the circle by *bridge mass* — the zones with the
+  most cross-links between them sit next to each other, so their bridges are short arcs instead
+  of edges dragged across the whole disc under everyone else's cloud. Alphabetical order is the
+  tiebreak, so a corpus with no cross-links is seated exactly as before.
+- **Colour.** Slots 0–7 keep the validated categorical palette unchanged; each further group of
+  eight is that palette on a fixed value ladder (lighter → darker → lightest). A fourteen-folder
+  vault reads as fourteen zones instead of six colours and a grey mass.
+
+Both passes apply to derived zones only. A vault using the built-in index-file zones keeps its
+hand-tuned anchors and its existing colours.
+
 ## Reading views (v2.10)
 
 Three list-shaped layouts where **text is the first-class element** — names are
