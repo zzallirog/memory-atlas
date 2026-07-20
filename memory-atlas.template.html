@@ -1915,9 +1915,12 @@ $('colorMode').addEventListener('change', () => renderPins());   // pin swatches
 const showGhosts = () => toggles.ghosts;
 // in the semantic layout, zone hulls lie (positions = cosine, zones intermixed) — auto-off;
 // zone contrast there is carried by colored node rings (see paintFrame)
-// spine/facets/dendro: group signal lives in the layout's own structure (headers, panels,
-// wedges) — hulls would wrap list+arc into one giant blob; titles come via layoutTitles
-const showHulls = () => toggles.hulls && !['semantic', 'spine', 'facets', 'dendro'].includes(layoutName);
+// spine is the one remaining opt-out: its list and its perimeter arc are the SAME group, so any
+// single shape wraps both into one giant blob. facets and dendro used to be blacklisted with it
+// on the theory that «the layout's own structure carries the group» — measured false: dendro
+// pushed no layoutTitles at all, so it carried neither fill nor names (fixed 2026-07-20; both
+// now get the wedge shape from HULL_SHAPE).
+const showHulls = () => toggles.hulls && !['semantic', 'spine'].includes(layoutName);
 let layoutTitles = [];   // [{x, y, v}] world-space group headers, set by list-shaped layouts
 let layoutDecor = null;  // static world-space Path2D decoration (dendro branch skeleton)
 const showLabels = () => toggles.labels;
@@ -4971,7 +4974,13 @@ function paintFrame(g, opts) {
   // Not needed in the ego pass.
   if (showHulls() && !only) {
     const zoneLblBoxes = [];   // de-conflict group labels: overlap → label is nudged up
-    const ringMode = layoutName === 'ring';   // ring arc: the hull chord covers the center — don't fill it
+    // The fill SHAPE follows the LAYOUT. One convex hull for twelve layouts is why dendro and
+    // facets were blacklisted out of hulls entirely instead of drawn (2026-07-20): a radial tree
+    // wants a wedge, a time lane wants a flowing band, a shelf is already a rectangle.
+    const HULL_SHAPE = { ring: 'annulus', dendro: 'wedge', facets: 'wedge',
+                         timeline: 'band', grid: 'slab', zones: 'slab' };
+    const shape = HULL_SHAPE[layoutName] || 'petal';
+    const radial = shape === 'annulus' || shape === 'wedge';   // centred on the world origin
     // hulls walk the CAPPED axis too (410 louvain hulls = 410 petals + giant title mush per
     // frame); the '…' tail is skipped — a scattered tail hull would blanket the whole canvas
     const LGH = layoutGroups(LG_MAX[layoutName] || 12);
@@ -4984,7 +4993,7 @@ function paintFrame(g, opts) {
       if (!hull) continue;
       const [cx, cy] = d3.polygonCentroid(hull);
       const zc = groupColor(z);
-      if (!ringMode) {
+      if (shape === 'petal') {
         // petal: expanded hull smoothed into a closed quadratic curve; fill = radial
         // gradient (airy center → tinted rim) so the zone reads as a glowing petal,
         // not a wireframe polygon. Rim glow only in the sharp pass (muted bg stays cheap).
@@ -5015,30 +5024,91 @@ function paintFrame(g, opts) {
         // bench missed it — measured k=1 only). Flat gradient fill + stroke; the zone reads via
         // its tint + rim. Rim glow dropped by design (user-approved on the live surface).
         g.save(); g.globalCompositeOperation = 'lighten'; g.fill(); g.restore(); g.stroke();
-      } else {
-        // ring petal: a hull would chord straight across the center — draw the zone as an
-        // annular band along its arc instead (same gradient language as the petals)
+      } else if (radial) {
+        // ring/dendro/facets: a hull would chord straight across the center — draw the group
+        // as its own sector instead (same gradient language as the petals).
         const rs = pts.map(p => Math.hypot(p[0], p[1]));
-        const rIn = Math.max(1, d3.min(rs) - 54), rOut = d3.max(rs) + 42;
+        const rOut = d3.max(rs) + 42;
+        // wedge (dendro/facets): the group owns its sector all the way IN — the tree's branches
+        // and the facet's tail disc live there. annulus (ring): the center belongs to nobody.
+        const rIn = shape === 'wedge' ? 0 : Math.max(1, d3.min(rs) - 54);
         // unwrap angles around the circular mean so a zone crossing ±π stays one arc
         const raw = pts.map(p => Math.atan2(p[1], p[0]));
         const am = Math.atan2(d3.mean(raw, a => Math.sin(a)), d3.mean(raw, a => Math.cos(a)));
         const rel = raw.map(a => { let d = a - am;
           while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI; return d; });
-        const aLo = am + d3.min(rel) - 0.025, aHi = am + d3.max(rel) + 0.025;
+        // wedges tile the whole circle: padding them would overlap the neighbours instead of
+        // separating them, so only the annulus (which has gaps between arcs) gets the 0.025
+        const apad = shape === 'wedge' ? 0 : 0.025;
+        const aLo = am + d3.min(rel) - apad, aHi = am + d3.max(rel) + apad;
         const grad = g.createRadialGradient(0, 0, rIn, 0, 0, rOut);
         grad.addColorStop(0, hexA(zc, 0.03));
         grad.addColorStop(1, hexA(zc, 0.12));
         g.beginPath();
         g.arc(0, 0, rOut, aLo, aHi);
-        g.arc(0, 0, rIn, aHi, aLo, true);
+        if (rIn > 1) g.arc(0, 0, rIn, aHi, aLo, true); else g.lineTo(0, 0);
         g.closePath();
         g.fillStyle = grad;
         g.strokeStyle = hexA(zc, muted ? 0.18 : 0.28);
         g.lineWidth = 1.2/transform.k;
         g.fill(); g.stroke();
+      } else if (shape === 'band') {
+        // ref: Jencks' evolutionary tree — a time lane reads as a FLOWING band whose thickness
+        // follows how much of the group sits at that moment. The convex hull of a lane was a
+        // «wide flat» slab that said nothing about when the group was actually alive.
+        const xs = pts.map(p => p[0]);
+        const x0 = d3.min(xs) - 26, x1 = d3.max(xs) + 26;
+        const BK = 22, step = Math.max(1e-6, (x1 - x0) / BK);
+        const cnt = new Array(BK).fill(0), sy = new Array(BK).fill(0);
+        for (const [px, py] of pts) {
+          const i = Math.min(BK - 1, Math.max(0, Math.floor((px - x0) / step)));
+          cnt[i]++; sy[i] += py;
+        }
+        const maxC = d3.max(cnt) || 1;
+        const mid = i => cnt[i] ? sy[i] / cnt[i] : cy;
+        const half = i => 13 + 40 * Math.sqrt(cnt[i] / maxC);
+        const top = [], bot = [];
+        for (let i = 0; i < BK; i++) {
+          const px = x0 + (i + 0.5) * step;
+          top.push([px, mid(i) - half(i)]); bot.push([px, mid(i) + half(i)]);
+        }
+        const flow = ps => { for (let i = 1; i < ps.length; i++) {
+          const a = ps[i-1], b = ps[i], mx = (a[0] + b[0]) / 2;
+          g.bezierCurveTo(mx, a[1], mx, b[1], b[0], b[1]); } };
+        g.beginPath();
+        g.moveTo(top[0][0], top[0][1]);
+        flow(top);
+        g.lineTo(bot[BK-1][0], bot[BK-1][1]);
+        flow(bot.slice().reverse());
+        g.closePath();
+        const grad = g.createLinearGradient(x0, 0, x1, 0);
+        grad.addColorStop(0, hexA(zc, 0.04));
+        grad.addColorStop(1, hexA(zc, 0.14));   // fresh end (right) carries the tint
+        g.fillStyle = grad;
+        g.strokeStyle = hexA(zc, muted ? 0.18 : 0.30);
+        g.lineWidth = 1.2/transform.k;
+        g.fill(); g.stroke();
+      } else {
+        // shelf layouts (grid/zones) ARE rectangles — draw the rectangle instead of a Bézier
+        // painstakingly tracing one
+        const x0 = d3.min(pts, p => p[0]) - 30, x1 = d3.max(pts, p => p[0]) + 30;
+        const y0 = d3.min(pts, p => p[1]) - 30, y1 = d3.max(pts, p => p[1]) + 30;
+        const rr = Math.min(34, (x1 - x0) / 2, (y1 - y0) / 2);
+        g.beginPath();
+        if (g.roundRect) g.roundRect(x0, y0, x1 - x0, y1 - y0, rr);
+        else g.rect(x0, y0, x1 - x0, y1 - y0);
+        const grad = g.createLinearGradient(0, y0, 0, y1);
+        grad.addColorStop(0, hexA(zc, 0.03));
+        grad.addColorStop(1, hexA(zc, 0.12));
+        g.fillStyle = grad;
+        g.strokeStyle = hexA(zc, muted ? 0.18 : 0.28);
+        g.lineWidth = 1.2/transform.k;
+        g.fill(); g.stroke();
       }
-      if (!muted) {
+      // a layout that publishes its own headers (facets panels, spine sections) names the group
+      // there — the hull must not print the same word twice. dendro publishes none, so its
+      // wedge label IS the name.
+      if (!muted && !layoutTitles.length) {
         const zl = groupLabel(z).toUpperCase();
         // world-floor CAPPED in screen terms: the old max(12,…) floor let titles grow
         // linearly with zoom — the giant CAPS over the graph on the 2026-07-10 screens
@@ -5048,7 +5118,7 @@ function paintFrame(g, opts) {
         // anchor = top of hull + constant (an area heuristic on wide flat lane hulls
         // used to fly off-screen); label always sits slightly above its zone's outline
         let lx = cx, ly = d3.min(hull, p => p[1]) - 26 - 22/transform.k;
-        if (ringMode) {   // label at the arc's mean angle, outside the ring
+        if (radial) {   // label at the sector's mean angle, outside the rim
           const ang = Math.atan2(cy, cx);
           const rmax = d3.max(pts, p => Math.hypot(p[0], p[1]));
           lx = Math.cos(ang) * (rmax + 80);
@@ -5080,7 +5150,7 @@ function paintFrame(g, opts) {
         // fillText calls, not on a re-derivation of the formula: cluster axis 4/9 on screen,
         // type 1/3, while the clamp alone had put every one of them inside. Overlapping and
         // readable beats tidy and invisible, so the nudge stops at the top edge.
-        const lyFloor = ringMode ? (-transform.y + 30/transform.k) / transform.k : -Infinity;
+        const lyFloor = radial ? (-transform.y + 30/transform.k) / transform.k : -Infinity;
         while (ly - (lh + 6/transform.k) >= lyFloor &&
                zoneLblBoxes.some(b => Math.abs(ly - b.y) < lh && Math.abs(lx - b.x) < (lw2 + b.w)/2 + 14/transform.k))
           ly -= lh + 6/transform.k;
@@ -5103,7 +5173,7 @@ function paintFrame(g, opts) {
     // additive white. alpha ∝ slider × bridge mass, so a bridgeless pair never blooms (guard
     // holds them apart). 3-zone regions emerge where pair-blooms overlap under 'lighten'.
     const _cz = +($('collisions') ? $('collisions').value : 0);
-    if (_cz > 0 && !ringMode && overlapSet() && groupMode === 'zone') {   // blooms = zone-synergy concept
+    if (_cz > 0 && shape === 'petal' && overlapSet() && groupMode === 'zone') {   // blooms = zone-synergy concept
       const B = bridgeData(), pos = new Map(nodes.map(n => [n.id, n]));
       for (const [key, o] of B.pair) {
         const norm = o.w / B.maxW, a = _cz * norm;
