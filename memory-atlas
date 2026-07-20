@@ -85,18 +85,40 @@ def _data_home():
 DATA_HOME = _data_home()
 
 
+VAULT_PIN = os.path.join(DATA_HOME, "vault.txt")
+
+
+def _count_md(root, cap=4000):
+    """Notes under a root, RECURSIVELY. Counting only the top level was the bug: a vault
+    that files its notes into folders (feedback/, projects/, reference/) shows almost nothing
+    at depth 0, so a near-empty sibling with everything in its root outranked it and the tool
+    opened the wrong corpus — silently, because both are real directories with real notes."""
+    n = 0
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in
+                       ("archive", "_archive", ".git", "assets", ".obsidian", ".trash")]
+        n += sum(1 for f in files if f.endswith(".md"))
+        if n >= cap:
+            break
+    return n
+
+
 def _resolve_default_src():
-    # G1-generic: ATLAS_SRC → any ~/.claude/projects/*/memory with .md files,
-    # most populated first (fixes the W5 bug: an empty host-twin gave 0 nodes).
+    # Precedence, most explicit first: ATLAS_SRC → a vault pinned once with --set-vault →
+    # the guess. The guess ranks ~/.claude/projects/*/memory by RECURSIVE note count.
     # Nothing found → None, main() will ask for explicit --src.
     if os.environ.get("ATLAS_SRC"):
         return os.path.expanduser(os.environ["ATLAS_SRC"])
+    try:
+        with open(VAULT_PIN, encoding="utf-8") as f:
+            pinned = f.read().strip()
+        if pinned and os.path.isdir(pinned):
+            return pinned
+    except OSError:
+        pass
     scored = []
     for c in glob.glob(os.path.expanduser("~/.claude/projects/*/memory")):
-        try:
-            n = sum(1 for f in os.listdir(c) if f.endswith(".md"))
-        except OSError:
-            continue
+        n = _count_md(c)
         if n:
             scored.append((n, c))
     return max(scored)[1] if scored else None
@@ -1247,6 +1269,10 @@ def main():
                     help="starting UI language; without the flag — by system locale "
                          "(ru → ru, uk → uk, otherwise en); the toggle in the bar persists across rebuilds")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--set-vault", metavar="DIR",
+                    help="запомнить вульт: дальше `memory-atlas` без аргументов строит его, "
+                         "а не угаданный. Пишет один файл в кэш atlas; вульт не трогает. "
+                         "--set-vault '' снимает")
     ap.add_argument("--explain-io", action="store_true",
                     help="напечатать, что atlas читает и куда пишет, и выйти — "
                          "поверхность обновления одной командой, без запуска сборки")
@@ -1288,6 +1314,28 @@ def main():
         run_self_test()
         return
 
+    if args.set_vault is not None:
+        # One pointer file, in the atlas cache — never in the vault, and never a line the user
+        # has to add to a shell rc (an env var set in fish does not exist in a cron job, and a
+        # vault that depends on which shell launched the tool is not pinned at all).
+        if not args.set_vault:
+            if os.path.exists(VAULT_PIN):
+                os.remove(VAULT_PIN)
+            print(f"vault unpinned — back to the guess ({_resolve_default_src() or 'nothing found'})")
+            return
+        target = os.path.abspath(os.path.expanduser(args.set_vault))
+        if not os.path.isdir(target):
+            sys.exit(f"memory-atlas: --set-vault: no such directory: {target}")
+        n = _count_md(target)
+        if not n:
+            sys.exit(f"memory-atlas: --set-vault: no .md files under {target} — wrong folder?")
+        os.makedirs(os.path.dirname(VAULT_PIN), exist_ok=True)
+        with open(VAULT_PIN, "w", encoding="utf-8") as f:
+            f.write(target + "\n")
+        print(f"vault pinned: {target}  ({n} notes)\n  stored in {VAULT_PIN}\n"
+              f"  `memory-atlas` with no arguments now builds this one; ATLAS_SRC still wins.")
+        return
+
     if args.explain_io:
         # Upgrading a tool should never mean "and now go fix something in your notes". This
         # prints the whole surface — what is read, what is written, what an upgrade replaces —
@@ -1295,8 +1343,15 @@ def main():
         src = args.src[0].split("=", 1)[-1] if args.src else (DEFAULT_SRC or "(none found — pass --src)")
         tpl = os.environ.get("ATLAS_TEMPLATE") or os.path.join(
             os.path.dirname(os.path.realpath(__file__)), "memory-atlas.template.html")
+        pin = ""
+        if os.environ.get("ATLAS_SRC"):
+            pin = "  ← from $ATLAS_SRC"
+        elif os.path.exists(VAULT_PIN):
+            pin = f"  ← pinned in {VAULT_PIN}"
+        elif not args.src:
+            pin = "  ← GUESSED (most notes under ~/.claude/projects/*/memory); pin it with --set-vault DIR"
         print("READS (never writes):")
-        print(f"  vault            {src}")
+        print(f"  vault            {src}{pin}")
         print( "                   .md files: frontmatter + [[wikilinks]]. Read-only is pinned by")
         print( "                   test_vault_is_never_written_to (--self-test), not by a promise.")
         print("WRITES:")
@@ -1577,6 +1632,36 @@ def run_self_test():
             self.assertEqual(set(an), {"chemistry", "cooking"})
             for xy in an.values():
                 self.assertTrue(all(-1 <= v <= 1 for v in xy))
+
+        def test_default_vault_counts_notes_recursively(self):
+            """The failure this pins, measured on a real host: a vault filing its notes into
+            folders had 5 .md at depth 0 and 710 below it, while a near-empty sibling had 18
+            in its root. A top-level count ranked the sibling first, so the tool opened the
+            wrong corpus — and looked perfectly healthy doing it."""
+            with tempfile.TemporaryDirectory() as d:
+                deep = os.path.join(d, "real")
+                for sub in ("feedback", "projects", "reference"):
+                    os.makedirs(os.path.join(deep, sub))
+                    for i in range(6):
+                        with open(os.path.join(deep, sub, f"n{i}.md"), "w") as f:
+                            f.write("x")
+                with open(os.path.join(deep, "MEMORY.md"), "w") as f:
+                    f.write("x")
+                flat = os.path.join(d, "sibling")
+                os.makedirs(flat)
+                for i in range(9):
+                    with open(os.path.join(flat, f"n{i}.md"), "w") as f:
+                        f.write("x")
+                self.assertEqual(_count_md(deep), 19)
+                self.assertEqual(_count_md(flat), 9)
+                self.assertGreater(_count_md(deep), _count_md(flat),
+                                   "a foldered vault must outrank a flat near-empty one")
+                # archive/ is excluded — retired notes must not decide which vault wins
+                os.makedirs(os.path.join(flat, "archive"))
+                for i in range(50):
+                    with open(os.path.join(flat, "archive", f"old{i}.md"), "w") as f:
+                        f.write("x")
+                self.assertEqual(_count_md(flat), 9)
 
         def test_vault_is_never_written_to(self):
             """An upgrade must not ask the user to touch his notes — and the way that promise

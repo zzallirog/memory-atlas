@@ -19,6 +19,18 @@ git clone https://github.com/zzallirog/memory-atlas && cd memory-atlas
 ./memory-atlas --src ~/vault --src ~/wiki --src ~/snippets   # several roots, one graph
 ```
 
+Run with no arguments and the tool guesses your vault — the most populated
+`~/.claude/projects/*/memory`. If that guess is wrong, or you keep your notes anywhere else,
+pin it once and stop thinking about it:
+
+```bash
+./memory-atlas --set-vault ~/my-vault   # remembered; `memory-atlas` alone now builds this one
+./memory-atlas --set-vault ''           # back to guessing
+./memory-atlas --explain-io             # what is read, what is written, and where the vault came from
+```
+
+The pin is one file in the atlas cache. Your notes are never moved, linked or written to.
+
 `--src` is repeatable: the first root keeps its index-based zones, every extra root becomes
 one zone of its own, and `[[links]]` resolve same-root first, then across roots — a link that
 used to dangle as a ghost snaps to the real note in the other root. `--dump-data -` emits the
