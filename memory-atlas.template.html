@@ -2236,6 +2236,34 @@ function fitTarget() {
 let layoutName = 'force';   // declared before fitTransform: the boot fit reads it (ring pad)
 applyCollisions(false);   // honour a persisted overlap slider on boot (no reheat)
 gateCollisions();   // grey the slider if boot layout isn't force
+// ---- camera flights: one duration law for all of them --------------------------------------
+// Every flight in this file used to be `.duration(450)` or `.duration(500)`, whatever the trip.
+// Measured on this vault: a fit from a zoomed-in corner moved a fixed world point 743 px in ONE
+// 16ms frame, while a nudge of a few dozen world units took the same half second to crawl. Same
+// disease the layout morph had — a fixed duration means the SPEED is whatever the distance says.
+//
+// van Wijk & Nuij (2003), "Smooth and efficient zooming and panning": there is an optimal path
+// through (x, y, log w) space, and traversing it at constant velocity is what reads as one
+// smooth movement. d3-zoom already interpolates ALONG that path (d3.interpolateZoom) — what was
+// missing is that the same paper also gives the path's length, which is the duration. The
+// interpolator exposes it as `.duration` at unit velocity.
+//
+// Two guards, both from measurement rather than taste:
+//   · Math.abs — d3 computes S = (r1 − r0)/ρ for a pure zoom, so `.duration` comes out NEGATIVE
+//     when zooming in with no pan (measured: −1628 for a 10× zoom-in). Unguarded, that is a
+//     transition of negative length, i.e. a snap.
+//   · clamped to [240, 1100] ms — the law sets the shape, the clamp keeps a 40wu nudge from
+//     finishing before the eye finds it (57ms at unit velocity) and a cross-corpus haul from
+//     turning into a tour (3524ms).
+const camState = tr => [(W / 2 - tr.x) / tr.k, (H / 2 - tr.y) / tr.k, W / tr.k];
+function flyDuration(a, b) {
+  const d = d3.interpolateZoom(camState(a), camState(b)).duration;
+  return Math.max(240, Math.min(1100, Math.abs(d) * 0.72));
+}
+function flyTo(t2, ms) {
+  d3.select(canvas).transition().duration(ms || flyDuration(transform, t2))
+    .call(zoom.transform, t2);
+}
 function fitTransform(subset) {
   const vis = subset || nodes.filter(visible);
   if (!vis.length) return d3.zoomIdentity;
@@ -2250,7 +2278,7 @@ function fitTransform(subset) {
 }
 function fitView() {
   const t = fitTarget();
-  d3.select(canvas).transition().duration(500).call(zoom.transform, fitTransform(t));
+  flyTo(fitTransform(t));
   if (t.length < nodes.filter(visible).length) toast(`fit: ${t.length} ${T('нод контекста (весь граф = ⌂/h)')}`);
 }
 document.getElementById('fit').addEventListener('click', fitView);
@@ -2926,8 +2954,7 @@ function flyToNeighbourhood(n, force) {
   const cx = (x0+x1)/2, cy = (y0+y1)/2;
   // corner: rule-of-thirds — neighborhood in the upper-right third, the panel doesn't cover it
   const tx = pol === 'corner' ? W*0.62 : W/2, ty = pol === 'corner' ? H*0.38 : H/2;
-  d3.select(canvas).transition().duration(450).call(zoom.transform,
-    d3.zoomIdentity.translate(tx, ty).scale(k).translate(-cx, -cy));
+  flyTo(d3.zoomIdentity.translate(tx, ty).scale(k).translate(-cx, -cy));
 }
 
 // ---- hop set (port of GraphState.computeHopSet: labelMode hops + tier tones) ----
@@ -3665,8 +3692,7 @@ function frameSet(es) {
   const x0 = Math.min(...es.map(m => m.x)) - pad, x1 = Math.max(...es.map(m => m.x)) + pad;
   const y0 = Math.min(...es.map(m => m.y)) - pad, y1 = Math.max(...es.map(m => m.y)) + pad;
   const k = Math.min(3.0, 0.9 / Math.max((x1-x0)/W, (y1-y0)/H, 1e-6));
-  d3.select(canvas).transition().duration(450).call(zoom.transform,
-    d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2));
+  flyTo(d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2));
 }
 
 // ---- lens pill (top-center): "what I'm seeing right now" — active view slices at a glance,
@@ -3773,8 +3799,7 @@ let pinCams = lsGet(KEYP + 'pinCams', {});
 function restorePinView(id) {
   const pc = pinCams[id], n = byId.get(id);
   if (!pc || !n) return false;
-  d3.select(canvas).transition().duration(500).call(zoom.transform,
-    d3.zoomIdentity.translate(W / 2, H / 2).scale(pc.k).translate(-n.x, -n.y));
+  flyTo(d3.zoomIdentity.translate(W / 2, H / 2).scale(pc.k).translate(-n.x, -n.y));
   return true;
 }
 function rebuildPinHl() {
@@ -3865,8 +3890,8 @@ function togglePin(n, multi) {
   // view. It used to pan on every pin, so a note you had just framed by hand was yanked to
   // centre for no gain: two camera moves for one intent. Panning to a node you can already
   // see is motion without information. Unpin never rolls the camera back (spatial memory).
-  if (!has && !nodeComfortablyInView(n)) d3.select(canvas).transition().duration(450).call(zoom.transform,
-    d3.zoomIdentity.translate(freeCenter()[0], freeCenter()[1]).scale(transform.k).translate(-n.x, -n.y));   // keep the zoom → pan, NOT resize
+  if (!has && !nodeComfortablyInView(n))   // keep the zoom → pan, NOT resize
+    flyTo(d3.zoomIdentity.translate(freeCenter()[0], freeCenter()[1]).scale(transform.k).translate(-n.x, -n.y));
 }
 function renderPins() {
   const card = $('pinsCard');
@@ -4086,8 +4111,7 @@ function applyView(v) {
   renderZoneChips(); renderKindChips(); renderLegend();
   saveCfg();   // layers/color from the view PERSIST — otherwise reload silently rolled back
   if (v.t)
-    d3.select(canvas).transition().duration(500).call(zoom.transform,
-      d3.zoomIdentity.translate(v.t.x, v.t.y).scale(v.t.k));
+    flyTo(d3.zoomIdentity.translate(v.t.x, v.t.y).scale(v.t.k));
   else if (v.fit)
     setTimeout(fitView, 820);   // builtin view: no stored camera — refit after the layout settles
   toast(T('вид: ') + T(v.name));
@@ -4114,7 +4138,7 @@ $('viewSave').addEventListener('click', () => {
 // ---- DATA buttons: reload / export view|full / home (port of DATA toolbar) ----
 let homeTransform = null;   // starting fit, set after warmup
 function goHome() {
-  if (homeTransform) d3.select(canvas).transition().duration(500).call(zoom.transform, homeTransform);
+  if (homeTransform) flyTo(homeTransform);
 }
 $('homeBtn').addEventListener('click', goHome);
 $('reloadBtn').addEventListener('click', () => location.reload());
@@ -6301,7 +6325,7 @@ function frameEgo(n) {
   const y0 = Math.min(...es.map(m => m.y)) - pad, y1 = Math.max(...es.map(m => m.y)) + pad;
   const k = Math.min(3.2, 0.9 / Math.max((x1-x0)/W, (y1-y0)/H, 1e-6));
   const t = d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(x0+x1)/2, -(y0+y1)/2);
-  d3.select(canvas).transition().duration(450).call(zoom.transform, t);
+  flyTo(t);
 }
 
 function hexA(hex, a) {
