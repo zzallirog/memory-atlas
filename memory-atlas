@@ -103,19 +103,28 @@ def _count_md(root, cap=4000):
     return n
 
 
+def _read_pin():
+    """Pinned roots, one per line, in --src syntax ([NAME=]DIR). A LIST, not a path: a real
+    setup is several roots (notes + wiki + skills), and pinning only the first one silently
+    shrinks the corpus to a third of itself — which looks like a working atlas, just a smaller
+    one. Lines whose directory is gone are dropped rather than failing the build."""
+    try:
+        with open(VAULT_PIN, encoding="utf-8") as f:
+            raw = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+    except OSError:
+        return []
+    return [r for r in raw if os.path.isdir(r.split("=", 1)[-1])]
+
+
 def _resolve_default_src():
-    # Precedence, most explicit first: ATLAS_SRC → a vault pinned once with --set-vault →
-    # the guess. The guess ranks ~/.claude/projects/*/memory by RECURSIVE note count.
+    # Precedence, most explicit first: ATLAS_SRC → roots pinned with --set-vault → the guess.
+    # The guess ranks ~/.claude/projects/*/memory by RECURSIVE note count.
     # Nothing found → None, main() will ask for explicit --src.
     if os.environ.get("ATLAS_SRC"):
         return os.path.expanduser(os.environ["ATLAS_SRC"])
-    try:
-        with open(VAULT_PIN, encoding="utf-8") as f:
-            pinned = f.read().strip()
-        if pinned and os.path.isdir(pinned):
-            return pinned
-    except OSError:
-        pass
+    pinned = _read_pin()
+    if pinned:
+        return pinned[0].split("=", 1)[-1]
     scored = []
     for c in glob.glob(os.path.expanduser("~/.claude/projects/*/memory")):
         n = _count_md(c)
@@ -1269,10 +1278,12 @@ def main():
                     help="starting UI language; without the flag — by system locale "
                          "(ru → ru, uk → uk, otherwise en); the toggle in the bar persists across rebuilds")
     ap.add_argument("--self-test", action="store_true")
-    ap.add_argument("--set-vault", metavar="DIR",
-                    help="запомнить вульт: дальше `memory-atlas` без аргументов строит его, "
-                         "а не угаданный. Пишет один файл в кэш atlas; вульт не трогает. "
-                         "--set-vault '' снимает")
+    ap.add_argument("--set-vault", nargs="*", metavar="[NAME=]DIR",
+                    help="remember the roots: `memory-atlas` with no arguments then builds "
+                         "exactly these, in this order, instead of guessing. Repeatable like "
+                         "--src (several roots = one graph). Writes one file into the atlas "
+                         "cache; the vault itself is not touched. `--set-vault` with no "
+                         "argument clears the pin")
     ap.add_argument("--explain-io", action="store_true",
                     help="напечатать, что atlas читает и куда пишет, и выйти — "
                          "поверхность обновления одной командой, без запуска сборки")
@@ -1323,17 +1334,25 @@ def main():
                 os.remove(VAULT_PIN)
             print(f"vault unpinned — back to the guess ({_resolve_default_src() or 'nothing found'})")
             return
-        target = os.path.abspath(os.path.expanduser(args.set_vault))
-        if not os.path.isdir(target):
-            sys.exit(f"memory-atlas: --set-vault: no such directory: {target}")
-        n = _count_md(target)
-        if not n:
-            sys.exit(f"memory-atlas: --set-vault: no .md files under {target} — wrong folder?")
+        entries, total = [], 0
+        for spec in args.set_vault:
+            name, _, path = spec.rpartition("=")
+            target = os.path.abspath(os.path.expanduser(path))
+            if not os.path.isdir(target):
+                sys.exit(f"memory-atlas: --set-vault: no such directory: {target}")
+            n = _count_md(target)
+            if not n:
+                sys.exit(f"memory-atlas: --set-vault: no .md files under {target} — wrong folder?")
+            entries.append((name + "=" + target) if name else target)
+            total += n
+            print(f"  {n:5d}  {target}" + (f"  (zone «{name}»)" if name else ""))
         os.makedirs(os.path.dirname(VAULT_PIN), exist_ok=True)
         with open(VAULT_PIN, "w", encoding="utf-8") as f:
-            f.write(target + "\n")
-        print(f"vault pinned: {target}  ({n} notes)\n  stored in {VAULT_PIN}\n"
-              f"  `memory-atlas` with no arguments now builds this one; ATLAS_SRC still wins.")
+            f.write("# roots for `memory-atlas` with no arguments — order matters:\n"
+                    "# the first keeps index-based zones, every other becomes a zone of its own\n")
+            f.write("\n".join(entries) + "\n")
+        print(f"pinned {len(entries)} root(s), {total} notes → {VAULT_PIN}\n"
+              f"  `memory-atlas` alone now builds exactly these; $ATLAS_SRC still wins.")
         return
 
     if args.explain_io:
@@ -1343,15 +1362,19 @@ def main():
         src = args.src[0].split("=", 1)[-1] if args.src else (DEFAULT_SRC or "(none found — pass --src)")
         tpl = os.environ.get("ATLAS_TEMPLATE") or os.path.join(
             os.path.dirname(os.path.realpath(__file__)), "memory-atlas.template.html")
-        pin = ""
-        if os.environ.get("ATLAS_SRC"):
-            pin = "  ← from $ATLAS_SRC"
-        elif os.path.exists(VAULT_PIN):
-            pin = f"  ← pinned in {VAULT_PIN}"
-        elif not args.src:
-            pin = "  ← GUESSED (most notes under ~/.claude/projects/*/memory); pin it with --set-vault DIR"
+        pinned = _read_pin()
         print("READS (never writes):")
-        print(f"  vault            {src}{pin}")
+        if args.src:
+            for spec in args.src:
+                print(f"  root             {spec.rpartition('=')[-1]}")
+        elif os.environ.get("ATLAS_SRC"):
+            print(f"  vault            {src}  ← from $ATLAS_SRC")
+        elif pinned:
+            for spec in pinned:
+                print(f"  root             {spec.rpartition('=')[-1]}  ← pinned in {VAULT_PIN}")
+        else:
+            print(f"  vault            {src}  ← GUESSED (most notes under "
+                  f"~/.claude/projects/*/memory); pin it with --set-vault DIR [DIR…]")
         print( "                   .md files: frontmatter + [[wikilinks]]. Read-only is pinned by")
         print( "                   test_vault_is_never_written_to (--self-test), not by a promise.")
         print("WRITES:")
@@ -1400,8 +1423,14 @@ def main():
         args.session_cross = False
         args.structural_cross = False
 
-    if not args.src and DEFAULT_SRC:
-        args.src = [DEFAULT_SRC]
+    if not args.src:
+        # the pin carries EVERY root, in order; DEFAULT_SRC is only the first one, which is
+        # all the single-path callers (--explain-io, messages) ever needed
+        pinned = _read_pin()
+        if pinned:
+            args.src = pinned
+        elif DEFAULT_SRC:
+            args.src = [DEFAULT_SRC]
     if not args.data and not args.src:
         sys.exit("memory-atlas: no vault found — pass --src DIR (a folder of .md notes), "
                  "or try --demo. Autodetect looks at ~/.claude/projects/*/memory and $ATLAS_SRC.")
@@ -1662,6 +1691,32 @@ def run_self_test():
                     with open(os.path.join(flat, "archive", f"old{i}.md"), "w") as f:
                         f.write("x")
                 self.assertEqual(_count_md(flat), 9)
+
+        def test_pin_keeps_every_root_not_just_the_first(self):
+            """The bug this pins is the one that ate two thirds of a real corpus: the user's
+            atlas is notes + wiki + skills, and a pin that stored one path rebuilt only the
+            notes — a healthy-looking atlas that is quietly a third of the map."""
+            with tempfile.TemporaryDirectory() as d:
+                roots = []
+                for name in ("notes", "wiki", "skills"):
+                    r = os.path.join(d, name)
+                    os.makedirs(r)
+                    with open(os.path.join(r, "a.md"), "w") as f:
+                        f.write("x")
+                    roots.append(r)
+                pin = os.path.join(d, "vault.txt")
+                with open(pin, "w", encoding="utf-8") as f:
+                    f.write("# comment line is ignored\n" + "\n".join(
+                        [roots[0], "wiki=" + roots[1], roots[2], os.path.join(d, "gone")]) + "\n")
+                orig = globals()["VAULT_PIN"]
+                globals()["VAULT_PIN"] = pin
+                try:
+                    got = _read_pin()
+                finally:
+                    globals()["VAULT_PIN"] = orig
+                self.assertEqual(len(got), 3, "every live root must survive, comments dropped")
+                self.assertEqual(got[1], "wiki=" + roots[1], "NAME=DIR syntax is preserved")
+                self.assertTrue(all("gone" not in g for g in got), "a deleted root is dropped, not fatal")
 
         def test_vault_is_never_written_to(self):
             """An upgrade must not ask the user to touch his notes — and the way that promise
