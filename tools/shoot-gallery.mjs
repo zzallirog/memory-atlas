@@ -50,6 +50,10 @@ const CASES = [
   { name: 'casefile-theories',  vault: 'casefile', q: '?state=eyJ2IjogMSwgImxheW91dCI6ICJwZXRhbHMiLCAiY29sb3IiOiAiY2x1c3RlciJ9' },
   { name: 'product-types',      vault: 'product',  q: '?state=eyJ2IjogMSwgImxheW91dCI6ICJmb3JjZSIsICJjb2xvciI6ICJ0eXBlIn0=' },
   { name: 'family-hub',         vault: 'family',   q: '?layout=radial&color=zone' },
+
+  // 2.21 — the fill shape follows the layout, and one form is new
+  { name: 'homelab-strata',     vault: 'homelab',  q: '?layout=strata&color=zone' },
+  { name: 'campaign-dendro',    vault: 'campaign', q: '?layout=dendro&color=zone' },
 ];
 
 const want = process.argv.slice(2);

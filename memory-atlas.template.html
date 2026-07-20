@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.20.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.21.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -4851,7 +4851,9 @@ function layoutTargets(name) {
       });
     });
     // the cage: two plates (top/bottom) + four verticals, one static Path2D, one stroke a frame
-    const E = P * 1.16, hi = top + gap * 0.55, lo = top - (zs.length - 1) * gap - gap * 0.55;
+    // the cage hugs the plates: at 1.16 the box read as a room the strata were lost inside,
+    // and the reference's box is a frame around the sediment, not a hall
+    const E = P * 0.94, hi = top + gap * 0.5, lo = top - (zs.length - 1) * gap - gap * 0.5;
     const corners = [[-E, -E], [E, -E], [E, E], [-E, E]];
     layoutDecor = new Path2D();
     for (const h of [hi, lo]) {
