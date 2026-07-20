@@ -12,3 +12,6 @@ SESSION-HANDOFF.md
 HANDOFF-*.md
 INSTALLER-HANDOFF.md
 node_modules/
+
+# block-anchor snapshot: a local navigation cache, rebuilt by tools/anno-blocks.py scan
+.anno/

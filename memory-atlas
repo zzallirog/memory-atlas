@@ -34,7 +34,9 @@ DATA CONTRACT (for --data and external builders):
   "host": str,                     # opt.; who built it (browse header + dash-health)
   "zones": {name: [ax, ay]},       # zone anchors in [-1..1]; order = legend order
   "heat": {"label": str, "high": str, "low": str},   # heat-mode caption
-  "nodes": [{id,label,desc,type,zone,path,bytes,age_days,mtime?,heat,ghost,light,heavy,orphan,conflict,root?}],
+  "nodes": [{id,label,desc,type,zone,path,bytes,age_days,mtime?,heat,ghost,light,heavy,orphan,conflict,root?,
+             btw?,bridge?}],   # btw = Brandes normalised (comparable); bridge = same, rescaled to
+                               # this corpus' max ∈[0,1] (ramp/lens). See betweenness().
   "edges": [{source,target,kind,w?,score?}],   # kind → EDGE_STYLES in the template; unknown kind = default style
   "roots": {name: abs_dir},         # opt.; multi-root vaults — editor-open resolves node.path against node.root
   "edge_styles": {kind: {c,a,dash?,arrow?,w?}},  # opt.; builder-declared kinds (template merges into EDGE_STYLES)
@@ -64,7 +66,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "2.24.0"  # group titles live inside their own block; treemap ships; the dev door closes when empty
+VERSION = "2.25.0"  # bridges, the ego star, the four-column reader, and block anchors the file can be navigated by
 def _data_home():
     # atlas working folder (out/caches): env → legacy path, if it already exists
     # (backward compat for old installs) → XDG cache. No hardcoded host/user names.
@@ -195,6 +197,101 @@ def zone_anchors(nodes, edges=None):
     return {z: [round(0.72 * math.cos(i * step - math.pi / 2), 3),
                 round(0.72 * math.sin(i * step - math.pi / 2), 3)]
             for i, z in enumerate(zs)}
+
+
+def betweenness(nodes, edges, exact_max=700, pivots=300, seed=0):
+    """Brandes betweenness over the wikilink graph → node['btw'] and node['bridge'].
+
+    Why it exists: degree answers "how much hangs off this note", never "does the
+    corpus route THROUGH it". A hub with forty links inside one cluster is not a
+    bridge; a note with four links that happen to be the only path between two
+    zones is — and that second note is invisible to every ranking the atlas had.
+
+    Undirected on purpose. A wikilink is a claim of relatedness, and a path that
+    walks one link backwards is still the reason its two ends know about each
+    other. Only wikilink edges are fed in: detector edges (semantic, temporal)
+    would make this metric answer "what does the embedding think", not "what did
+    the corpus actually route through".
+
+    Two fields, because one number cannot serve both readers:
+      btw     — Brandes normalised by 2/((V-1)(V-2)): comparable across corpora,
+                the number printed next to a note (0.02412 means what it means
+                anywhere). Real values live around 1e-4..5e-2 — useless as a ramp.
+      bridge  — the same value rescaled to the corpus maximum, so it lands in
+                [0,1] and works as a colorMode ramp and a "bridge ≥ 0.6" lens.
+                Rescaled, so it says "compared to the biggest bridge HERE".
+
+    Cost is O(V·E) and V·E bites on a foreign vault (1400 notes × 6800 edges ≈
+    10^7 Python steps, tens of seconds). Past `exact_max` nodes we switch to
+    Brandes–Pich: the same accumulation from `pivots` sampled sources, scaled by
+    V/k. Deterministic (fixed seed, sorted candidates) — a metric that flickers
+    between two builds of an unchanged vault is not one anybody can act on.
+    """
+    ids = [n["id"] for n in nodes]
+    idx = {v: i for i, v in enumerate(ids)}
+    V = len(ids)
+    for n in nodes:
+        n["btw"] = 0.0
+        n["bridge"] = 0.0
+    if V < 3:
+        return {"exact": True, "sources": V, "max": 0.0}
+    adj = [[] for _ in range(V)]
+    seen_pair = set()
+    for e in edges:
+        a, b = idx.get(e["source"]), idx.get(e["target"])
+        if a is None or b is None or a == b:
+            continue
+        key = (a, b) if a < b else (b, a)
+        if key in seen_pair:            # parallel edges must not double-count paths
+            continue
+        seen_pair.add(key)
+        adj[a].append(b)
+        adj[b].append(a)
+
+    exact = V <= exact_max
+    if exact:
+        sources = range(V)
+    else:
+        rnd = random.Random(seed)
+        sources = sorted(rnd.sample(range(V), min(pivots, V)))
+
+    score = [0.0] * V
+    for s in sources:
+        stack = []
+        preds = [[] for _ in range(V)]
+        sigma = [0.0] * V
+        sigma[s] = 1.0
+        dist = [-1] * V
+        dist[s] = 0
+        queue = collections.deque([s])
+        while queue:                     # BFS: unweighted shortest paths + path counts
+            v = queue.popleft()
+            stack.append(v)
+            for w in adj[v]:
+                if dist[w] < 0:
+                    dist[w] = dist[v] + 1
+                    queue.append(w)
+                if dist[w] == dist[v] + 1:
+                    sigma[w] += sigma[v]
+                    preds[w].append(v)
+        delta = [0.0] * V
+        while stack:                     # accumulate back-to-front (Brandes' dependency)
+            w = stack.pop()
+            for v in preds[w]:
+                delta[v] += sigma[v] / sigma[w] * (1.0 + delta[w])
+            if w != s:
+                score[w] += delta[w]
+
+    n_src = len(sources) if not exact else V
+    scale = 2.0 / ((V - 1) * (V - 2))    # undirected: each pair counted twice
+    if not exact and n_src:
+        scale *= V / float(n_src)        # Brandes–Pich: sampled sources stand in for all
+    vals = [s * scale for s in score]
+    top = max(vals) or 1.0
+    for n, v in zip(nodes, vals):
+        n["btw"] = round(v, 5)
+        n["bridge"] = round(min(1.0, v / top), 4)
+    return {"exact": exact, "sources": n_src, "max": round(max(vals), 5)}
 
 
 FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
@@ -1044,6 +1141,10 @@ def to_browse_data(nodes, edges, bodies, now):
                 "conflict": n["conflict"], "index": False,
                 "size": n["bytes"], "mtime": n["mtime"], "age_days": n["age_days"],
                 "out": outc[n["id"]], "deg": degc[n["id"]],
+                # the reader prints btw next to degree; shelved notes never went through
+                # betweenness() and get 0 — absent, not "measured as unimportant"
+                "btw": n.get("btw", 0.0), "bridge": n.get("bridge", 0.0),
+                "zone": n.get("zone", ""),
             })
     bedges = [{"s": e["source"], "t": e["target"], "missing": byid[e["target"]]["ghost"]}
               for e in edges]
@@ -1146,6 +1247,9 @@ def main():
                     help="starting UI language; without the flag — by system locale "
                          "(ru → ru, uk → uk, otherwise en); the toggle in the bar persists across rebuilds")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--explain-io", action="store_true",
+                    help="напечатать, что atlas читает и куда пишет, и выйти — "
+                         "поверхность обновления одной командой, без запуска сборки")
     # cross-zone detectors (flag names = graph-lab CLI, including their asymmetry:
     # five --no-X-cross default-on, structural opt-in)
     ap.add_argument("--no-semantic-cross", dest="semantic_cross", action="store_false")
@@ -1182,6 +1286,33 @@ def main():
 
     if args.self_test:
         run_self_test()
+        return
+
+    if args.explain_io:
+        # Upgrading a tool should never mean "and now go fix something in your notes". This
+        # prints the whole surface — what is read, what is written, what an upgrade replaces —
+        # so the answer is checkable in one command instead of trusted from a README.
+        src = args.src[0].split("=", 1)[-1] if args.src else (DEFAULT_SRC or "(none found — pass --src)")
+        tpl = os.environ.get("ATLAS_TEMPLATE") or os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "memory-atlas.template.html")
+        print("READS (never writes):")
+        print(f"  vault            {src}")
+        print( "                   .md files: frontmatter + [[wikilinks]]. Read-only is pinned by")
+        print( "                   test_vault_is_never_written_to (--self-test), not by a promise.")
+        print("WRITES:")
+        print(f"  page             {args.out}")
+        print(f"  embedding cache  {EMB_CACHE}")
+        print( "                   both under ATLAS_HOME / XDG — neither touches the vault")
+        print("KEEPS IN THE BROWSER (localStorage, key 'atlas:<title>:…'):")
+        print( "  view, grouping axis, hidden zones, pins, bookmarks, own tags, saved views.")
+        print( "  An upgrade does not touch them; reset lives in ⛭ → reset corpus.")
+        print("WRITES INTO THE VAULT ONLY:")
+        print( "  atlas-serve — a separate sidecar editor you start by hand. Without it the page")
+        print( "  cannot save at all (file:// and no network).")
+        print("AN UPGRADE REPLACES:")
+        print(f"  {os.path.realpath(__file__)}")
+        print(f"  {tpl}")
+        print( "  and nothing else. Vault, browser config and saved views survive untouched.")
         return
 
     if args.lang is None:
@@ -1251,6 +1382,9 @@ def main():
         if not nodes:
             print(f"warn: 0 nodes in {roots[0][1]} — pass --src /path/to/your/vault "
                   f"(a folder of .md notes)", file=sys.stderr)
+        # bridges BEFORE browse is derived: browse copies btw off these same node dicts,
+        # so the reader and the graph quote one number, not two that can drift
+        btw_stat = betweenness(nodes, edges)
         # browse only sees the wikilink graph (the terminal module predates detectors);
         # cross-edges go into the atlas graph only
         # shelved rejoin HERE and only here: browse is the lookup surface, the canvas is not
@@ -1275,6 +1409,11 @@ def main():
             "nodes": nodes,
             "edges": edges + cross,
             "detectors": detectors,
+            # 'bridge' is the rescaled twin of 'btw' — see betweenness(). It is the one
+            # that belongs here: node_metrics promises fields in [0,1], and raw btw
+            # (max ≈ 0.05) would render as a dead ramp and a lens that never fires.
+            "node_metrics": ["bridge"],
+            "btw_stat": btw_stat,       # exact vs sampled — the HUD must not claim precision it didn't compute
             # pre-rebrand terminal browse module: its own data shape
             # (deg/out/stats/types/bodies), derived from the graph → ids match for fuse
             "browse": browse,
@@ -1439,6 +1578,70 @@ def run_self_test():
             for xy in an.values():
                 self.assertTrue(all(-1 <= v <= 1 for v in xy))
 
+        def test_vault_is_never_written_to(self):
+            """An upgrade must not ask the user to touch his notes — and the way that promise
+            dies is a feature that "just needs a small marker file" next to the vault. Pin it:
+            after a full build, every file in the vault has the same bytes and the same mtime,
+            and no file has appeared or disappeared. Output and caches live elsewhere."""
+            self.w("MEMORY.md", "- [a](alpha.md)")
+            self.w("alpha.md", "---\nname: alpha\n---\nbody [[beta]]")
+            self.w("beta.md", "---\nname: beta\n---\nback [[alpha]]")
+            snap = {}
+            for root, _, files in os.walk(self.src):
+                for fn in files:
+                    p = os.path.join(root, fn)
+                    st = os.stat(p)
+                    with open(p, "rb") as f:
+                        snap[p] = (f.read(), st.st_mtime_ns)
+            nodes, edges, bodies, shelved = build_graph([("memory", self.src)])
+            betweenness(nodes, edges)
+            with tempfile.TemporaryDirectory() as out:
+                render({"title": "t", "nodes": nodes, "edges": edges, "zones": {},
+                        "generated": "x", "browse": to_browse_data(nodes, edges, bodies, 0)},
+                       os.path.join(out, "sub", "atlas.html"), d3js="/*d3*/")
+            after = {}
+            for root, _, files in os.walk(self.src):
+                for fn in files:
+                    p = os.path.join(root, fn)
+                    with open(p, "rb") as f:
+                        after[p] = (f.read(), os.stat(p).st_mtime_ns)
+            self.assertEqual(set(snap), set(after), "the vault gained or lost a file")
+            self.assertEqual(snap, after, "the vault was modified by a build")
+
+        def test_betweenness_ranks_the_cut_vertex_over_the_hub(self):
+            # Two triangles joined by one note. `mid` carries every path between the halves;
+            # `a1` has the same degree and carries none. Degree cannot tell them apart —
+            # that gap is the whole reason this metric exists.
+            ids = ["a1", "a2", "a3", "mid", "b1", "b2", "b3"]
+            nodes = [{"id": i} for i in ids]
+            pairs = [("a1", "a2"), ("a2", "a3"), ("a3", "a1"), ("a1", "mid"),
+                     ("mid", "b1"), ("b1", "b2"), ("b2", "b3"), ("b3", "b1")]
+            edges = [{"source": s, "target": t} for s, t in pairs]
+            stat = betweenness(nodes, edges)
+            by = {n["id"]: n for n in nodes}
+            self.assertTrue(stat["exact"])
+            self.assertGreater(by["mid"]["btw"], by["a1"]["btw"])
+            self.assertEqual(by["mid"]["bridge"], 1.0)          # rescaled: top bridge = 1
+            self.assertEqual(by["a2"]["bridge"], 0.0)           # inside a triangle, routes nothing
+            self.assertTrue(all(0 <= n["bridge"] <= 1 for n in nodes))
+
+        def test_betweenness_sampled_path_is_deterministic(self):
+            # past exact_max we sample sources — two runs of the same corpus must agree,
+            # or the number changes under the reader for no reason he can see
+            ids = [f"n{i}" for i in range(40)]
+            pairs = [(f"n{i}", f"n{i+1}") for i in range(39)]
+            def run():
+                nodes = [{"id": i} for i in ids]
+                stat = betweenness(nodes, [{"source": s, "target": t} for s, t in pairs],
+                                   exact_max=10, pivots=8)
+                return stat, [n["btw"] for n in nodes]
+            s1, v1 = run()
+            s2, v2 = run()
+            self.assertFalse(s1["exact"])
+            self.assertEqual(s1["sources"], 8)
+            self.assertEqual(v1, v2)
+            self.assertGreater(v1[20], v1[0])       # middle of a chain routes, the end does not
+
         def test_zone_chain_puts_bridged_zones_side_by_side(self):
             # a, c are heavily bridged; alphabetical order would park b between them and send
             # every bridge edge straight across the disc. The chain has to seat them adjacent.
@@ -1565,6 +1768,46 @@ def run_self_test():
                 tpl = f.read()
             self.assertIn("DATA.node_metrics", tpl, "colorMode options from data")
             self.assertIn("'metric:'", tpl, "nodeColor must branch on metric: modes")
+
+        def test_block_anchors_are_unique_and_total(self):
+            """Anchors are the navigation key (`topos anno <slug>`, tools/anno-blocks.py).
+            Two blocks sharing a slug makes a pointer ambiguous; a separator without one is a
+            block nothing can point at. Both fail silently in normal use, so assert them."""
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                lines = f.read().split("\n")
+            anchors = [m.group(1) for m in
+                       (re.match(r"^\s*//\s*[─-]{2}\s*\[A:([a-z0-9][a-z0-9-]*)\]", l) for l in lines) if m]
+            self.assertGreater(len(anchors), 60, "block anchors disappeared from the template")
+            dupes = [a for a in set(anchors) if anchors.count(a) > 1]
+            self.assertFalse(dupes, f"duplicate anchors: {dupes}")
+            # a legacy separator with no anchor = a block no pointer can name
+            legacy = [l.strip()[:60] for l in lines
+                      if re.match(r"^\s*//\s*(?:[-=]{4,})", l) and "[A:" not in l]
+            self.assertFalse(legacy, f"unanchored section separators: {legacy[:5]}")
+
+        def test_tpl_bridges_and_reader_wired(self):
+            # The generator can compute betweenness into every node and the page can still
+            # never show it — that gap is invisible to a data test, so pin the wiring here.
+            tpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                    "memory-atlas.template.html")
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl = f.read()
+            for probe, why in [
+                ("function renderBridges", "bridge ranking must render"),
+                ("bridgePass", "bridge lens must reach the focus pass"),
+                ("function egoMini", "panel + reader share one ego star"),
+                ("function renderHier", "reader hierarchy column"),
+                ("function renderRel", "reader links column"),
+                ("obsidian://open", "open-in-Obsidian target"),
+                ("function toggleMark", "bookmarks"),
+                ("function wireFolds", "collapsible HUD blocks"),
+            ]:
+                self.assertIn(probe, tpl, why)
+            # a raw NUL byte makes grep/rg treat the template as binary and skip it silently
+            with open(tpl_path, "rb") as f:
+                self.assertEqual(f.read().count(b"\0"), 0, "template must stay greppable text")
 
         def test_obsidian_dir_excluded(self):
             # G7: .obsidian/ is not chewed on
