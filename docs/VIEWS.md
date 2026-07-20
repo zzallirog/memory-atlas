@@ -36,7 +36,7 @@ topics, 15 shown, 38 folded.
 |---|---|
 | `grid` | 32 |
 | `zones` · `dendro` | 24 |
-| `treemap` ⚗ | 20 |
+| `treemap` | 20 |
 | everything else | 16 |
 
 ### Zones that adapt to the corpus (v2.23)
@@ -101,13 +101,7 @@ the rows are already types). A cell's blob is its notes packed by phyllotaxis an
 its radius is `pitch·√n`, so the mass you see **is** the count. A graph answers
 *what links to what*; this answers *what do I have*. An empty cell is the finding.
 
-## Dev views · the ⚗ pill (v2.21)
-
-The third pill in the HUD foot opens layouts that are **built but not yet through
-a release**. It is off by default and persisted. Turning it off while you are
-standing in one of those layouts falls back to `force`.
-
-### treemap · area = mass ⚗
+### treemap · area = mass (released in v2.24)
 
 A squarified treemap over the grouping axis: every group's rectangle is
 proportional in **area** to how many notes it holds, and the notes fill their own
@@ -116,9 +110,17 @@ nothing*; `treemap` answers *what is most of this vault*. Area rather than radiu
 on purpose — `pack`'s circles already say "big" by radius, which under-reads mass
 by its square.
 
+## The ⚗ dev door
+
+Layouts that are **built but not yet through a release** live behind a third pill in the HUD
+foot: off by default, persisted, and falling back to `force` if you switch it off while standing
+in one of them. The pill only exists while something is behind it — with every view released it
+hides itself rather than opening onto an empty room, and returns when the next view is built.
+
 ## Reading at a distance (v2.10)
 
-- Node cards arrive earlier on the zoom ramp (`K≥1.5`) and carry **body text**:
+- Node cards arrive early on the zoom ramp (`K≥0.95`, lowered again in v2.22) and carry **body
+  text**:
   the curated `desc` first, then the note's own prose. Lines wrap on words, each
   line a touch quieter, the last line dissolving left→right into transparency —
   a card reads as an excerpt, not a chopped string.
