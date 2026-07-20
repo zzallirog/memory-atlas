@@ -5132,8 +5132,21 @@ let pT = 0, lastPT = 0;
 var drawQueued = false;
 var liveParts = 0;   // particle carriers in the last live frame (rAF keepalive gate)
 function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(draw); } }
+// One frame delta for every per-frame ease in the paint path, in 60fps units. The magnet
+// already integrated in real time (and carries the measurement that forced it: settle 2.3s at
+// 23 steps/s vs 4.4s at 13 steps/s for the SAME wall-clock). The label and LOD eases were left
+// behind on bare per-frame constants, which makes their speed a function of the frame rate:
+// slower machine, slower fade — the one place you least want the animation to also give up.
+// Clamped [1, 100]ms so a backgrounded tab resumes instead of finishing everything at once.
+let frameDt = 1, frameLast = 0;
+// frame-rate-independent form of x += (target - x)*lerp: at 60fps k === lerp exactly, so the
+// tuned feel is preserved; at 30fps one step covers what two 60fps steps covered.
+const easeK = lerp => 1 - Math.pow(1 - lerp, frameDt);
 function draw() {
   drawQueued = false;
+  const _fnow = performance.now();
+  frameDt = Math.min(100, Math.max(1, frameLast ? _fnow - frameLast : 16.667)) / 16.667;
+  frameLast = _fnow;
   const morphing = morph && stepMorph();
   const now = performance.now();
   if (toggles.particles) pT += Math.min(60, now - lastPT) / 1000;
@@ -5586,7 +5599,7 @@ function paintFrame(g, opts) {
     // (no card popping while panning along a sparse rim); keepalive while converging
     if (g === ctx) {
       const dT = densTargetK(onScr);
-      densKS += (dT - densKS) * 0.22;
+      densKS += (dT - densKS) * easeK(0.22);
       if (Math.abs(dT - densKS) > 0.03) labelAnim = true; else densKS = dT;
     }
   }
@@ -5977,7 +5990,7 @@ function paintFrame(g, opts) {
         // then softFade leaves a tiny dash mark "a name exists here" — spatial memory without smear
         const la0 = n._la || 0;
         if (la0 > 0.05) {
-          if (rec) { n._la = la0 * 0.62; labelAnim = true; }
+          if (rec) { n._la = la0 * (1 - easeK(0.38)); labelAnim = true; }
           g.globalAlpha = la0 * 0.85;
           g.lineWidth = 3; g.strokeStyle = 'rgba(12,12,11,0.85)'; g.lineJoin = 'round';
           g.strokeText(lbl, tx, yBase);
@@ -5998,7 +6011,7 @@ function paintFrame(g, opts) {
       if (!isAlways) budget--;
       // label entrance is smooth: alpha lerps 0→1 (~5 frames), names that won a spot fade in
       let la = n._la === undefined ? 0.25 : n._la;
-      la += (1 - la) * 0.3;
+      la += (1 - la) * easeK(0.3);
       if (la > 0.98) la = 1; else if (rec) labelAnim = true;
       if (rec) n._la = la;
       // hop-tier tones: selected's neighbors dim with depth (port of hop-rings)
