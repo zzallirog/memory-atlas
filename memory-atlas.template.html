@@ -2794,6 +2794,7 @@ function selectNode(n, opts) {
   selected = n;
   if (typeof renderPins === 'function') renderPins();   // the pin/unpin button tracks the selection
   computeHops();
+  if (typeof computeTrace === 'function') computeTrace();   // pin + selection = a route to draw
   if (keepSet) rebuildKeep();
   const panel = document.getElementById('panel');
   document.body.classList.toggle('panel-open', !!n);
@@ -3767,6 +3768,33 @@ function rebuildPinHl() {
   pinHl = new Set();
   for (const id of pinIds) { pinHl.add(id); for (const nb of adj.get(id) || []) pinHl.add(nb); }
 }
+// ---- accent route (ref: the single yellow line across the ISIS flow map) ------------------
+// A pin says «hold this note»; selecting another one asks «how do these two connect?». The
+// shortest route between them is drawn as ONE bright polyline over the muted mesh — one accent,
+// one answer. Not a new interaction: it falls out of two things the user already did.
+let tracePath = null;   // [node ids] from the selection to the freshest pin
+function computeTrace() {
+  const was = tracePath && tracePath.length;
+  tracePath = null;
+  if (!selected || !pinIds.length) return was;
+  const goal = pinIds[pinIds.length - 1];
+  if (goal === selected.id) return was;
+  const prev = new Map([[selected.id, null]]);
+  const q = [selected.id];
+  let hit = false;
+  for (let i = 0; i < q.length && !hit; i++)
+    for (const nb of adj.get(q[i]) || []) {
+      if (prev.has(nb)) continue;
+      prev.set(nb, q[i]);
+      if (nb === goal) { hit = true; break; }
+      q.push(nb);
+    }
+  if (!hit) return was;   // the two live in unconnected components — say nothing, draw nothing
+  const ids = [];
+  for (let cur = goal; cur != null; cur = prev.get(cur)) ids.push(cur);
+  tracePath = ids;
+  return true;
+}
 // The cap used to be 6. It was written when a pin was a momentary spotlight; the panel is now the
 // place you assemble a working set in (and then tag it in one go), so six was the ceiling on the
 // actual task, not on memory. 24 is still a FIFO, just above the size of any batch worth tagging.
@@ -3775,6 +3803,7 @@ function setPins(ids) {
   pinIds = ids.slice(-PIN_MAX);   // capped FIFO
   pinSet = new Set(pinIds);
   rebuildPinHl();
+  if (typeof computeTrace === 'function') computeTrace();
   if (keepSet) rebuildKeep();
   for (const id of Object.keys(pinCams)) if (!pinSet.has(id)) delete pinCams[id];  // prune with FIFO
   lsSet(KEYP + 'pins', pinIds);
@@ -4944,6 +4973,7 @@ function drawFocus(fm) {
     for (const n of nodes) if (visible(n) && !n.ghost && timePass(n) && metricPass(n) && hasTag(n)) sharp.add(n.id);
     if (selected) sharp.add(selected.id);
     for (const id of pinSet) sharp.add(id);
+    if (tracePath) for (const id of tracePath) sharp.add(id);   // the route stays out of the blur
   } else if (selected) {
     sharp = new Set([selected.id]);
     for (const id of adj.get(selected.id) || []) {
@@ -5482,6 +5512,27 @@ function paintFrame(g, opts) {
     if (fam.dash) g.setLineDash(fam.dash);
     for (const p of fam.paths) g.stroke(p);
     if (fam.dash) g.setLineDash([]);
+  }
+  // the accent route rides ON TOP of the mesh: it is an answer, not another edge kind. Drawn
+  // from the node list (not by matching edges) — the polyline IS the hop sequence.
+  // drawn in the sharp pass whether or not it is the ego pass: in ego/blur focus the route is
+  // exactly the thing being asked about, and skipping it there hid it behind the blur
+  if (tracePath && !muted) {
+    const ps = tracePath.map(id => byId.get(id)).filter(n => n && visible(n));
+    if (ps.length > 1) {
+      g.beginPath();
+      g.moveTo(NX(ps[0]), NY(ps[0]));
+      for (let i = 1; i < ps.length; i++) g.lineTo(NX(ps[i]), NY(ps[i]));
+      g.lineJoin = g.lineCap = 'round';
+      g.strokeStyle = 'rgba(20,18,14,0.75)'; g.lineWidth = 5.4/transform.k;
+      g.stroke();                                   // dark casing: the route reads over hulls too
+      g.strokeStyle = 'rgba(233,196,106,0.92)'; g.lineWidth = 2.4/transform.k;
+      g.stroke();
+      g.fillStyle = 'rgba(233,196,106,0.95)';
+      for (const p of ps) {                         // waypoints: every hop is a note you can click
+        g.beginPath(); g.arc(NX(p), NY(p), 3.4/transform.k, 0, 2*Math.PI); g.fill();
+      }
+    }
   }
   // flowing particles; dense corpora are subsampled deterministically (~600 carriers)
   // instead of the old all-or-nothing 600 gate that silently killed the whole layer
