@@ -4763,25 +4763,38 @@ $('layoutMode').addEventListener('change', () => applyLayout($('layoutMode').val
 
 // ---- task presets: "view for the task" in one pick (graph-lab admin ergonomics
 // ported to the client: the view is rebuilt in place, not regenerated server-side) ----
+// EVERY preset pins the group axis, not just taxonomy. A preset sets the layout but used to
+// inherit whatever axis was last clicked, and the layouts read that axis: `themes` is
+// «zone ⊃ louvain cluster», so landing on it with group=cluster nested cluster inside itself
+// (one child per circle); `synergy` computed bridge mass over the inherited axis while its own
+// label still said zones. A preset is a task, and a task names all four knobs.
 const PRESETS = {
   overview: { layout: 'force',    color: 'zone',    size: 'degree', clusters: false, ghosts: true,
+              group: 'zone',
               toast: T('обзор: зоны силами, ghost-пунктир виден') },
   themes:   { layout: 'pack',     color: 'cluster', size: 'degree', clusters: false, ghosts: false,
+              group: 'zone',   // pack nests group ⊃ n.cluster: the axis must NOT be cluster
               toast: T('тематики: круг зоны ⊃ круги louvain-кластеров') },
   synergy:  { layout: 'ring',     color: 'zone',    size: 'degree', clusters: false, ghosts: false,
+              group: 'zone',
               toast: T('синергия: связанные зоны — соседние дуги; пограничные ноды у общей границы') },
   fresh:    { layout: 'timeline', color: 'heat',    size: 'bytes',  clusters: false, ghosts: false,
+              group: 'zone',
               toast: T('свежесть: справа = свежее, ярче = горячее') },
   hubs:     { layout: 'radial',   color: 'zone',    size: 'degree', clusters: false, ghosts: false,
+              group: 'zone',
               toast: T('хабы: чем связнее нота, тем ближе к центру') },
   taxonomy: { layout: 'dendro',   color: 'zone',    size: 'degree', clusters: false, ghosts: false,
               group: 'tier', kinds: ['part_of'],
               toast: T('таксономия (карта1): А→В→С деревом по part_of; контекст-рёбра — в панели ноды') },
   meaning:  { layout: 'semantic', color: 'cluster', size: 'degree', clusters: false, ghosts: false,
+              group: 'cluster',   // semantic ignores the axis for placement; legend/isolate use it
               kinds: ['semantic'], toast: T('смысл: позиция = cosine-близость, фиолетовые рёбра ≥0.75') },
   reading:  { layout: 'spine',    color: 'zone',    size: 'degree', clusters: false, ghosts: false,
+              group: 'zone',
               labels: 'all', toast: T('чтение: опорные ноты списком по группам, остальное на дуге') },
   debts:    { layout: 'force',    color: 'type',    size: 'degree', clusters: false, ghosts: true,
+              group: 'type',
               labels: 'all', toast: T('долги: пунктирные ghost = на них ссылаются, ноты нет') },
 };
 function applyPreset(name) {
@@ -4797,7 +4810,11 @@ function applyPreset(name) {
   if (p.kinds) for (const k of p.kinds) if (hiddenKinds.has(k)) sessionKinds.add(k);
   isolate.clear();
   renderLegend(); renderKindChips();
-  if (p.group) { groupMode = p.group; $('groupMode').value = p.group; }
+  // the caps cache is keyed on the axis: assigning groupMode without dropping _lgCache hands
+  // the new layout the PREVIOUS axis' group list (harmless while only taxonomy set a group —
+  // every preset sets one now)
+  if (p.group) { groupMode = p.group; _gOrder = _gSlot = null; _lgCache = null;
+                 $('groupMode').value = p.group; }
   applyLayout(p.layout);   // saveCfg is called inside
   toast(p.toast + (p.kinds && p.kinds.some(k => sessionKinds.has(k))
     ? T(' · слой включён на сессию (насовсем = чип)') : ''));
