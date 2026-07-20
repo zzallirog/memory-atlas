@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="atlas-tpl" content="2.21.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
+<meta name="atlas-tpl" content="2.22.0"><!-- G5 handshake: must equal generator VERSION; the generator warns on skew (stale symlink pair) -->
 
 <title>memory-atlas</title>
 <style>
@@ -69,6 +69,11 @@
     margin-left: auto; font-weight: 400; letter-spacing: 0;
     color: var(--muted); font-size: 10px; text-transform: none;
   }
+  /* census line: mono figures, worded units, the numbers carrying the weight */
+  #statline {
+    margin: -4px 0 10px; font: 10px/1.5 var(--mono); color: var(--muted); letter-spacing: .02em;
+  }
+  #statline b { color: var(--ink-2); font-weight: 600; }
   #search {
     width: 100%; padding: 7px 9px; border-radius: 8px;
     border: 1px solid var(--grid); background: rgba(0,0,0,0.35);
@@ -473,6 +478,16 @@
   .row .rv { color: var(--muted); font: 10px var(--mono); min-width: 30px; text-align: right; }
   .row select.mini { flex: 0 0 auto; width: auto; }
   .chips-rail { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* ranked bar next to a similarity row: the ranking has to read as a SHAPE, not as eight
+     near-identical decimals the eye has to compare digit by digit.
+     Own row class, not .lnkrow — that markup belongs to pnlLinks() and a self-test guards it. */
+  :is(#panel, .hpcard) .simrow { display: flex; align-items: center; }
+  :is(#panel, .hpcard) .simrow .lnk { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :is(#panel, .hpcard) .simrow .ksc { color: var(--muted); font: 10px var(--mono); }
+  .simbar { flex: 0 0 64px; height: 3px; margin: 0 8px;
+            border-radius: 2px; background: rgba(255,255,255,0.07); position: relative; }
+  .simbar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--w, 0%);
+                   border-radius: 2px; background: var(--accent); opacity: 0.72; }
   .zc {
     display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
     font: 10.5px var(--mono); padding: 3px 8px; border-radius: 20px;
@@ -1083,6 +1098,7 @@ body.hudsettled #hud .pw { animation: none; }   /* only the act of unfolding ani
       <span id="titleText">atlas</span>
       <span class="counts" id="counts"></span>
     </div>
+    <div id="statline"></div>
     <div id="searchwrap">
     <input id="search" type="search" placeholder="search — terms OR'ed  ( / )" spellcheck="false" autocomplete="off"
       data-hint="фильтр: термы через пробел = OR; дропдаун: ↑↓ + enter = перелёт к ноде">
@@ -1970,6 +1986,10 @@ const eaMul = () => +$('edgeAlpha').value;
 const nsMul = () => +$('nodeSize').value;
 for (const [id, lab] of [['edgeAlpha', 'edgeAlphav'], ['nodeSize', 'nodeSizev'], ['labelDens', 'labelDensv']])
   $(id).addEventListener('input', () => { $(lab).textContent = (+$(id).value).toFixed(2).replace(/0$/, ''); saveCfg(); requestDraw(); });
+// node × feeds the pitch of every template layout (ROOM in layoutTargets), so the shelf has to be
+// re-solved when the mark changes size — on RELEASE, not per slider tick: a morph per input event
+// would re-lay the whole corpus a hundred times across one drag.
+$('nodeSize').addEventListener('change', () => { if (layoutName !== 'force') applyLayout(layoutName, true); });
 const _collFmt = () => { const v = +$('collisions').value; return v ? v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : '0'; };
 $('collisions').addEventListener('input', () => { $('collisionsv').textContent = _collFmt(); applyCollisions(true); saveCfg(); requestDraw(); });
 $('collisionsv').textContent = _collFmt();
@@ -2356,6 +2376,36 @@ function bestOrient(cpts, aspect) {               // bbox is π-periodic → sea
     if (f > best.fill) best = { theta: th, fill: f };
   }
   return { theta: best.theta, fill: best.fill, base };
+}
+// Minimum-area enclosing rectangle of a convex hull (rotating calipers, exact).
+// Why this and not a bbox: the shelf layouts (grid/zones/matrix/treemap) draw their group as a
+// RECTANGLE, and «✦ кадр» rigidly rotates every node to fill the viewport. An axis-aligned bbox
+// of a rotated block is a fat diagonal box — measured on the live grid: the slabs stopped hugging
+// their blocks and started overlapping their neighbours, so the outline read as «hulls don't
+// follow the zone any more». The rectangle has to live in the block's OWN frame. Orientation is
+// derived from the points, so no rotation state has to be tracked anywhere, and an unrotated grid
+// still solves to θ≈0 — the pre-rotation look is unchanged.
+function obbOf(hull) {
+  let best = null;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const th = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const c = Math.cos(-th), s = Math.sin(-th);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of hull) {
+      const px = p[0] * c - p[1] * s, py = p[0] * s + p[1] * c;
+      if (px < x0) x0 = px; if (px > x1) x1 = px;
+      if (py < y0) y0 = py; if (py > y1) y1 = py;
+    }
+    const area = (x1 - x0) * (y1 - y0);
+    if (!best || area < best.area) best = { area, th, x0, x1, y0, y1 };
+  }
+  if (!best) return null;
+  // centre back in world space
+  const mx = (best.x0 + best.x1) / 2, my = (best.y0 + best.y1) / 2;
+  const c = Math.cos(best.th), s = Math.sin(best.th);
+  return { th: best.th, cx: mx * c - my * s, cy: mx * s + my * c,
+           w: best.x1 - best.x0, h: best.y1 - best.y0 };
 }
 function rotateNodes(ns, cx, cy, dth) {           // rigid rotate positions + force anchors about (cx,cy)
   const c = Math.cos(dth), s = Math.sin(dth);
@@ -2802,6 +2852,45 @@ function pnlCross(n, opts) {
       `<a class="lnk" data-id="${pnlEsc(t.id)}">${pnlEsc(t.label)}${score ? `<span class="ksc">${score.toFixed(2)}</span>` : ''}</a>${pnlSnip(t)}</div>`;
   }).join('') + (shown.length < all.length ? `<div class="lnkmore">… +${all.length - shown.length}</div>` : '');
 }
+// ── structural similarity (Jaccard over neighbourhoods) ─────────────────────────────────────
+// The panel could always say what a note links TO. It could never say what else lives in the same
+// neighbourhood — which is the question that surfaces the duplicate, the sibling and the note that
+// should have been one note. |A∩B| / |A∪B| over adjacency sets, ranked, with the number shown next
+// to a bar so the ranking is readable as a shape and not only as digits.
+//
+// Cost is bounded by construction: only nodes within two hops can score above zero (they must
+// share a neighbour), so the candidate sweep is Σ deg(m) over the note's own neighbours — a few
+// thousand steps on a hub, and it runs once per panel open, not per frame.
+function simTop(n, k) {
+  const a = adj.get(n.id) || [];
+  if (a.length < 1) return [];
+  const A = new Set(a);
+  const cand = new Set();
+  for (const m of a) for (const o of (adj.get(m) || [])) if (o !== n.id) cand.add(o);
+  const out = [];
+  for (const id of cand) {
+    const t = byId.get(id);
+    if (!t || t.ghost) continue;
+    const B = adj.get(id) || [];
+    if (!B.length) continue;
+    let inter = 0;
+    for (const o of B) if (A.has(o)) inter++;
+    const uni = A.size + B.length - inter;
+    if (!uni || !inter) continue;
+    out.push({ t, j: inter / uni });
+  }
+  return out.sort((x, y) => y.j - x.j || y.t.degree - x.t.degree).slice(0, k || 8);
+}
+function pnlSimilar(n) {
+  if (n.ghost) return '';
+  const rows = simTop(n, 8);
+  if (!rows.length) return '';
+  const top = rows[0].j || 1;
+  return `<h3>${T('схожесть · jaccard')}</h3>` + rows.map(({ t, j }) =>
+    `<div class="simrow"><a class="lnk" data-id="${pnlEsc(t.id)}">${pnlEsc(t.label)}</a>` +
+    `<span class="simbar" style="--w:${Math.round(j / top * 100)}%"></span>` +
+    `<span class="ksc">${j.toFixed(2)}</span></div>`).join('');
+}
 // tags: chip = lens toggle (that is the panel's contract), ✕ drops an own tag, ＋ adds one.
 // opts.add = render the add-input (needs a unique input id per mount — panel owns #tagAdd)
 function pnlTags(n, opts) {
@@ -2893,6 +2982,7 @@ function selectNode(n, opts) {
     ${(() => { const b = searchHL.length ? hlSnip(n, searchHL, 460) : esc(bodySnip(n, 420)); return b ? `<div class="bodysnip">${b}</div>` : ''; })()}
     ${pnlLinks(n, outLinks.get(n.id), 'links out', { neg: true })}
     ${pnlLinks(n, inLinks.get(n.id), 'links in', { neg: true })}
+    ${pnlSimilar(n)}
     ${pnlCross(n)}`;
   const zs = document.getElementById('zoverSel');
   if (zs) zs.addEventListener('change', () => setZoneOverride(n, zs.value));
@@ -4665,6 +4755,22 @@ function layoutTargets(name, preview) {
   const shown = nodes.filter(n => !n.ghost && visible(n));
   const real = shown.length ? shown : nodes.filter(n => !n.ghost);
   const maxDeg = d3.max(real, n => n.degree) || 1;
+  // ── the room one note asks for (world units) ───────────────────────────────────────────────
+  // A template layout's pitch is not a taste constant. A note occupies a DISC whose radius the
+  // viewer controls (node ×, size axis), so a fixed 76wu cell is 46% circle at node × 2.5 and the
+  // shelf reads as crowding — «жмутся друг к другу, наверное им просто надо больше пространства».
+  // A layout reads as material/mono when the cell is a fixed MULTIPLE of the mark it carries, so
+  // the pitch is derived from the p90 mark and the old constant is kept as a floor: at the default
+  // node × 1 the derived value solves below it and nothing about the current look changes.
+  //
+  // What this deliberately does NOT claim: it cannot buy LABEL room at fit. Cell width and world
+  // extent scale together, so labels-per-screen at fit-zoom is pitch-invariant — that is the cull
+  // budget's job and it stays there. This buys air between marks, which is the reported symptom.
+  const ROOM = (() => {
+    const rs = real.map(n => radius(n)).sort(d3.ascending);
+    const p90 = (rs.length ? d3.quantileSorted(rs, 0.9) : 6) || 6;
+    return 2 * p90 * 2.2 + 12;
+  })();
   // capped group axis: every group-sliced branch below reads gv/zsCap, not the raw axis
   const LG = layoutGroups(LG_MAX[name] || 12);
   const gv = LG.g, zsCap = LG.zs;
@@ -4747,7 +4853,7 @@ function layoutTargets(name, preview) {
         .sort((a, b) => pull(a) - pull(b) || b.degree - a.degree);
       ns.forEach((n, i) => {
         const aa = ang + span * (i + 0.5) / ns.length;
-        const r = RING + 20 - 90 * (n.degree / maxDeg) - (i % rows) * 36;
+        const r = RING + 20 - 90 * (n.degree / maxDeg) - (i % rows) * Math.max(36, ROOM * 0.55);
         t.set(n.id, [Math.cos(aa) * r, Math.sin(aa) * r]);
       });
       ang += span + GAP;
@@ -4760,7 +4866,7 @@ function layoutTargets(name, preview) {
     const GA = Math.PI * (3 - Math.sqrt(5));
     const zs = zsCap;
     const maxCnt = d3.max(zs, z => real.filter(n => gv(n) === z).length) || 1;
-    const pitch = 26;
+    const pitch = Math.max(26, ROOM * 0.62);
     const petalR = pitch * Math.sqrt(maxCnt + 0.6);
     const aR = zs.length > 1 ? petalR * 1.18 / Math.sin(Math.PI / zs.length) : 0;
     zs.forEach((z, zi) => {
@@ -4777,7 +4883,7 @@ function layoutTargets(name, preview) {
     // blocks flow in a ribbon and fill the rectangle — scans like a table.
     // pitch = LAYOUT_PITCH.grid: widened 56→76 so label/tile card fits the column
     const zs = zsCap;
-    const CELL = LAYOUT_PITCH.grid, GAPB = 130, maxW = 2.4 * R;
+    const CELL = Math.max(LAYOUT_PITCH.grid, ROOM), GAPB = 130, maxW = 2.4 * R;
     let bx = 0, by = 0, rowH = 0;
     const blocks = [];
     for (const z of zs) {
@@ -4812,7 +4918,7 @@ function layoutTargets(name, preview) {
     // column pitch = LAYOUT_PITCH.zones (46→64) + zone width derived from its column count:
     // a fixed 360 per zone caused overlap on wide zones and empty space on narrow ones
     const zs = zsCap;
-    const COLP = LAYOUT_PITCH.zones, GAPZ = 170;
+    const COLP = Math.max(LAYOUT_PITCH.zones, ROOM), GAPZ = 170, ROWZ = Math.max(40, ROOM * 0.62);
     const packs = zs.map(z => {
       const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       return { ns, cols: Math.max(1, Math.ceil(ns.length / 24)) };
@@ -4822,7 +4928,7 @@ function layoutTargets(name, preview) {
     for (const p of packs) {
       p.ns.forEach((n, i) => t.set(n.id, [
         x0 + (i % p.cols + 0.5) * COLP,
-        (Math.floor(i / p.cols) - 12) * 40]));
+        (Math.floor(i / p.cols) - 12) * ROWZ]));
       x0 += p.cols * COLP + GAPZ;
     }
   } else if (name === 'spine') {
@@ -4832,7 +4938,7 @@ function layoutTargets(name, preview) {
     const zs = zsCap;
     // row budget is SCREEN physics, not taste: at fit the whole spine maps to the viewport
     // height — more rows than pixels/16 = guaranteed smear. 44 rows ≈ 15px pitch at fit.
-    const ROWP = 38, HEADH = 76;
+    const ROWP = Math.max(38, ROOM * 0.62), HEADH = 76;
     const topPer = Math.max(3, Math.floor(44 / Math.max(1, zs.length)));
     const groupsNs = zs.map(z => real.filter(n => gv(n) === z)
       .sort((a, b) => b.degree - a.degree));
@@ -4865,7 +4971,7 @@ function layoutTargets(name, preview) {
     // group's own wedge; membership reads as node→panel direction
     const zs = zsCap;
     const GA = Math.PI * (3 - Math.sqrt(5));
-    const Rp = R * 1.06, ROWP = 34, TOPN = 5, discR = R * 0.5;   // 5 rows/panel: fit-pitch stays readable
+    const Rp = R * 1.06, ROWP = Math.max(34, ROOM * 0.55), TOPN = 5, discR = R * 0.5;   // 5 rows/panel: fit-pitch stays readable
     zs.forEach((z, zi) => {
       const ns = real.filter(n => gv(n) === z).sort((a, b) => b.degree - a.degree);
       const ang = -Math.PI / 2 + zi * 2 * Math.PI / zs.length;
@@ -5371,15 +5477,20 @@ function paintFrame(g, opts) {
     // The fill SHAPE follows the LAYOUT. One convex hull for twelve layouts is why dendro and
     // facets were blacklisted out of hulls entirely instead of drawn (2026-07-20): a radial tree
     // wants a wedge, a time lane wants a flowing band, a shelf is already a rectangle.
-    const HULL_SHAPE = { ring: 'annulus', dendro: 'wedge', facets: 'wedge',
+    // Every group-sliced layout gets the outline its GEOMETRY implies, and the ones whose geometry
+    // implies none get skipped rather than blanketed. `radial` places its groups as sectors, so a
+    // convex hull of one chorded straight across the disc and over its neighbours — it is a wedge
+    // like dendro/facets. `spine` is a central list plus a perimeter arc: one group spans both, so
+    // any single outline covers the whole canvas; the layout already prints its own section headers.
+    const HULL_SHAPE = { ring: 'annulus', dendro: 'wedge', facets: 'wedge', radial: 'wedge',
                          timeline: 'band', grid: 'slab', zones: 'slab', matrix: 'slab',
-                         treemap: 'slab' };
+                         treemap: 'slab', spine: 'none' };
     const shape = HULL_SHAPE[layoutName] || 'petal';
     const radial = shape === 'annulus' || shape === 'wedge';   // centred on the world origin
     // hulls walk the CAPPED axis too (410 louvain hulls = 410 petals + giant title mush per
     // frame); the '…' tail is skipped — a scattered tail hull would blanket the whole canvas
     const LGH = layoutGroups(LG_MAX[layoutName] || 12);
-    for (const z of LGH.zs) {
+    for (const z of (shape === 'none' ? [] : LGH.zs)) {
       if (z === LG_REST) continue;
       // B21: ghost phantoms don't stretch the group outline — hull over written notes only
       const pts = nodes.filter(n => LGH.g(n) === z && !n.ghost && visible(n)).map(n => [n.x, n.y]);
@@ -5456,16 +5567,24 @@ function paintFrame(g, opts) {
         // ref: Jencks' evolutionary tree — a time lane reads as a FLOWING band whose thickness
         // follows how much of the group sits at that moment. The convex hull of a lane was a
         // «wide flat» slab that said nothing about when the group was actually alive.
-        const xs = pts.map(p => p[0]);
+        // the lane is binned along its OWN long axis, not along world-X: after «✦ кадр» rotates
+        // the cloud, an X-binned band shears off its own nodes (same root as the slab defect)
+        const ob = obbOf(hull);
+        g.save(); g.translate(ob.cx, ob.cy); g.rotate(ob.th);
+        const _c = Math.cos(-ob.th), _s = Math.sin(-ob.th);
+        const _oc = ob.cx * _c - ob.cy * _s, _os = ob.cx * _s + ob.cy * _c;
+        const bpts = pts.map(p => [p[0] * _c - p[1] * _s - _oc, p[0] * _s + p[1] * _c - _os]);
+        const bcy = 0;
+        const xs = bpts.map(p => p[0]);
         const x0 = d3.min(xs) - 26, x1 = d3.max(xs) + 26;
         const BK = 22, step = Math.max(1e-6, (x1 - x0) / BK);
         const cnt = new Array(BK).fill(0), sy = new Array(BK).fill(0);
-        for (const [px, py] of pts) {
+        for (const [px, py] of bpts) {
           const i = Math.min(BK - 1, Math.max(0, Math.floor((px - x0) / step)));
           cnt[i]++; sy[i] += py;
         }
         const maxC = d3.max(cnt) || 1;
-        const mid = i => cnt[i] ? sy[i] / cnt[i] : cy;
+        const mid = i => cnt[i] ? sy[i] / cnt[i] : bcy;
         const half = i => 13 + 40 * Math.sqrt(cnt[i] / maxC);
         const top = [], bot = [];
         for (let i = 0; i < BK; i++) {
@@ -5488,11 +5607,18 @@ function paintFrame(g, opts) {
         g.strokeStyle = hexA(zc, muted ? 0.18 : 0.30);
         g.lineWidth = 1.2/transform.k;
         g.fill(); g.stroke();
+        g.restore();
       } else {
         // shelf layouts (grid/zones) ARE rectangles — draw the rectangle instead of a Bézier
-        // painstakingly tracing one
-        const x0 = d3.min(pts, p => p[0]) - 30, x1 = d3.max(pts, p => p[0]) + 30;
-        const y0 = d3.min(pts, p => p[1]) - 30, y1 = d3.max(pts, p => p[1]) + 30;
+        // painstakingly tracing one. The rectangle is the block's OWN minimum-area box, not an
+        // axis-aligned bbox: «✦ кадр» rotates the whole cloud rigidly, and a bbox of a rotated
+        // shelf is a fat diagonal that swallows its neighbours (the reported grid+frame defect).
+        const ob = obbOf(hull);
+        g.save();
+        g.translate(ob.cx, ob.cy);
+        g.rotate(ob.th);
+        const x0 = -ob.w / 2 - 30, x1 = ob.w / 2 + 30;
+        const y0 = -ob.h / 2 - 30, y1 = ob.h / 2 + 30;
         const rr = Math.min(34, (x1 - x0) / 2, (y1 - y0) / 2);
         g.beginPath();
         if (g.roundRect) g.roundRect(x0, y0, x1 - x0, y1 - y0, rr);
@@ -5504,6 +5630,7 @@ function paintFrame(g, opts) {
         g.strokeStyle = hexA(zc, muted ? 0.18 : 0.28);
         g.lineWidth = 1.2/transform.k;
         g.fill(); g.stroke();
+        g.restore();
       }
       // a layout that publishes its own headers (facets panels, spine sections) names the group
       // there — the hull must not print the same word twice. dendro publishes none, so its
@@ -6083,16 +6210,26 @@ function paintFrame(g, opts) {
       g.globalAlpha = hopA * la * tiledFade(n);
       // backing ALWAYS present (not just for the selected node): the name reads over dots/edges;
       // ambient — quieter and thinner, so it doesn't become a wall of boxes
+      // v2.22 legibility pass. Names are read ON TOP of dots, edges and other names, and the
+      // ambient backing was carrying only 0.72 of the page colour — over a bright edge bundle or a
+      // node's own fill the glyph and its ground came out within a few percent of each other. Three
+      // things stack here, cheap and in this order: an opaque-enough plate, a dark HALO on the glyph
+      // itself (which is what survives when the plate is clipped by a neighbour's mark), and a
+      // brighter ink. The halo is the one that matters at overlaps — a plate only protects the
+      // rectangle it owns, the halo travels with the letterforms.
       if (plate) {
         rr(g, x - 5, y - 2, w + 10, h + 5, 4);
-        g.fillStyle = 'rgba(20,20,19,0.92)'; g.fill();
-        g.strokeStyle = hexA(nodeColor(n), 0.5); g.lineWidth = 1; g.stroke();
+        g.fillStyle = 'rgba(20,20,19,0.96)'; g.fill();
+        g.strokeStyle = hexA(nodeColor(n), 0.62); g.lineWidth = 1; g.stroke();
       } else {
         rr(g, x - 4, y - 1.5, w + 8, h + 4, 3);
-        g.fillStyle = 'rgba(14,14,13,0.72)'; g.fill();
-        g.strokeStyle = hexA(nodeColor(n), 0.22); g.lineWidth = 1; g.stroke();
+        g.fillStyle = 'rgba(14,14,13,0.90)'; g.fill();
+        g.strokeStyle = hexA(nodeColor(n), 0.38); g.lineWidth = 1; g.stroke();
       }
-      g.fillStyle = n === selected ? '#ffffff' : plate ? '#e2e1d6' : '#c3c2b7';
+      g.lineWidth = 3; g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(10,10,9,0.85)';
+      g.strokeText(lbl, tx, yBase);
+      g.fillStyle = n === selected ? '#ffffff' : plate ? '#f4f3ee' : '#dedcd2';
       g.fillText(lbl, tx, yBase);
       g.textAlign = 'center';   // desc preview below stays centered on the node
       // LOD preview: the magnet node reads right in the cloud (principle #3), pinned — 1 line.
@@ -6100,7 +6237,7 @@ function paintFrame(g, opts) {
       // spray 2 bare lines under every neighbor — unboxed text colliding into soup (see the
       // 2026-07-10 screenshots). Reading minimum = the plate chip; body is on-demand:
       // hover (magnet), the selected node itself, or a pin.
-      if (n.desc && (n === magNode || n === selected || (pinSet.has(n.id) && K > 0.7))) {
+      if (n.desc && (n === magNode || n === selected || (pinSet.has(n.id) && K > 0.4))) {
         const lines = (n === magNode || n === selected) ? 3 : 1;
         g.font = `${9.5*TS}px system-ui`;
         g.lineWidth = 3;
@@ -6158,11 +6295,14 @@ function drawPinTether(g) {
 // tile-LOD threshold: from this zoom on, circles become cards (screen-constant font size = readable).
 // v2.10 readable pass: thresholds LOWERED (2.2→1.5, 3.0→2.1) — cards with body text arrive
 // much earlier on the zoom ramp; "reading the vault" starts before "navigating dots" ends
-const TILE_K = 1.5;
+// v2.22 «включать превью на порядок раньше»: the whole ramp moved down again. Reading was still
+// gated behind a zoom the viewer had to work for — the card arrived after the decision to zoom,
+// not before it, so it never got to inform that decision.
+const TILE_K = 0.95;
 const TILE_W = 0.5;   // width of the circle→card crossfade (in zoom units): wider = softer seam
-const DESC_K = 2.1;   // closer than this zoom, the body preview FADES IN inside the card (alpha+height lerp)
+const DESC_K = 1.35;  // closer than this zoom, the body preview FADES IN inside the card (alpha+height lerp)
 const DESC_W = 0.6;   // width of the desc ramp
-const BODY_K = 3.2;   // closer still: the card grows to 4 lines of body
+const BODY_K = 2.3;   // closer still: the card grows to 4 lines of body
 const tileRamp = K => Math.min(1, Math.max(0, (K - TILE_K) / TILE_W));
 const descRamp = K => Math.min(1, Math.max(0, (K - DESC_K) / DESC_W));
 // scale-free reading LOD (v2.10.6): the k-thresholds above assume the force-scale world
@@ -6171,7 +6311,9 @@ const descRamp = K => Math.min(1, Math.max(0, (K - DESC_K) / DESC_W));
 // компенсируется зумом» (07-10). Node count in frame is scale-free: a handful of notes
 // on screen = reading distance, whatever the layout/group axis blew the world up to.
 // «3-6 на экране = развернуть чип в превью» — full body preview at ≤7 in frame.
-const DENS_FULL = 7, DENS_CARDS = 16, DENS_OFF = 34;
+// v2.22: the scale-free half of the same move — «3-6 на экране» was too late a trigger for a
+// corpus whose fit-frame holds hundreds; a frame down to ~60 marks is already a reading frame.
+const DENS_FULL = 11, DENS_CARDS = 26, DENS_OFF = 60;
 let densKS = 0;   // smoothed density-equivalent zoom; max(k, densKS) drives the card ramps
 function densTargetK(m) {
   if (m >= DENS_OFF || m < 1) return 0;
@@ -6416,6 +6558,13 @@ const nGhost = nodes.filter(n => n.ghost).length;
 const nClusters = new Set(nodes.map(n => n.cluster)).size;
 const nCross = edges.filter(e => e.cross && !e.user).length;
 document.getElementById('counts').textContent = `${nodes.length-nGhost}·${edges.length}`;
+// Corpus shape, named, at the top of the panel — not only as a `440·2669` pair whose second
+// number nobody can decode, and not only in the footer where it competes with a file path.
+// Four numbers is the whole census: how much, how connected, how many themes, how many zones.
+document.getElementById('statline').innerHTML =
+  [[nodes.length - nGhost, T('нот')], [edges.length, T('рёбер')],
+   [nClusters, T('кластеров')], [zoneOrder.length, T('зон')]]
+    .map(([v, w]) => `<b>${v}</b> ${w}`).join(' · ');
 document.getElementById('stats').textContent =
   (DATA.version ? `v${DATA.version} · ` : '') +
   `${nodes.length-nGhost} ${T('нот')} + ${nGhost} ghost · ${edges.length} ${T('рёбер')}` +
