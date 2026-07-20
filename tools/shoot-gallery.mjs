@@ -53,6 +53,7 @@ const CASES = [
 
   // 2.21 — the fill shape follows the layout
   { name: 'campaign-dendro',    vault: 'campaign', q: '?layout=dendro&color=zone' },
+  { name: 'product-matrix',     vault: 'product',  q: '?layout=matrix&color=zone' },
 ];
 
 const want = process.argv.slice(2);

@@ -145,7 +145,32 @@ her, the brick walls that hinge on her. The unwritten sources sit as dim ghosts 
 
 `?layout=radial&color=zone`
 
+## Campaign — the whole vault as one labelled tree
+
+![campaign — dendro layout, every leaf on the rim](shots/gallery/campaign-dendro.png)
+
+The same TTRPG vault as the first frame, read as a tree instead of a flower. **dendro** hangs
+group ⊃ cluster ⊃ note off one root and puts every leaf on the rim with its own label — the
+whole corpus readable in one pass, which the petals cannot do. Each group owns an angular
+wedge, tinted and named on its own bisector: the fill follows the layout's geometry rather
+than wrapping a convex hull around a tree, which is why dendro used to be drawn with no fill
+and no group names at all.
+
+`?layout=dendro&color=zone`
+
+## Product — what exists, and where it is thin
+
+![product — matrix layout, rows by area and columns by age](shots/gallery/product-matrix.png)
+
+A graph answers *what links to what*. **matrix** answers the other question you ask about your
+own corpus: *what do I have, and where is nothing*. Rows are the grouping axis, columns a
+second one — here note age — and each cell holds its notes packed by phyllotaxis, so the blob's
+radius (pitch·√n) IS the count. Three areas, one live column: everything in this vault was
+touched in the same 7–30 day window and nothing since. An empty cell is the finding.
+
+`?layout=matrix&color=zone`
+
 ---
 
-Nine layouts, task presets, pins, saved views and the rest of the controls are described
+Eleven layouts, task presets, pins, saved views and the rest of the controls are described
 in [QUICKSTART](QUICKSTART.md) and in the in-app help (`?`).

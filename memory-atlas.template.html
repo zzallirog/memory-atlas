@@ -4835,7 +4835,10 @@ function layoutTargets(name, preview) {
     const zs = zsCap;
     // the column axis must differ from the row axis or every note lands on the diagonal and the
     // matrix says nothing a list had not already said
-    const AGE = [[0, 1, '<1д'], [1, 7, '1-7д'], [7, 30, '7-30д'], [30, 90, '30-90д'], [90, 1e9, '90д+']];
+    // the unit goes through T(): the first EN gallery frame carried «7-30Д» column headers
+    const D = T('д');
+    const AGE = [[0, 1, '<1' + D], [1, 7, '1-7' + D], [7, 30, '7-30' + D],
+                 [30, 90, '30-90' + D], [90, 1e9, '90' + D + '+']];
     const byAge = groupMode === 'type' || groupMode === 'cat';
     const colOf = byAge
       ? n => (AGE.find(([a, b]) => (n.age_days || 0) >= a && (n.age_days || 0) < b) || AGE[4])[2]
@@ -4855,6 +4858,7 @@ function layoutTargets(name, preview) {
     const other = cols.length ? cols[cols.length - 1] : '?';
     zs.forEach((z, ri) => {
       const y = cy0 + ri * ROWH;
+      let leftMost = Infinity;   // the row's title hugs its own content, see below
       cols.forEach((cv, ci) => {
         const x = cx0 + ci * COLW;
         const ns = real.filter(n => gv(n) === z &&
@@ -4866,10 +4870,15 @@ function layoutTargets(name, preview) {
         const pitch = Math.min(16, Math.min(COLW, ROWH) * 0.36 / Math.sqrt(ns.length + 0.6));
         ns.forEach((n, i) => {
           const rr2 = pitch * Math.sqrt(i + 0.6), aa = i * GA;
-          t.set(n.id, [x + Math.cos(aa) * rr2, y + Math.sin(aa) * rr2]);
+          const px = x + Math.cos(aa) * rr2;
+          t.set(n.id, [px, y + Math.sin(aa) * rr2]);
+          if (px < leftMost) leftMost = px;
         });
       });
-      layoutTitles.push({ x: cx0 - COLW * 0.62, y, v: z, align: 'right' });
+      // anchored to the row's OWN leftmost note, not to the grid origin: fitTransform frames
+      // nodes, never labels, so a title parked at the far left of an empty stretch of grid ended
+      // up outside the frame and under the HUD (first EN gallery frame)
+      if (leftMost < Infinity) layoutTitles.push({ x: leftMost - 34, y, v: z, align: 'right' });
     });
     cols.forEach((cv, ci) => layoutTitles.push({   // column headers: not groups, so they carry
       x: cx0 + ci * COLW, y: cy0 - ROWH * 0.62,    // their own text and a neutral colour
