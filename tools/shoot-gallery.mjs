@@ -54,6 +54,15 @@ const CASES = [
   // 2.21 — the fill shape follows the layout
   { name: 'campaign-dendro',    vault: 'campaign', q: '?layout=dendro&color=zone' },
   { name: 'product-matrix',     vault: 'product',  q: '?layout=matrix&color=zone' },
+
+  // The four frames docs/VIEWS.md leads with. They were hand-shot on 07-10 and
+  // stayed on that build for ten days — the reading views are exactly what the
+  // 2.14 panel rebuild and the 2.18 HUD move changed the look of, so the frames
+  // that document them were the last ones still describing the old page.
+  { name: 'view-spine',         vault: 'campaign', dir: 'docs/shots', q: '?layout=spine&color=zone' },
+  { name: 'view-facets',        vault: 'campaign', dir: 'docs/shots', q: '?layout=facets&color=zone' },
+  { name: 'view-dendro',        vault: 'campaign', dir: 'docs/shots', q: '?layout=dendro&color=zone' },
+  { name: 'view-grid-cluster',  vault: 'campaign', dir: 'docs/shots', q: '?layout=grid&group=cluster&color=cluster' },
 ];
 
 const want = process.argv.slice(2);

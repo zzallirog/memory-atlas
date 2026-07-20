@@ -172,5 +172,5 @@ touched in the same 7–30 day window and nothing since. An empty cell is the fi
 
 ---
 
-Eleven layouts, task presets, pins, saved views and the rest of the controls are described
-in [QUICKSTART](QUICKSTART.md) and in the in-app help (`?`).
+Thirteen layouts, task presets, pins, saved views and the rest of the controls are described
+in [VIEWS](VIEWS.md), in [QUICKSTART](QUICKSTART.md) and in the in-app help (`?`).
